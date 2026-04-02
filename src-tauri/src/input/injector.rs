@@ -1,12 +1,12 @@
-use anyhow::Result;
-use arboard::Clipboard;
-use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+use anyhow::{bail, Context, Result};
+use std::process::Command;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::info;
+use tracing::{info, warn};
 
 /// 将文字注入到当前焦点输入框
-/// 策略：写入剪贴板 → 模拟 Cmd+V → 不恢复剪贴板（保留转录内容供手动粘贴兜底）
+/// 策略：pbcopy 写剪贴板 → osascript 模拟 Cmd+V
+/// 避免在 tokio 工作线程调用 arboard/enigo（它们需要主线程，否则崩溃）
 pub async fn inject_text(text: &str) -> Result<()> {
     if text.is_empty() {
         return Ok(());
@@ -14,44 +14,50 @@ pub async fn inject_text(text: &str) -> Result<()> {
 
     info!("注入文字: {:?}", text);
 
-    let mut clipboard = Clipboard::new()?;
+    // 用 pbcopy 写剪贴板（进程级调用，线程安全）
+    write_clipboard(text)?;
 
-    // 写入转录文字
-    clipboard.set_text(text)?;
+    // 等待剪贴板就绪
+    sleep(Duration::from_millis(80)).await;
 
-    // 等待剪贴板写入完成
-    sleep(Duration::from_millis(100)).await;
+    // 用 osascript 模拟 Cmd+V（不依赖 enigo，更可靠）
+    paste_via_osascript()?;
 
-    // 模拟粘贴（失败则返回 Err，调用方决定如何处理）
-    paste_clipboard()?;
-
-    // 等待粘贴操作完成
-    sleep(Duration::from_millis(200)).await;
-
-    // 注意：不恢复剪贴板。
-    // 理由：无法可靠判断粘贴是否真的成功（enigo 发键后不报错但可能焦点错误）。
-    // 保留转录内容在剪贴板，作为手动粘贴的兜底。
+    // 等待粘贴完成
+    sleep(Duration::from_millis(150)).await;
 
     Ok(())
 }
 
-fn paste_clipboard() -> Result<()> {
-    let mut enigo = Enigo::new(&Settings::default())?;
+fn write_clipboard(text: &str) -> Result<()> {
+    use std::io::Write;
+    let mut child = Command::new("pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .context("启动 pbcopy 失败")?;
 
-    #[cfg(target_os = "macos")]
-    {
-        enigo.key(Key::Meta, Direction::Press)?;
-        enigo.key(Key::Unicode('v'), Direction::Click)?;
-        enigo.key(Key::Meta, Direction::Release)?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(text.as_bytes()).context("写入 pbcopy 失败")?;
     }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        enigo.key(Key::Control, Direction::Press)?;
-        enigo.key(Key::Unicode('v'), Direction::Click)?;
-        enigo.key(Key::Control, Direction::Release)?;
+    let status = child.wait().context("等待 pbcopy 完成失败")?;
+    if !status.success() {
+        bail!("pbcopy 退出状态异常");
     }
+    Ok(())
+}
 
+fn paste_via_osascript() -> Result<()> {
+    let status = Command::new("osascript")
+        .args([
+            "-e",
+            r#"tell application "System Events" to keystroke "v" using {command down}"#,
+        ])
+        .status()
+        .context("启动 osascript 失败")?;
+
+    if !status.success() {
+        bail!("osascript 粘贴失败，请确认辅助功能权限已开启");
+    }
     Ok(())
 }
 
@@ -73,7 +79,7 @@ pub fn check_accessibility_permission() -> bool {
 /// 打开 macOS 辅助功能设置页
 #[cfg(target_os = "macos")]
 pub fn open_accessibility_settings() {
-    let _ = std::process::Command::new("open")
+    let _ = Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         .spawn();
 }
