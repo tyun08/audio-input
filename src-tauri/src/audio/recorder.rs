@@ -1,0 +1,155 @@
+use anyhow::{Context, Result};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{FromSample, SampleFormat, Stream};
+use std::sync::{Arc, Mutex};
+use tracing::{error, info};
+
+// cpal::Stream is not Send on all platforms; we control access via Mutex
+struct SendStream(Stream);
+unsafe impl Send for SendStream {}
+
+pub struct AudioData {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+pub struct Recorder {
+    stream: Option<SendStream>,
+    buffer: Arc<Mutex<Vec<f32>>>,
+    sample_rate: u32,
+    channels: u16,
+}
+
+impl Recorder {
+    pub fn new() -> Self {
+        Recorder {
+            stream: None,
+            buffer: Arc::new(Mutex::new(Vec::new())),
+            sample_rate: 0,
+            channels: 0,
+        }
+    }
+
+    pub fn start(&mut self) -> Result<()> {
+        let host = cpal::default_host();
+        let device = host
+            .default_input_device()
+            .context("找不到默认麦克风设备")?;
+
+        info!("使用录音设备: {}", device.name().unwrap_or_default());
+
+        let config = device
+            .default_input_config()
+            .context("无法获取默认录音配置")?;
+
+        self.sample_rate = config.sample_rate().0;
+        self.channels = config.channels();
+
+        info!(
+            "录音配置: {}Hz, {} 声道, {:?}",
+            self.sample_rate,
+            self.channels,
+            config.sample_format()
+        );
+
+        let buffer = Arc::clone(&self.buffer);
+        {
+            let mut buf = buffer.lock().unwrap();
+            buf.clear();
+        }
+
+        let stream = match config.sample_format() {
+            SampleFormat::F32 => build_stream::<f32>(&device, &config.into(), buffer)?,
+            SampleFormat::I16 => build_stream_i16(&device, &config.into(), buffer)?,
+            SampleFormat::U16 => build_stream_u16(&device, &config.into(), buffer)?,
+            fmt => anyhow::bail!("不支持的音频格式: {:?}", fmt),
+        };
+
+        stream.play().context("无法启动录音流")?;
+        self.stream = Some(SendStream(stream));
+        info!("录音已开始");
+        Ok(())
+    }
+
+    pub fn stop(&mut self) -> Result<AudioData> {
+        // Drop the stream to stop recording
+        self.stream.take();
+        info!("录音已停止");
+
+        let samples = {
+            let buf = self.buffer.lock().unwrap();
+            buf.clone()
+        };
+
+        info!("录制了 {} 个采样点 ({:.1}秒)", samples.len(), samples.len() as f32 / self.sample_rate as f32);
+
+        Ok(AudioData {
+            samples,
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+        })
+    }
+}
+
+fn build_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    buffer: Arc<Mutex<Vec<f32>>>,
+) -> Result<Stream>
+where
+    T: cpal::Sample + cpal::SizedSample,
+    f32: FromSample<T>,
+{
+    let stream = device.build_input_stream(
+        config,
+        move |data: &[T], _: &cpal::InputCallbackInfo| {
+            let mut buf = buffer.lock().unwrap();
+            for &sample in data {
+                buf.push(<f32 as FromSample<T>>::from_sample_(sample));
+            }
+        },
+        move |err| error!("录音错误: {}", err),
+        None,
+    )?;
+    Ok(stream)
+}
+
+fn build_stream_i16(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    buffer: Arc<Mutex<Vec<f32>>>,
+) -> Result<Stream> {
+    let stream = device.build_input_stream(
+        config,
+        move |data: &[i16], _: &cpal::InputCallbackInfo| {
+            let mut buf = buffer.lock().unwrap();
+            for &sample in data {
+                buf.push(sample as f32 / i16::MAX as f32);
+            }
+        },
+        move |err| error!("录音错误: {}", err),
+        None,
+    )?;
+    Ok(stream)
+}
+
+fn build_stream_u16(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    buffer: Arc<Mutex<Vec<f32>>>,
+) -> Result<Stream> {
+    let stream = device.build_input_stream(
+        config,
+        move |data: &[u16], _: &cpal::InputCallbackInfo| {
+            let mut buf = buffer.lock().unwrap();
+            for &sample in data {
+                // u16: 0..=65535, center at 32768
+                buf.push((sample as f32 - 32768.0) / 32768.0);
+            }
+        },
+        move |err| error!("录音错误: {}", err),
+        None,
+    )?;
+    Ok(stream)
+}
