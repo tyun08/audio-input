@@ -4,19 +4,31 @@
   export let lastTranscription = "";
   export let injectionFailed = false;
 
-  // 录音计时
+  // 录音计时 — 用显式函数避免 Svelte 响应块重复执行导致 seconds 一直被重置
   let seconds = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
 
-  $: {
+  function startTimer() {
+    if (timer !== null) clearInterval(timer);
+    seconds = 0;
+    timer = setInterval(() => { seconds = seconds + 1; }, 1000);
+  }
+
+  function stopTimer() {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+    seconds = 0;
+  }
+
+  let _prevState = state;
+  $: if (state !== _prevState) {
+    _prevState = state;
     if (state === "recording") {
-      seconds = 0;
-      timer = setInterval(() => seconds++, 1000);
+      startTimer();
     } else {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
+      stopTimer();
     }
   }
 

@@ -7,11 +7,13 @@ use tauri::{
 use tracing::info;
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let last = MenuItem::with_id(app, "last-result", "尚无转录结果", false, None::<&str>)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "配置 API Key...", true, None::<&str>)?;
-    let sep = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&settings, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&last, &sep1, &settings, &sep2, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(idle_icon())
@@ -55,6 +57,31 @@ pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
         };
         let _ = tray.set_icon(Some(icon));
         let _ = tray.set_icon_as_template(as_template);
+    }
+}
+
+/// 转录成功后更新托盘 tooltip 和菜单首项显示最近结果
+pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let display = if text.chars().count() > 40 {
+            format!("{}…", text.chars().take(40).collect::<String>())
+        } else {
+            text.to_string()
+        };
+        let tooltip = format!("最近转录: {}", display);
+        let _ = tray.set_tooltip(Some(tooltip));
+    }
+    // 同时更新菜单中的只读项
+    if let Some(item) = app.menu().and_then(|m| m.get("last-result")) {
+        use tauri::menu::MenuItemKind;
+        if let MenuItemKind::MenuItem(mi) = item {
+            let display = if text.chars().count() > 30 {
+                format!("{}…", text.chars().take(30).collect::<String>())
+            } else {
+                text.to_string()
+            };
+            let _ = mi.set_text(display);
+        }
     }
 }
 
