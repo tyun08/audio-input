@@ -22,12 +22,37 @@ pub fn run() {
         let _ = dotenvy::from_path("../.env");
     }
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "audio_input=info".parse().unwrap()),
-        )
-        .init();
+    // 同时写 stderr 和 ~/Library/Logs/com.audioinput.app/app.log
+    // 打包后 stderr 不可见，日志文件是唯一的调试手段
+    let log_path = {
+        let mut p = dirs::cache_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+        p.push("com.audioinput.app");
+        std::fs::create_dir_all(&p).ok();
+        p.push("app.log");
+        p
+    };
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "audio_input=debug".parse().unwrap());
+
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true).write(true).truncate(true)
+        .open(&log_path)
+    {
+        use tracing_subscriber::prelude::*;
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(file));
+        let stderr_layer = tracing_subscriber::fmt::layer();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(file_layer)
+            .with(stderr_layer)
+            .init();
+    } else {
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+    }
+    info!("日志文件: {:?}", log_path);
 
     info!("Audio Input 启动");
 
