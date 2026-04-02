@@ -49,11 +49,23 @@ async fn start_recording<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
-    let mut recorder = recorder_state.lock().unwrap();
-    match recorder.start() {
+    info!("开始录音...");
+    // 先释放 recorder 锁再操作 shared_state，避免嵌套锁
+    let result = {
+        match recorder_state.lock() {
+            Ok(mut recorder) => recorder.start(),
+            Err(e) => {
+                error!("recorder 锁中毒: {}", e);
+                return;
+            }
+        }
+    };
+
+    match result {
         Ok(()) => {
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Recording;
+            drop(state);
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
             info!("状态 → Recording");
@@ -62,6 +74,7 @@ async fn start_recording<R: Runtime>(
             error!("录音启动失败: {}", e);
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Error(e.to_string());
+            drop(state);
             set_tray_icon(app, "error");
             let _ = app.emit("state-change", format!("error:{}", e));
             schedule_error_recovery(app.clone(), shared_state.clone());
@@ -140,6 +153,9 @@ async fn stop_and_transcribe<R: Runtime>(
         reset_to_idle(&app, &shared_state);
         return;
     }
+
+    // 更新托盘菜单显示最近转录
+    crate::tray::set_tray_last_result(&app, &text);
 
     // 注入前先隐藏浮窗，让焦点还给用户的目标输入框
     if let Some(win) = app.get_webview_window("main") {
