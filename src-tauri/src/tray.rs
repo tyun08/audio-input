@@ -5,15 +5,17 @@ use tauri::{
     AppHandle, Emitter as _, Manager, Runtime,
 };
 use tracing::info;
+use std::path::PathBuf;
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let last = MenuItem::with_id(app, "last-result", "尚无转录结果", false, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "配置 API Key...", true, None::<&str>)?;
+    let open_log = MenuItem::with_id(app, "open-log", "打开日志文件", true, None::<&str>)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&last, &sep1, &settings, &sep2, &quit])?;
+    let menu = Menu::with_items(app, &[&last, &sep1, &settings, &open_log, &sep2, &quit])?;
 
     TrayIconBuilder::with_id("main-tray")
         .icon(idle_icon())
@@ -28,6 +30,13 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             }
             "settings" => {
                 show_settings_window(app);
+            }
+            "open-log" => {
+                let log_path = dirs::cache_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
+                    .join("com.audioinput.app")
+                    .join("app.log");
+                let _ = std::process::Command::new("open").arg(&log_path).spawn();
             }
             _ => {}
         })
