@@ -62,7 +62,12 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();
-        let _ = app.emit("show-settings", ());
+        // 延迟发送，确保窗口渲染完毕后前端才收到事件
+        let win2 = win.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let _ = win2.emit("show-settings", ());
+        });
     }
 }
 

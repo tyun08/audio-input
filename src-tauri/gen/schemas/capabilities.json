@@ -1,1 +1,1 @@
-{}
+{"main":{"identifier":"main","description":"Main window permissions","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-show","core:window:allow-hide","core:window:allow-set-focus","core:window:allow-is-visible","core:window:allow-set-always-on-top","core:event:allow-listen","core:event:allow-unlisten","core:event:allow-emit"]}}
