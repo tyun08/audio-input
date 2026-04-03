@@ -52,7 +52,7 @@ async fn try_polish(text: &str, api_key: &str) -> anyhow::Result<String> {
     let system_prompt = "你是文字整理助手。对语音转录文字：1)添加标点断句 2)修正明显同音错字 3)保持原意不改写。只输出整理后的文字，不加任何解释。";
 
     let request = ChatRequest {
-        model: "llama-3.1-8b-instant".to_string(),
+        model: "openai/gpt-oss-20b".to_string(),
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
