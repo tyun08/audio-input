@@ -4,7 +4,6 @@
   export let lastTranscription = "";
   export let injectionFailed = false;
 
-  // 录音计时 — 用显式函数避免 Svelte 响应块重复执行导致 seconds 一直被重置
   let seconds = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -39,178 +38,282 @@
   }
 </script>
 
-<div class="indicator" class:recording={state === "recording"} class:processing={state === "processing"} class:error={state === "error"}>
-  <div class="icon-wrap">
-    {#if state === "idle"}
-      <!-- 空闲时不显示 -->
-    {:else if state === "recording"}
-      <div class="pulse-ring"></div>
-      <div class="mic-icon recording">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <rect x="9" y="2" width="6" height="13" rx="3" fill="currentColor"/>
-          <path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <line x1="8" y1="22" x2="16" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+<div
+  class="panel"
+  class:state-recording={state === "recording"}
+  class:state-processing={state === "processing"}
+  class:state-error={state === "error"}
+  class:state-idle={state === "idle"}
+>
+  {#if state === "idle" && !injectionFailed && !lastTranscription}
+    <!-- minimal idle state -->
+    <div class="idle-content">
+      <div class="mic-svg">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <rect x="9" y="2" width="6" height="13" rx="3" fill="rgba(255,255,255,0.55)"/>
+          <path d="M5 10a7 7 0 0 0 14 0" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="22" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="8" y1="22" x2="16" y2="22" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </div>
-      <div class="timer">{formatTime(seconds)}</div>
-    {:else if state === "processing"}
-      <div class="spinner"></div>
-      <div class="label">转录中...</div>
-    {:else if state === "error"}
-      <div class="error-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-          <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="12" cy="16" r="1" fill="currentColor"/>
+      <span class="idle-label">准备就绪</span>
+    </div>
+
+  {:else if state === "recording"}
+    <div class="recording-content">
+      <div class="dot-wrap">
+        <div class="pulse-outer"></div>
+        <div class="red-dot"></div>
+      </div>
+      <div class="recording-right">
+        <span class="rec-label">录音中</span>
+        <span class="timer">{formatTime(seconds)}</span>
+      </div>
+    </div>
+
+  {:else if state === "processing"}
+    <div class="processing-content">
+      <div class="arc-spinner"></div>
+      <span class="proc-label">转录中</span>
+    </div>
+
+  {:else if state === "error"}
+    <div class="error-content">
+      <div class="error-icon-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="#f87171" stroke-width="2"/>
+          <line x1="12" y1="7" x2="12" y2="13" stroke="#f87171" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="12" cy="17" r="1.2" fill="#f87171"/>
         </svg>
       </div>
       {#if errorMsg}
-        <div class="error-msg">{errorMsg}</div>
+        <span class="error-text">{errorMsg}</span>
       {/if}
-    {/if}
-  </div>
-
-  {#if lastTranscription && state === "idle"}
-    <div class="transcription-preview" class:failed={injectionFailed}>
-      {lastTranscription}
     </div>
-    {#if injectionFailed}
-      <div class="injection-hint">已复制到剪贴板，请手动粘贴 (⌘V)</div>
-    {/if}
+
+  {/if}
+
+  {#if (state === "idle" || injectionFailed) && lastTranscription}
+    <div class="result-row" class:failed={injectionFailed}>
+      {#if injectionFailed}
+        <div class="clipboard-hint">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <rect x="8" y="2" width="8" height="4" rx="1" stroke="rgba(255,200,80,0.85)" stroke-width="1.8"/>
+            <path d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1" stroke="rgba(255,200,80,0.85)" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span class="paste-hint">已复制 — ⌘V 粘贴</span>
+        </div>
+      {/if}
+      <div class="transcription-text" class:failed={injectionFailed}>
+        {lastTranscription.length > 80 ? lastTranscription.slice(0, 80) + "…" : lastTranscription}
+      </div>
+    </div>
   {/if}
 </div>
 
 <style>
-  .indicator {
+  .panel {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 24px;
-    border-radius: 20px;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    background: rgba(30, 30, 35, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    min-width: 160px;
-    transition: all 0.25s ease;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 16px;
+    background: rgba(30, 30, 32, 0.85);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,0.06) inset;
+    min-width: 200px;
+    max-width: 300px;
+    transition: border-color 0.2s ease, background 0.2s ease;
   }
 
-  .indicator.recording {
-    background: rgba(220, 38, 38, 0.15);
-    border-color: rgba(239, 68, 68, 0.3);
+  .panel.state-recording {
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(35, 20, 20, 0.88);
   }
 
-  .indicator.processing {
-    background: rgba(37, 99, 235, 0.15);
-    border-color: rgba(59, 130, 246, 0.3);
+  .panel.state-processing {
+    border-color: rgba(99, 130, 246, 0.3);
+    background: rgba(20, 24, 40, 0.88);
   }
 
-  .indicator.error {
-    background: rgba(161, 98, 7, 0.15);
-    border-color: rgba(234, 179, 8, 0.3);
+  .panel.state-error {
+    border-color: rgba(248, 113, 113, 0.3);
+    background: rgba(35, 20, 20, 0.88);
   }
 
-  .icon-wrap {
+  /* Idle state */
+  .idle-content {
     display: flex;
-    flex-direction: column;
     align-items: center;
     gap: 10px;
-    position: relative;
   }
 
-  /* 录音中：麦克风图标 */
-  .mic-icon {
-    position: relative;
-    z-index: 2;
-    color: #ef4444;
+  .mic-svg {
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  /* 脉冲扩散圆环 */
-  .pulse-ring {
-    position: absolute;
-    width: 56px;
-    height: 56px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background: rgba(239, 68, 68, 0.2);
-    animation: pulse 1.5s ease-out infinite;
-    z-index: 1;
+    background: rgba(255,255,255,0.06);
   }
 
-  @keyframes pulse {
-    0% { transform: scale(0.8); opacity: 0.8; }
+  .idle-label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.45);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+
+  /* Recording state */
+  .recording-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .dot-wrap {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .red-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    position: relative;
+    z-index: 2;
+    animation: dot-pulse 1.4s ease-in-out infinite;
+  }
+
+  .pulse-outer {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.25);
+    animation: ring-expand 1.4s ease-out infinite;
+  }
+
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  @keyframes ring-expand {
+    0% { transform: scale(0.5); opacity: 0.8; }
     100% { transform: scale(1.8); opacity: 0; }
   }
 
-  .timer {
-    font-size: 14px;
+  .recording-right {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rec-label {
+    font-size: 13px;
     font-weight: 600;
     color: #ef4444;
+    letter-spacing: 0.02em;
+  }
+
+  .timer {
+    font-size: 11px;
+    color: rgba(239, 68, 68, 0.7);
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.05em;
-  }
-
-  /* 处理中：旋转圆圈 */
-  .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(59, 130, 246, 0.2);
-    border-top-color: #3b82f6;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .label {
-    font-size: 13px;
-    color: #93c5fd;
+    letter-spacing: 0.08em;
     font-weight: 500;
   }
 
-  /* 错误 */
-  .error-icon {
-    color: #eab308;
+  /* Processing state */
+  .processing-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
-  .error-msg {
-    font-size: 12px;
-    color: #fde68a;
-    text-align: center;
-    max-width: 180px;
-    line-height: 1.4;
+  .arc-spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(99, 130, 246, 0.18);
+    border-top-color: #818cf8;
+    border-right-color: rgba(99, 130, 246, 0.5);
+    animation: spin-arc 0.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    flex-shrink: 0;
   }
 
-  /* 转录预览 */
-  .transcription-preview {
+  @keyframes spin-arc {
+    to { transform: rotate(360deg); }
+  }
+
+  .proc-label {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.5);
-    text-align: center;
+    color: rgba(129, 140, 248, 0.9);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  /* Error state */
+  .error-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .error-icon-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .error-text {
+    font-size: 12px;
+    color: rgba(248, 113, 113, 0.85);
+    line-height: 1.4;
     max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 8px;
   }
 
-  .transcription-preview.failed {
-    color: rgba(255, 220, 100, 0.85);
-    white-space: normal;
-    word-break: break-all;
+  /* Result row */
+  .result-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 9px;
   }
 
-  .injection-hint {
+  .clipboard-hint {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .paste-hint {
     font-size: 11px;
-    color: rgba(255, 200, 60, 0.6);
-    text-align: center;
-    max-width: 200px;
+    color: rgba(255, 200, 80, 0.85);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .transcription-text {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    line-height: 1.5;
+    word-break: break-word;
+  }
+
+  .transcription-text.failed {
+    color: rgba(255, 210, 100, 0.8);
   }
 </style>
