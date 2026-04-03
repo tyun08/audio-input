@@ -11,11 +11,17 @@ pub async fn inject_text(text: &str) -> Result<()> {
 
     info!("inject_text: {} 个字符, 前20字: {:?}", text.chars().count(), text.chars().take(20).collect::<String>());
 
+    // 先写剪贴板，无论是否有 AX 权限都写（方便用户手动粘贴）
     info!("步骤1: 写入剪贴板 (pbcopy)");
     write_clipboard(text)?;
     info!("步骤1完成: pbcopy 成功");
 
     sleep(Duration::from_millis(100)).await;
+
+    // AX 权限检查：没有权限时直接返回错误，不尝试无效的 CGEvent
+    if !check_accessibility_permission() {
+        bail!("Accessibility 权限未授予 — 文字已写入剪贴板，请按 ⌘V 手动粘贴。\n如需自动注入，请在系统设置中授权辅助功能后重启 App。");
+    }
 
     info!("步骤2: 模拟 Cmd+V (CGEvent)");
     paste_via_cgevent()?;
@@ -60,14 +66,6 @@ fn write_clipboard(text: &str) -> Result<()> {
 #[cfg(target_os = "macos")]
 fn paste_via_cgevent() -> Result<()> {
     use std::ptr;
-
-    // 前置检查：若 Accessibility 权限未授予，CGEvent 不会生效
-    if !check_accessibility_permission() {
-        warn!("AXIsProcessTrusted = false，CGEvent Cmd+V 可能无效，请重启 app 后重试");
-        // 不 bail，仍然尝试（权限有时有延迟）
-    } else {
-        debug!("AXIsProcessTrusted = true");
-    }
 
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
@@ -126,6 +124,53 @@ pub fn check_accessibility_permission() -> bool {
         fn AXIsProcessTrusted() -> bool;
     }
     unsafe { AXIsProcessTrusted() }
+}
+
+/// 弹出系统 Accessibility 授权对话框（首次运行或未授权时调用）
+/// 返回当前是否已授权
+#[cfg(target_os = "macos")]
+pub fn request_accessibility_permission() -> bool {
+    use std::ffi::c_void;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        static kAXTrustedCheckOptionPrompt: *const c_void;
+        static kCFBooleanTrue: *const c_void;
+        static kCFTypeDictionaryKeyCallBacks: *const c_void;
+        static kCFTypeDictionaryValueCallBacks: *const c_void;
+        fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
+        fn CFDictionaryCreate(
+            allocator: *const c_void,
+            keys: *const *const c_void,
+            values: *const *const c_void,
+            num: isize,
+            key_cbs: *const c_void,
+            val_cbs: *const c_void,
+        ) -> *mut c_void;
+        fn CFRelease(cf: *const c_void);
+    }
+
+    unsafe {
+        let keys = [kAXTrustedCheckOptionPrompt];
+        let values = [kCFBooleanTrue];
+        let dict = CFDictionaryCreate(
+            std::ptr::null(),
+            keys.as_ptr(),
+            values.as_ptr(),
+            1,
+            kCFTypeDictionaryKeyCallBacks,
+            kCFTypeDictionaryValueCallBacks,
+        );
+        let trusted = AXIsProcessTrustedWithOptions(dict as *const c_void);
+        CFRelease(dict as *const c_void);
+        trusted
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_accessibility_permission() -> bool {
+    true
 }
 
 #[cfg(not(target_os = "macos"))]
