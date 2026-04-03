@@ -2,7 +2,8 @@ use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, Stream};
 use std::sync::{Arc, Mutex};
-use tracing::{error, info};
+use tauri::{Manager, Runtime};
+use tracing::{error, info, warn};
 
 // cpal::Stream is not Send on all platforms; we control access via Mutex
 struct SendStream(Stream);
@@ -21,6 +22,19 @@ pub struct Recorder {
     channels: u16,
 }
 
+pub fn list_input_devices() -> Vec<String> {
+    let host = cpal::default_host();
+    match host.input_devices() {
+        Ok(devices) => devices
+            .filter_map(|d| d.name().ok())
+            .collect(),
+        Err(e) => {
+            warn!("列举输入设备失败: {}", e);
+            Vec::new()
+        }
+    }
+}
+
 impl Recorder {
     pub fn new() -> Self {
         Recorder {
@@ -31,11 +45,35 @@ impl Recorder {
         }
     }
 
-    pub fn start(&mut self) -> Result<()> {
+    pub fn start<R: Runtime>(&mut self, app: &tauri::AppHandle<R>) -> Result<()> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .context("找不到默认麦克风设备")?;
+
+        // Read preferred device from config
+        let preferred_device_name = {
+            let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
+            let name = config_state.lock().unwrap().preferred_device.clone();
+            name
+        };
+
+        let device = if let Some(ref name) = preferred_device_name {
+            // Try to find the preferred device
+            let found = host
+                .input_devices()
+                .ok()
+                .and_then(|mut devs| devs.find(|d| d.name().as_deref().ok() == Some(name.as_str())));
+
+            if let Some(d) = found {
+                info!("使用配置录音设备: {}", name);
+                d
+            } else {
+                warn!("配置的设备 '{}' 不可用，回退到默认设备", name);
+                host.default_input_device()
+                    .context("找不到默认麦克风设备")?
+            }
+        } else {
+            host.default_input_device()
+                .context("找不到默认麦克风设备")?
+        };
 
         info!("使用录音设备: {}", device.name().unwrap_or_default());
 

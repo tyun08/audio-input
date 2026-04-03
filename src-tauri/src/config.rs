@@ -4,9 +4,37 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
 use tracing::info;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub api_key: String,
+    #[serde(default = "default_polish_enabled")]
+    pub polish_enabled: bool,
+    #[serde(default)]
+    pub preferred_device: Option<String>,
+    #[serde(default = "default_shortcut")]
+    pub shortcut: String,
+    #[serde(default)]
+    pub onboarding_completed: bool,
+}
+
+fn default_polish_enabled() -> bool {
+    true
+}
+
+fn default_shortcut() -> String {
+    "Meta+Shift+Space".to_string()
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            api_key: String::new(),
+            polish_enabled: true,
+            preferred_device: None,
+            shortcut: "Meta+Shift+Space".to_string(),
+            onboarding_completed: false,
+        }
+    }
 }
 
 impl AppConfig {

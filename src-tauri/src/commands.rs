@@ -3,7 +3,7 @@ use crate::{
     config::AppConfig,
     input::inject_text,
     state::{AppState, SharedState},
-    transcription::GroqClient,
+    transcription::{polish, GroqClient},
     tray::set_tray_icon,
 };
 use std::sync::{Arc, Mutex};
@@ -53,7 +53,7 @@ async fn start_recording<R: Runtime>(
     // 先释放 recorder 锁再操作 shared_state，避免嵌套锁
     let result = {
         match recorder_state.lock() {
-            Ok(mut recorder) => recorder.start(),
+            Ok(mut recorder) => recorder.start(app),
             Err(e) => {
                 error!("recorder 锁中毒: {}", e);
                 return;
@@ -138,8 +138,8 @@ async fn stop_and_transcribe<R: Runtime>(
     };
 
     // 调用 Groq API
-    let client = GroqClient::new(api_key);
-    let text = match client.transcribe(wav_bytes).await {
+    let client = GroqClient::new(api_key.clone());
+    let raw_text = match client.transcribe(wav_bytes).await {
         Ok(t) => t,
         Err(e) => {
             error!("转录失败: {}", e);
@@ -148,11 +148,26 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
-    if text.is_empty() {
+    if raw_text.is_empty() {
         warn!("转录结果为空 — 可能静音、麦克风未授权或录音太短");
         reset_to_idle(&app, &shared_state);
         return;
     }
+
+    // 润色（可选）
+    let text = {
+        let polish_enabled = {
+            let config = app.state::<Arc<Mutex<AppConfig>>>();
+            let enabled = config.lock().unwrap().polish_enabled;
+            enabled
+        };
+        if polish_enabled {
+            info!("润色开关已开启，调用 LLM 润色...");
+            polish::polish_text(&raw_text, &api_key).await
+        } else {
+            raw_text
+        }
+    };
 
     // 更新托盘菜单显示最近转录
     crate::tray::set_tray_last_result(&app, &text);
@@ -244,12 +259,12 @@ pub async fn save_api_key(
     app: AppHandle,
     config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
 ) -> Result<(), String> {
-    {
+    let updated = {
         let mut cfg = config.lock().unwrap();
         cfg.api_key = key.clone();
-    }
-    AppConfig::save(&app, &AppConfig { api_key: key })
-        .map_err(|e| e.to_string())
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -264,4 +279,118 @@ pub fn get_app_state(
     shared_state: tauri::State<'_, SharedState>,
 ) -> String {
     shared_state.lock().unwrap().to_string()
+}
+
+// --- Polish commands ---
+
+#[tauri::command]
+pub fn get_polish_enabled(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> bool {
+    config.lock().unwrap().polish_enabled
+}
+
+#[tauri::command]
+pub async fn save_polish_enabled(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.polish_enabled = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Audio device commands ---
+
+#[tauri::command]
+pub fn list_audio_devices() -> Vec<String> {
+    crate::audio::recorder::list_input_devices()
+}
+
+#[tauri::command]
+pub async fn save_preferred_device(
+    device: Option<String>,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.preferred_device = device;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Shortcut commands ---
+
+#[tauri::command]
+pub fn get_shortcut(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> String {
+    config.lock().unwrap().shortcut.clone()
+}
+
+#[tauri::command]
+pub async fn save_shortcut(
+    shortcut: String,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.shortcut = shortcut.clone();
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    // Re-register shortcut
+    crate::shortcut::reregister_shortcut(&app, &shortcut).map_err(|e| e.to_string())
+}
+
+// --- Autostart commands ---
+
+#[tauri::command]
+pub fn get_autostart_enabled(
+    app: AppHandle,
+) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+pub async fn save_autostart_enabled(
+    enabled: bool,
+    app: AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())
+    }
+}
+
+// --- Onboarding commands ---
+
+#[tauri::command]
+pub fn get_onboarding_completed(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> bool {
+    config.lock().unwrap().onboarding_completed
+}
+
+#[tauri::command]
+pub async fn save_onboarding_completed(
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.onboarding_completed = true;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }

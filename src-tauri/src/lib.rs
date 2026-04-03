@@ -2,6 +2,7 @@ mod audio;
 mod commands;
 mod config;
 mod input;
+mod shortcut;
 mod state;
 mod transcription;
 mod tray;
@@ -12,8 +13,8 @@ use config::AppConfig;
 use state::new_shared_state;
 
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter as _, Listener as _, Manager};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri::{Listener as _, Manager};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{info, warn};
 
 pub fn run() {
@@ -80,6 +81,7 @@ pub fn run() {
 
             // 初始化持久化配置
             let config = AppConfig::load(&handle);
+            let shortcut_str = config.shortcut.clone();
             app.manage(Arc::new(Mutex::new(config)));
 
             // 初始化应用状态
@@ -101,19 +103,20 @@ pub fn run() {
                 warn!("Accessibility 权限: 未授权 (AXIsProcessTrusted=false)");
             }
 
-            // 注册全局快捷键 Cmd+Shift+Space
+            // 注册全局快捷键（从配置读取，默认 Cmd+Shift+Space）
             {
                 let handle2 = handle.clone();
                 let shared_state2 = shared_state.clone();
                 let recorder2 = Arc::clone(&recorder);
 
-                let shortcut = Shortcut::new(
-                    Some(Modifiers::META | Modifiers::SHIFT),
-                    Code::Space,
-                );
+                let sc = shortcut::parse_shortcut(&shortcut_str)
+                    .unwrap_or_else(|_| {
+                        use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+                        Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space)
+                    });
 
                 handle.global_shortcut().on_shortcut(
-                    shortcut,
+                    sc,
                     move |_app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
                             let app = handle2.clone();
@@ -126,7 +129,7 @@ pub fn run() {
                     },
                 )?;
 
-                info!("全局快捷键 ⌘⇧Space 注册成功");
+                info!("全局快捷键 {} 注册成功", shortcut_str);
             }
 
             // 监听来自托盘点击的 toggle 事件
@@ -153,6 +156,16 @@ pub fn run() {
             commands::get_app_state,
             commands::open_accessibility_prefs,
             commands::get_accessibility_status,
+            commands::get_polish_enabled,
+            commands::save_polish_enabled,
+            commands::list_audio_devices,
+            commands::save_preferred_device,
+            commands::get_shortcut,
+            commands::save_shortcut,
+            commands::get_autostart_enabled,
+            commands::save_autostart_enabled,
+            commands::get_onboarding_completed,
+            commands::save_onboarding_completed,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
