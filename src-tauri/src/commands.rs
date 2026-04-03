@@ -157,22 +157,15 @@ async fn stop_and_transcribe<R: Runtime>(
     // 更新托盘菜单显示最近转录
     crate::tray::set_tray_last_result(&app, &text);
 
-    // 注入前先隐藏浮窗，让焦点还给用户的目标输入框
+    // 隐藏浮窗（Accessory 激活策略下窗口不持有焦点，无需等待焦点转移）
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
     }
-    // 等待焦点切换完成
-    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
     // 注入文字
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
         error!("文字注入失败: {}", e);
-        // 检查是否是权限问题，引导用户去开启
-        if !crate::input::injector::check_accessibility_permission() {
-            crate::input::injector::open_accessibility_settings();
-            let _ = app.emit("accessibility-missing", ());
-        }
         // 文字已写入剪贴板，通知前端让用户手动粘贴
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
@@ -234,6 +227,16 @@ fn get_api_key<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
 }
 
 // --- Tauri IPC Commands ---
+
+#[tauri::command]
+pub fn open_accessibility_prefs() {
+    crate::input::injector::open_accessibility_settings();
+}
+
+#[tauri::command]
+pub fn get_accessibility_status() -> bool {
+    crate::input::injector::check_accessibility_permission()
+}
 
 #[tauri::command]
 pub async fn save_api_key(

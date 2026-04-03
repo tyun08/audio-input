@@ -1,6 +1,6 @@
 {
   "productName": "Audio Input",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.audioinput.app",
   "build": {
     "frontendDist": "../dist",
@@ -38,7 +38,8 @@
     ],
     "macOS": {
       "infoPlist": "Info.plist",
-      "entitlements": "entitlements.plist"
+      "entitlements": "entitlements.plist",
+      "signingIdentity": "-"
     }
   }
 }

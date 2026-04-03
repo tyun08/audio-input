@@ -14,7 +14,7 @@ use state::new_shared_state;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter as _, Listener as _, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use tracing::info;
+use tracing::{info, warn};
 
 pub fn run() {
     // 依次尝试当前目录、父目录（src-tauri 的上级），确保 dev 模式能找到 .env
@@ -66,6 +66,18 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
+            // macOS: 设置为 Accessory 激活策略（纯托盘应用，窗口不抢夺其他 app 的焦点）
+            #[cfg(target_os = "macos")]
+            {
+                use objc::{class, msg_send, sel, sel_impl};
+                unsafe {
+                    let ns_app: *mut objc::runtime::Object =
+                        msg_send![class!(NSApplication), sharedApplication];
+                    // NSApplicationActivationPolicyAccessory = 1
+                    let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
+                }
+            }
+
             // 初始化持久化配置
             let config = AppConfig::load(&handle);
             app.manage(Arc::new(Mutex::new(config)));
@@ -80,6 +92,14 @@ pub fn run() {
 
             // 设置系统托盘
             tray::setup_tray(&handle)?;
+
+            // 诊断：显示当前 binary 路径和 AX 权限状态
+            info!("Binary 路径: {:?}", std::env::current_exe().unwrap_or_default());
+            if input::injector::check_accessibility_permission() {
+                info!("Accessibility 权限: 已授权 ✓");
+            } else {
+                warn!("Accessibility 权限: 未授权 (AXIsProcessTrusted=false)");
+            }
 
             // 注册全局快捷键 Cmd+Shift+Space
             {
@@ -131,6 +151,8 @@ pub fn run() {
             commands::save_api_key,
             commands::get_saved_api_key,
             commands::get_app_state,
+            commands::open_accessibility_prefs,
+            commands::get_accessibility_status,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
