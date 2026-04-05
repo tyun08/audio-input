@@ -3,6 +3,16 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { LogicalSize } from "@tauri-apps/api/dpi";
+
+  const HUD_W = 200, HUD_H = 44;
+  const PANEL_W = 340, PANEL_H = 460;
+  const AX_W = 320, AX_H = 160;
+
+  async function resizeTo(w: number, h: number) {
+    await appWindow.setSize(new LogicalSize(w, h));
+    await appWindow.center();
+  }
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
@@ -30,7 +40,7 @@
     const onboardingDone = await invoke<boolean>("get_onboarding_completed").catch(() => true);
     if (!onboardingDone) {
       showOnboarding = true;
-      appWindow.show();
+      resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
     }
 
     // 获取当前状态
@@ -41,7 +51,7 @@
     const axGranted = await invoke<boolean>("get_accessibility_status");
     if (!axGranted) {
       needsAccessibilityRestart = true;
-      appWindow.show();
+      resizeTo(AX_W, AX_H).then(() => appWindow.show());
     }
 
     // Load settings data
@@ -54,7 +64,7 @@
       await listen<string>("state-change", (e) => {
         handleStateChange(e.payload);
         if (e.payload === "recording" || e.payload === "processing") {
-          appWindow.show();
+          resizeTo(HUD_W, HUD_H).then(() => appWindow.show());
         } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
           setTimeout(() => appWindow.hide(), 800);
         } else if (e.payload === "idle") {
@@ -76,7 +86,7 @@
       await listen<string>("injection-failed", (e) => {
         lastTranscription = e.payload;
         injectionFailed = true;
-        appWindow.show();
+        resizeTo(HUD_W, 72).then(() => appWindow.show());
       })
     );
 
@@ -84,7 +94,7 @@
     unlisten.push(
       await listen("api-key-missing", () => {
         showSettings = true;
-        appWindow.show();
+        resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
       })
     );
 
@@ -92,6 +102,7 @@
     unlisten.push(
       await listen("show-settings", () => {
         showSettings = true;
+        resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
       })
     );
 
@@ -121,16 +132,19 @@
 
   function handleSettingsSaved() {
     showSettings = false;
+    resizeTo(HUD_W, HUD_H);
     if (appState === "idle") appWindow.hide();
   }
 
   function handleSettingsClosed() {
     showSettings = false;
+    resizeTo(HUD_W, HUD_H);
     if (appState === "idle") appWindow.hide();
   }
 
   function handleOnboardingDone() {
     showOnboarding = false;
+    resizeTo(HUD_W, HUD_H);
     if (appState === "idle" && !needsAccessibilityRestart) {
       appWindow.hide();
     }

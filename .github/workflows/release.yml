@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Extract version
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          {
+            echo "body<<EOF"
+            git log $RANGE --pretty=format:"- %s" | grep -v "^- Merge " | grep -v "^- docs:" | head -30
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Audio Input ${{ github.ref_name }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
+
+  update-cask:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ needs.release.result == 'success' }}
+
+    steps:
+      - name: Download DMG and compute SHA256
+        id: sha
+        run: |
+          VERSION=${{ needs.release.outputs.version }}
+          DMG_URL="https://github.com/tonyyun/audio-input/releases/download/v${VERSION}/Audio.Input_${VERSION}_aarch64.dmg"
+          # Wait briefly for the asset to be available
+          sleep 30
+          curl -sL "$DMG_URL" -o audio-input.dmg
+          SHA=$(shasum -a 256 audio-input.dmg | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: tonyyun/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+          path: tap
+
+      - name: Update cask formula
+        run: |
+          VERSION=${{ steps.sha.outputs.version }}
+          SHA=${{ steps.sha.outputs.sha256 }}
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" tap/Casks/audio-input.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA}\"/" tap/Casks/audio-input.rb
+
+      - name: Commit and push
+        run: |
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/audio-input.rb
+          git diff --cached --quiet || git commit -m "chore: update audio-input to v${{ steps.sha.outputs.version }}"
+          git push

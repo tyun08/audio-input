@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "Audio Input",
-        "width": 320,
-        "height": 420,
+        "width": 200,
+        "height": 44,
         "visible": false,
         "decorations": true,
         "alwaysOnTop": true,
