@@ -6,25 +6,29 @@ Press a global hotkey, speak, and your words are transcribed and typed into what
 
 [![Release](https://img.shields.io/github/v/release/tonyyun/audio-input)](https://github.com/tonyyun/audio-input/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/macOS-Ventura%2B-lightgrey)](#)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#)
 
 ---
 
 ## Install
 
+**macOS**
 ```bash
 brew install --cask tonyyun/tap/audio-input
 ```
-
 Or grab the `.dmg` from [Releases](../../releases). First launch: right-click → Open to bypass Gatekeeper.
+
+**Windows**
+
+Download the `.msi` installer from [Releases](../../releases) and run it.
 
 ---
 
 ## Setup
 
 1. Get a free API key at [console.groq.com](https://console.groq.com) (no credit card required)
-2. Right-click the menu bar mic icon → **Configure API Key**
-3. Press `⌘⇧Space` anywhere and start talking
+2. Right-click the system tray mic icon → **Configure API Key**
+3. Press `Ctrl+Shift+Space` (Windows) or `⌘⇧Space` (macOS) anywhere and start talking
 
 ---
 
@@ -61,12 +65,17 @@ For typical use — a few minutes of voice input per day — that's well under *
 
 ## Build from source
 
+**Prerequisites:** Node 20+, Rust stable (`rustup`)
+
 ```bash
-# Prerequisites: Node 20+, Rust stable
+git clone https://github.com/tonyyun/audio-input
+cd audio-input
 npm install
-npm run tauri dev   # dev
-npm run tauri build # release
+npm run tauri dev    # dev mode
+npm run tauri build  # release build
 ```
+
+Output: `.dmg` / `.app` on macOS, `.msi` / `.exe` on Windows.
 
 ---
 
