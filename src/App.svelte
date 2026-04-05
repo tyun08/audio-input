@@ -3,16 +3,39 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { LogicalSize } from "@tauri-apps/api/dpi";
+  import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
   const PANEL_W = 340, PANEL_H = 560;
   const AX_W = 320, AX_H = 160;
 
-  async function resizeTo(w: number, h: number) {
-    // show first so macOS actually applies setSize and center
+  const HUD_POS_KEY = "hud-window-pos";
+  const SETTINGS_POS_KEY = "settings-window-pos";
+
+  async function savePos(key: string) {
+    try {
+      const phys = await appWindow.outerPosition();
+      const factor = await appWindow.scaleFactor();
+      localStorage.setItem(key, JSON.stringify({
+        x: phys.x / factor,
+        y: phys.y / factor,
+      }));
+    } catch {}
+  }
+
+  async function resizeTo(w: number, h: number, posKey?: string) {
     await appWindow.show();
     await appWindow.setSize(new LogicalSize(w, h));
+    if (posKey) {
+      try {
+        const saved = localStorage.getItem(posKey);
+        if (saved) {
+          const { x, y } = JSON.parse(saved);
+          await appWindow.setPosition(new LogicalPosition(x, y));
+          return;
+        }
+      } catch {}
+    }
     await appWindow.center();
   }
 
@@ -70,7 +93,7 @@
       await listen<string>("state-change", (e) => {
         handleStateChange(e.payload);
         if (e.payload === "recording" || e.payload === "processing") {
-          resizeTo(HUD_W, HUD_H);
+          resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
         } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
           setTimeout(() => appWindow.hide(), 800);
         } else if (e.payload === "idle") {
@@ -92,23 +115,25 @@
       await listen<string>("injection-failed", (e) => {
         lastTranscription = e.payload;
         injectionFailed = true;
-        resizeTo(HUD_W, 72);
+        resizeTo(HUD_W, 72, HUD_POS_KEY);
       })
     );
 
     // 监听需要配置 API Key
     unlisten.push(
-      await listen("api-key-missing", () => {
+      await listen("api-key-missing", async () => {
+        await savePos(HUD_POS_KEY);
         showSettings = true;
-        resizeTo(PANEL_W, PANEL_H);
+        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
       })
     );
 
     // 监听托盘菜单打开设置
     unlisten.push(
-      await listen("show-settings", () => {
+      await listen("show-settings", async () => {
+        await savePos(HUD_POS_KEY);
         showSettings = true;
-        resizeTo(PANEL_W, PANEL_H);
+        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
       })
     );
 
@@ -145,13 +170,15 @@
   }
 
   async function handleSettingsSaved() {
+    await savePos(SETTINGS_POS_KEY);
     showSettings = false;
-    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H); }
+    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleSettingsClosed() {
+    await savePos(SETTINGS_POS_KEY);
     showSettings = false;
-    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H); }
+    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleOnboardingDone() {
@@ -191,6 +218,7 @@
       {audioDevices}
       bind:autostartEnabled
       bind:screenshotContextEnabled
+      appState={appState}
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
     />

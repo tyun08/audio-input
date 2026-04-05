@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+
   export let state: "idle" | "recording" | "processing" | "error" = "idle";
   export let errorMsg = "";
   export let lastTranscription = "";
@@ -28,9 +30,17 @@
   function fmt(s: number) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
+
+  async function handleMousedown() {
+    await getCurrentWindow().startDragging();
+  }
 </script>
 
-<div class="hud" class:recording={state === "recording"} class:processing={state === "processing"} class:error={state === "error" || injectionFailed}>
+<div class="hud"
+  class:recording={state === "recording"}
+  class:processing={state === "processing"}
+  class:error={state === "error" || injectionFailed}
+  on:mousedown={handleMousedown}>
 
   {#if state === "recording"}
     <div class="dot-wrap">
@@ -74,6 +84,11 @@
     box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
     white-space: nowrap;
     transition: border-color 0.2s;
+    cursor: grab;
+  }
+
+  .hud:active {
+    cursor: grabbing;
   }
 
   .hud.recording { border-color: rgba(239, 68, 68, 0.3); }

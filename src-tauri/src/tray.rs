@@ -113,16 +113,11 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
 
 fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(win) = app.get_webview_window("main") {
-        use tauri::LogicalSize;
-        // Resize before show — on macOS non-resizable windows ignore JS setSize,
-        // so we drive the geometry from the Rust side.
-        let _ = win.set_size(LogicalSize::new(340.0_f64, 560.0_f64));
-        let _ = win.center();
         let _ = win.show();
         let _ = win.set_focus();
         let win2 = win.clone();
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(60)).await;
             let _ = win2.emit("show-settings", ());
         });
     }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
 
   const dispatch = createEventDispatcher();
 
@@ -8,6 +9,7 @@
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
+  export let appState: string = "idle";
 
   let apiKey = "";
   let preferredDevice: string | null = null;
@@ -79,6 +81,11 @@
     if (e.key === "Escape") dispatch("close");
   }
 
+  async function handleHeaderMousedown(e: MouseEvent) {
+    if ((e.target as HTMLElement).closest("button")) return;
+    await getCurrentWindow().startDragging();
+  }
+
   // Expose get_preferred_device as a stub — it's done via onMount
   async function getPreferredDevice(): Promise<string | null> {
     try {
@@ -94,8 +101,20 @@
 
 <div class="settings-panel">
   <!-- Header -->
-  <div class="header">
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="header" role="toolbar" aria-label="设置标题栏" on:mousedown={handleHeaderMousedown}>
     <span class="title">设置</span>
+    {#if appState === "recording"}
+      <div class="rec-badge">
+        <div class="rec-dot"></div>
+        <span>录音中</span>
+      </div>
+    {:else if appState === "processing"}
+      <div class="rec-badge processing">
+        <div class="proc-spinner"></div>
+        <span>转录中</span>
+      </div>
+    {/if}
     <button class="close-btn" on:click={() => dispatch("close")}>
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
         <path d="M1 1l10 10M11 1L1 11" stroke="rgba(255,255,255,0.5)" stroke-width="1.8" stroke-linecap="round"/>
@@ -241,6 +260,11 @@
     justify-content: space-between;
     padding: 14px 16px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.08);
+    cursor: grab;
+  }
+
+  .header:active {
+    cursor: grabbing;
   }
 
   .title {
@@ -249,6 +273,47 @@
     color: rgba(255,255,255,0.88);
     letter-spacing: 0.01em;
   }
+
+  .rec-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    font-size: 11px;
+    color: #f87171;
+    font-weight: 500;
+    margin-left: auto;
+    margin-right: 8px;
+  }
+
+  .rec-badge.processing {
+    background: rgba(99, 130, 246, 0.12);
+    border-color: rgba(99, 130, 246, 0.25);
+    color: #818cf8;
+  }
+
+  .rec-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
+  .proc-spinner {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(99, 130, 246, 0.2);
+    border-top-color: #818cf8;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.5} }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   .close-btn {
     background: rgba(255,255,255,0.08);

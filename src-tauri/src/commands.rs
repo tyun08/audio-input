@@ -210,11 +210,6 @@ async fn stop_and_transcribe<R: Runtime>(
     // 更新托盘菜单显示最近转录
     crate::tray::set_tray_last_result(&app, &text);
 
-    // 隐藏浮窗（Accessory 激活策略下窗口不持有焦点，无需等待焦点转移）
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.hide();
-    }
-
     // 注入文字
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
