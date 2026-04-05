@@ -10,9 +10,12 @@
   const AX_W = 320, AX_H = 160;
 
   async function resizeTo(w: number, h: number) {
+    // show first so macOS actually applies setSize and center
+    await appWindow.show();
     await appWindow.setSize(new LogicalSize(w, h));
     await appWindow.center();
   }
+
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
@@ -40,7 +43,7 @@
     const onboardingDone = await invoke<boolean>("get_onboarding_completed").catch(() => true);
     if (!onboardingDone) {
       showOnboarding = true;
-      resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
+      resizeTo(PANEL_W, PANEL_H);
     }
 
     // 获取当前状态
@@ -51,7 +54,7 @@
     const axGranted = await invoke<boolean>("get_accessibility_status");
     if (!axGranted) {
       needsAccessibilityRestart = true;
-      resizeTo(AX_W, AX_H).then(() => appWindow.show());
+      resizeTo(AX_W, AX_H);
     }
 
     // Load settings data
@@ -64,7 +67,7 @@
       await listen<string>("state-change", (e) => {
         handleStateChange(e.payload);
         if (e.payload === "recording" || e.payload === "processing") {
-          resizeTo(HUD_W, HUD_H).then(() => appWindow.show());
+          resizeTo(HUD_W, HUD_H);
         } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
           setTimeout(() => appWindow.hide(), 800);
         } else if (e.payload === "idle") {
@@ -86,7 +89,7 @@
       await listen<string>("injection-failed", (e) => {
         lastTranscription = e.payload;
         injectionFailed = true;
-        resizeTo(HUD_W, 72).then(() => appWindow.show());
+        resizeTo(HUD_W, 72);
       })
     );
 
@@ -94,7 +97,7 @@
     unlisten.push(
       await listen("api-key-missing", () => {
         showSettings = true;
-        resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
+        resizeTo(PANEL_W, PANEL_H);
       })
     );
 
@@ -102,7 +105,7 @@
     unlisten.push(
       await listen("show-settings", () => {
         showSettings = true;
-        resizeTo(PANEL_W, PANEL_H).then(() => appWindow.show());
+        resizeTo(PANEL_W, PANEL_H);
       })
     );
 
@@ -130,23 +133,22 @@
     }
   }
 
-  function handleSettingsSaved() {
+  async function handleSettingsSaved() {
     showSettings = false;
-    resizeTo(HUD_W, HUD_H);
-    if (appState === "idle") appWindow.hide();
+    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H); }
   }
 
-  function handleSettingsClosed() {
+  async function handleSettingsClosed() {
     showSettings = false;
-    resizeTo(HUD_W, HUD_H);
-    if (appState === "idle") appWindow.hide();
+    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H); }
   }
 
-  function handleOnboardingDone() {
+  async function handleOnboardingDone() {
     showOnboarding = false;
-    resizeTo(HUD_W, HUD_H);
     if (appState === "idle" && !needsAccessibilityRestart) {
       appWindow.hide();
+    } else {
+      await resizeTo(HUD_W, HUD_H);
     }
   }
 </script>
