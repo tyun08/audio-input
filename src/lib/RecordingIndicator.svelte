@@ -64,11 +64,9 @@
     padding: 0 14px;
     height: 40px;
     border-radius: 999px;
-    background: rgba(28, 28, 30, 0.82);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255,255,255,0.05) inset;
+    background: rgba(36, 36, 38, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset;
     white-space: nowrap;
     transition: border-color 0.2s;
   }
