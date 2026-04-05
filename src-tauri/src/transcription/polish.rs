@@ -73,12 +73,13 @@ const SYSTEM_PROMPT_TEXT: &str = "You are a transcription cleanup assistant. \
     Output only the cleaned text, no explanations. Respond in the same language as the input.";
 
 const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup assistant with access to a \
-    screenshot of the user's current screen for context. Use the screen content to better \
-    understand domain-specific terms, proper nouns, code identifiers, or UI elements the user \
-    is referring to. For speech-to-text output: \
+    screenshot of the user's current screen for context. \
+    Use visible text — especially brand names, product names, and technical terms — as a \
+    reference when the transcription contains a word that sounds similar but may be a \
+    mishearing. For speech-to-text output: \
     1) Add punctuation and sentence breaks \
-    2) Fix obvious speech recognition errors using screen context (homophones, mishearing, \
-       technical terms visible on screen) \
+    2) Fix speech recognition errors (homophones, mishearing); prefer screen-visible spellings \
+       for proper nouns and technical terms when there is a plausible phonetic match \
     3) Preserve the original meaning without rewriting. \
     Output only the cleaned text, no explanations. Respond in the same language as the input.";
 
