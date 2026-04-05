@@ -37,7 +37,7 @@ Download the `.msi` installer from [Releases](../../releases) and run it.
 - **Global hotkey** — default `⌘⇧Space`, fully customizable
 - **Works everywhere** — injects text into any focused input via Accessibility API
 - **50+ languages** — Whisper large-v3-turbo auto-detects your language
-- **AI polish** — optional LLM pass to clean up filler words and punctuation (toggle from menu bar)
+- **AI polish** — optional LLM pass to clean up filler words and punctuation (toggle from menu bar). At recording start, a screenshot is taken and sent as context to a vision LLM (llama-4-scout on Groq) to improve accuracy of technical and domain-specific terms.
 - **Tiny footprint** — ~20 MB RAM, built with Rust + Tauri
 
 ---
@@ -49,6 +49,22 @@ Powered by [Groq](https://groq.com)'s Whisper large-v3-turbo — the fastest Whi
 **$0.04 per hour of audio** (~$0.00067/minute).
 
 For typical use — a few minutes of voice input per day — that's well under **$0.10/month**. The Groq free tier alone covers most personal use.
+
+---
+
+## How It Works
+
+1. Press the global hotkey — a screenshot of the active screen is captured immediately
+2. Speak; audio is recorded locally while you hold (or toggle) the hotkey
+3. Audio is sent to Groq's Whisper large-v3-turbo for transcription
+4. If AI polish is enabled, the transcript + screenshot are sent to a vision LLM (llama-4-scout) to fix technical terms, proper nouns, and punctuation
+5. The final text is injected into whatever input is focused via the Accessibility API
+
+---
+
+## Privacy
+
+Audio is sent to [Groq](https://groq.com) for transcription — Groq's data retention policy applies. Screenshots are taken locally and sent to Groq's vision API only when AI polish is enabled; neither audio nor screenshots are stored by this app. No analytics, no telemetry, no account required. See [PRIVACY.md](PRIVACY.md) for full details.
 
 ---
 
