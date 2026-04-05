@@ -31,15 +31,38 @@ struct ChatMessageResponse {
     content: String,
 }
 
-pub async fn polish_text(text: &str, api_key: &str) -> String {
+/// Returns `(text, polish_failed)`.
+/// `polish_failed = true` means both attempts produced a shorter result than the
+/// original; the returned text is the original transcript.
+pub async fn polish_text(text: &str, api_key: &str) -> (String, bool) {
+    let original_len = text.chars().count();
+
     match try_polish(text, api_key).await {
-        Ok(polished) => {
-            info!("润色完成: {:?}", polished);
-            polished
+        Ok(polished) if polished.chars().count() >= original_len => {
+            info!("润色完成");
+            (polished, false)
+        }
+        Ok(short) => {
+            warn!(
+                "润色结果字数({})少于原文({}), 重试一次",
+                short.chars().count(),
+                original_len
+            );
+            // retry once
+            match try_polish(text, api_key).await {
+                Ok(polished2) if polished2.chars().count() >= original_len => {
+                    info!("重试润色成功");
+                    (polished2, false)
+                }
+                Ok(_) | Err(_) => {
+                    warn!("重试润色仍失败，返回原始文本");
+                    (text.to_string(), true)
+                }
+            }
         }
         Err(e) => {
-            warn!("润色失败，使用原始文本: {}", e);
-            text.to_string()
+            warn!("润色请求失败: {}", e);
+            (text.to_string(), true)
         }
     }
 }
@@ -87,7 +110,11 @@ async fn try_polish(text: &str, api_key: &str) -> anyhow::Result<String> {
         .into_iter()
         .next()
         .map(|c| c.message.content.trim().to_string())
-        .unwrap_or_else(|| text.to_string());
+        .unwrap_or_default();
+
+    if polished.is_empty() {
+        anyhow::bail!("润色返回空内容");
+    }
 
     Ok(polished)
 }

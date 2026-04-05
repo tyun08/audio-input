@@ -29,6 +29,7 @@
   let injectionFailed = false;
   let needsAccessibilityRestart = false;
   let showOnboarding = false;
+  let polishFailed = false;
 
   // Settings data
   let polishEnabled = true;
@@ -117,6 +118,14 @@
         appWindow.show();
       })
     );
+
+    // 监听润色失败
+    unlisten.push(
+      await listen("polish-failed", () => {
+        polishFailed = true;
+        setTimeout(() => { polishFailed = false; }, 3000);
+      })
+    );
   });
 
   onDestroy(() => {
@@ -183,7 +192,7 @@
       on:close={handleSettingsClosed}
     />
   {:else}
-    <RecordingIndicator state={appState} {errorMsg} {lastTranscription} {injectionFailed} />
+    <RecordingIndicator state={appState} {errorMsg} {lastTranscription} {injectionFailed} {polishFailed} />
   {/if}
 </div>
 

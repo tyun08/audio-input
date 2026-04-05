@@ -3,6 +3,7 @@
   export let errorMsg = "";
   export let lastTranscription = "";
   export let injectionFailed = false;
+  export let polishFailed = false;
 
   let seconds = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -52,6 +53,10 @@
       <path d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1" stroke="rgba(255,200,80,0.9)" stroke-width="1.8" stroke-linecap="round"/>
     </svg>
     <span class="label amber">Copied — ⌘V to paste</span>
+
+  {:else if polishFailed}
+    <div class="err-dot"></div>
+    <span class="label amber">Polish failed — original used</span>
   {/if}
 
 </div>

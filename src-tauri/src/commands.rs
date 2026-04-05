@@ -163,7 +163,11 @@ async fn stop_and_transcribe<R: Runtime>(
         };
         if polish_enabled {
             info!("润色开关已开启，调用 LLM 润色...");
-            polish::polish_text(&raw_text, &api_key).await
+            let (polished, failed) = polish::polish_text(&raw_text, &api_key).await;
+            if failed {
+                let _ = app.emit("polish-failed", ());
+            }
+            polished
         } else {
             raw_text
         }
