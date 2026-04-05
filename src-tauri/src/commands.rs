@@ -52,28 +52,7 @@ async fn start_recording<R: Runtime>(
 ) {
     info!("开始录音...");
 
-    // Capture screenshot before HUD appears, if enabled.
-    {
-        let screenshot_context_enabled = {
-            let config = app.state::<Arc<Mutex<AppConfig>>>();
-            let enabled = config.lock().unwrap().screenshot_context_enabled;
-            enabled
-        };
-        let screenshot_state = app.state::<ScreenshotState>();
-        let mut slot = screenshot_state.lock().unwrap();
-        if screenshot_context_enabled {
-            *slot = capture_primary_screen();
-            if slot.is_some() {
-                info!("截图已捕获，将用于润色上下文");
-            } else {
-                info!("截图捕获失败，将使用纯文字润色");
-            }
-        } else {
-            *slot = None;
-        }
-    }
-
-    // 先释放 recorder 锁再操作 shared_state，避免嵌套锁
+    // Start recorder first — screenshot must not block this.
     let result = {
         match recorder_state.lock() {
             Ok(mut recorder) => recorder.start(app),
@@ -92,6 +71,31 @@ async fn start_recording<R: Runtime>(
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
             info!("状态 → Recording");
+
+            // Spawn screenshot AFTER HUD has rendered.
+            let screenshot_context_enabled = {
+                let config = app.state::<Arc<Mutex<AppConfig>>>();
+                let enabled = config.lock().unwrap().screenshot_context_enabled;
+                enabled
+            };
+            let ss = app.state::<ScreenshotState>().inner().clone();
+            if screenshot_context_enabled {
+                tokio::spawn(async move {
+                    // Wait for HUD animation to finish before capturing.
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    tokio::task::spawn_blocking(move || {
+                        let shot = capture_primary_screen();
+                        if shot.is_some() {
+                            info!("截图已捕获，将用于润色上下文");
+                        } else {
+                            info!("截图捕获失败，将使用纯文字润色");
+                        }
+                        *ss.lock().unwrap() = shot;
+                    });
+                });
+            } else {
+                *ss.lock().unwrap() = None;
+            }
         }
         Err(e) => {
             error!("录音启动失败: {}", e);
