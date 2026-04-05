@@ -2,7 +2,8 @@ use crate::{
     audio::{encode_wav, Recorder},
     config::AppConfig,
     input::inject_text,
-    state::{AppState, SharedState},
+    screenshot::capture_primary_screen,
+    state::{AppState, ScreenshotState, SharedState},
     transcription::{polish, GroqClient},
     tray::set_tray_icon,
 };
@@ -50,6 +51,28 @@ async fn start_recording<R: Runtime>(
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
     info!("开始录音...");
+
+    // Capture screenshot before HUD appears, if enabled.
+    {
+        let screenshot_context_enabled = {
+            let config = app.state::<Arc<Mutex<AppConfig>>>();
+            let enabled = config.lock().unwrap().screenshot_context_enabled;
+            enabled
+        };
+        let screenshot_state = app.state::<ScreenshotState>();
+        let mut slot = screenshot_state.lock().unwrap();
+        if screenshot_context_enabled {
+            *slot = capture_primary_screen();
+            if slot.is_some() {
+                info!("截图已捕获，将用于润色上下文");
+            } else {
+                info!("截图捕获失败，将使用纯文字润色");
+            }
+        } else {
+            *slot = None;
+        }
+    }
+
     // 先释放 recorder 锁再操作 shared_state，避免嵌套锁
     let result = {
         match recorder_state.lock() {
@@ -162,13 +185,24 @@ async fn stop_and_transcribe<R: Runtime>(
             enabled
         };
         if polish_enabled {
-            info!("润色开关已开启，调用 LLM 润色...");
-            let (polished, failed) = polish::polish_text(&raw_text, &api_key).await;
+            // Take the screenshot out of state (clears it for the next recording).
+            let screenshot = {
+                let screenshot_state = app.state::<ScreenshotState>();
+                let shot = screenshot_state.lock().unwrap().take();
+                shot
+            };
+            info!("润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
+                  if screenshot.is_some() { "有" } else { "无" });
+            let (polished, failed) =
+                polish::polish_text(&raw_text, &api_key, screenshot.as_deref()).await;
             if failed {
                 let _ = app.emit("polish-failed", ());
             }
             polished
         } else {
+            // Clear screenshot state even if polish is disabled.
+            let screenshot_state = app.state::<ScreenshotState>();
+            screenshot_state.lock().unwrap().take();
             raw_text
         }
     };
@@ -375,6 +409,29 @@ pub async fn save_autostart_enabled(
     } else {
         app.autolaunch().disable().map_err(|e| e.to_string())
     }
+}
+
+// --- Screenshot context commands ---
+
+#[tauri::command]
+pub fn get_screenshot_context_enabled(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> bool {
+    config.lock().unwrap().screenshot_context_enabled
+}
+
+#[tauri::command]
+pub async fn save_screenshot_context_enabled(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.screenshot_context_enabled = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 // --- Onboarding commands ---

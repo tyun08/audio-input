@@ -7,6 +7,7 @@
   export let polishEnabled: boolean = true;
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
+  export let screenshotContextEnabled: boolean = false;
 
   let apiKey = "";
   let preferredDevice: string | null = null;
@@ -62,6 +63,11 @@
   async function handleAutostartToggle() {
     autostartEnabled = !autostartEnabled;
     await invoke("save_autostart_enabled", { enabled: autostartEnabled });
+  }
+
+  async function handleScreenshotContextToggle() {
+    screenshotContextEnabled = !screenshotContextEnabled;
+    await invoke("save_screenshot_context_enabled", { enabled: screenshotContextEnabled });
   }
 
   function showSaved() {
@@ -185,6 +191,25 @@
         <div class="toggle-knob"></div>
       </button>
     </div>
+
+    <div class="divider"></div>
+
+    <!-- Screenshot context toggle -->
+    <div class="section row-section">
+      <div class="row-label-block">
+        <span class="section-label">截图上下文</span>
+        <span class="row-desc">录音时截屏，提升润色准确度</span>
+      </div>
+      <button
+        class="toggle"
+        class:on={screenshotContextEnabled}
+        on:click={handleScreenshotContextToggle}
+        aria-label="切换截图上下文"
+        disabled={!polishEnabled}
+      >
+        <div class="toggle-knob"></div>
+      </button>
+    </div>
   </div>
 
   {#if error}
@@ -245,6 +270,8 @@
 
   .sections {
     padding: 4px 0;
+    overflow-y: auto;
+    max-height: calc(100vh - 56px);
   }
 
   .section {

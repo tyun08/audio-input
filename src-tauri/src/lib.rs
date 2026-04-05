@@ -2,6 +2,7 @@ mod audio;
 mod commands;
 mod config;
 mod input;
+mod screenshot;
 mod shortcut;
 mod state;
 mod transcription;
@@ -10,7 +11,7 @@ mod tray;
 use audio::Recorder;
 use commands::RecorderState;
 use config::AppConfig;
-use state::new_shared_state;
+use state::{new_screenshot_state, new_shared_state};
 
 use std::sync::{Arc, Mutex};
 use tauri::{Listener as _, Manager};
@@ -87,6 +88,9 @@ pub fn run() {
             // 初始化应用状态
             let shared_state = new_shared_state();
             app.manage(shared_state.clone());
+
+            // 初始化截图上下文状态
+            app.manage(new_screenshot_state());
 
             // 初始化录音器
             let recorder = Arc::new(Mutex::new(Recorder::new()));
@@ -166,6 +170,8 @@ pub fn run() {
             commands::save_autostart_enabled,
             commands::get_onboarding_completed,
             commands::save_onboarding_completed,
+            commands::get_screenshot_context_enabled,
+            commands::save_screenshot_context_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");

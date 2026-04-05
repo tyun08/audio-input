@@ -79,7 +79,7 @@ fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> taur
     let sep1     = PredefinedMenuItem::separator(app)?;
     let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI 润色", true, polish_enabled, None::<&str>)?;
     let sep2     = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "配置 API Key...", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "设置...", true, None::<&str>)?;
     let open_log = MenuItem::with_id(app, "open-log", "打开日志文件", true, None::<&str>)?;
     let sep3     = PredefinedMenuItem::separator(app)?;
     let quit     = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -113,11 +113,16 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
 
 fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(win) = app.get_webview_window("main") {
+        use tauri::LogicalSize;
+        // Resize before show — on macOS non-resizable windows ignore JS setSize,
+        // so we drive the geometry from the Rust side.
+        let _ = win.set_size(LogicalSize::new(340.0_f64, 560.0_f64));
+        let _ = win.center();
         let _ = win.show();
         let _ = win.set_focus();
         let win2 = win.clone();
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
             let _ = win2.emit("show-settings", ());
         });
     }

@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub shortcut: String,
     #[serde(default)]
     pub onboarding_completed: bool,
+    #[serde(default)]
+    pub screenshot_context_enabled: bool,
 }
 
 fn default_polish_enabled() -> bool {
@@ -33,6 +35,7 @@ impl Default for AppConfig {
             preferred_device: None,
             shortcut: "Meta+Shift+Space".to_string(),
             onboarding_completed: false,
+            screenshot_context_enabled: false,
         }
     }
 }

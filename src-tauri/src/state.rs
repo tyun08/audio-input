@@ -24,3 +24,10 @@ pub type SharedState = Arc<Mutex<AppState>>;
 pub fn new_shared_state() -> SharedState {
     Arc::new(Mutex::new(AppState::Idle))
 }
+
+/// Holds the screenshot captured at recording start for use in the polish step.
+pub type ScreenshotState = Arc<Mutex<Option<String>>>;
+
+pub fn new_screenshot_state() -> ScreenshotState {
+    Arc::new(Mutex::new(None))
+}

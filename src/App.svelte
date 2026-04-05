@@ -6,7 +6,7 @@
   import { LogicalSize } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
-  const PANEL_W = 340, PANEL_H = 460;
+  const PANEL_W = 340, PANEL_H = 560;
   const AX_W = 320, AX_H = 160;
 
   async function resizeTo(w: number, h: number) {
@@ -35,6 +35,7 @@
   let polishEnabled = true;
   let audioDevices: string[] = [];
   let autostartEnabled = false;
+  let screenshotContextEnabled = false;
 
   const appWindow = getCurrentWindow();
   const unlisten: UnlistenFn[] = [];
@@ -62,6 +63,7 @@
     polishEnabled = await invoke<boolean>("get_polish_enabled").catch(() => true);
     audioDevices = await invoke<string[]>("list_audio_devices").catch(() => []);
     autostartEnabled = await invoke<boolean>("get_autostart_enabled").catch(() => false);
+    screenshotContextEnabled = await invoke<boolean>("get_screenshot_context_enabled").catch(() => false);
 
     // 监听状态变化
     unlisten.push(
@@ -188,6 +190,7 @@
       bind:polishEnabled
       {audioDevices}
       bind:autostartEnabled
+      bind:screenshotContextEnabled
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
     />
