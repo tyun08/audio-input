@@ -81,17 +81,41 @@ Audio is sent to [Groq](https://groq.com) for transcription — Groq's data rete
 
 ## Build from source
 
-**Prerequisites:** Node 20+, Rust stable (`rustup`)
+### macOS
+
+**Prerequisites:** Node 20+, Rust stable
 
 ```bash
+# Install Rust if needed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 git clone https://github.com/tonyyun/audio-input
 cd audio-input
 npm install
 npm run tauri dev    # dev mode
-npm run tauri build  # release build
+npm run tauri build  # release build → produces .dmg + .app in src-tauri/target/release/bundle/
 ```
 
-Output: `.dmg` / `.app` on macOS, `.msi` / `.exe` on Windows.
+### Windows
+
+**Prerequisites:**
+
+1. **Node.js 20+** — https://nodejs.org (LTS)
+2. **Rust** — https://rustup.rs (installs `rustup` and the MSVC toolchain)
+3. **Microsoft C++ Build Tools** — required by Rust on Windows
+   - Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+   - In the installer, select **"Desktop development with C++"**
+4. **WebView2 Runtime** — pre-installed on Windows 11; on Windows 10 download from https://developer.microsoft.com/microsoft-edge/webview2/
+
+```powershell
+git clone https://github.com/tonyyun/audio-input
+cd audio-input
+npm install
+npm run tauri dev    # dev mode
+npm run tauri build  # release build → produces .msi + .exe in src-tauri\target\release\bundle\
+```
+
+**First launch note:** Windows SmartScreen may warn "Windows protected your PC" because the binary isn't code-signed yet. Click **"More info" → "Run anyway"** to proceed.
 
 ---
 
