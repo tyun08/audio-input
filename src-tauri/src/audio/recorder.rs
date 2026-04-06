@@ -29,7 +29,7 @@ pub fn list_input_devices() -> Vec<String> {
             .filter_map(|d| d.name().ok())
             .collect(),
         Err(e) => {
-            warn!("列举输入设备失败: {}", e);
+            warn!("Failed to list input devices: {}", e);
             Vec::new()
         }
     }
@@ -63,29 +63,29 @@ impl Recorder {
                 .and_then(|mut devs| devs.find(|d| d.name().as_deref().ok() == Some(name.as_str())));
 
             if let Some(d) = found {
-                info!("使用配置录音设备: {}", name);
+                info!("Using configured recording device: {}", name);
                 d
             } else {
-                warn!("配置的设备 '{}' 不可用，回退到默认设备", name);
+                warn!("Configured device '{}' unavailable, falling back to default", name);
                 host.default_input_device()
-                    .context("找不到默认麦克风设备")?
+                    .context("No default microphone found")?
             }
         } else {
             host.default_input_device()
-                .context("找不到默认麦克风设备")?
+                .context("No default microphone found")?
         };
 
-        info!("使用录音设备: {}", device.name().unwrap_or_default());
+        info!("Using recording device: {}", device.name().unwrap_or_default());
 
         let config = device
             .default_input_config()
-            .context("无法获取默认录音配置")?;
+            .context("Cannot get default recording config")?;
 
         self.sample_rate = config.sample_rate().0;
         self.channels = config.channels();
 
         info!(
-            "录音配置: {}Hz, {} 声道, {:?}",
+            "Recording config: {}Hz, {} channels, {:?}",
             self.sample_rate,
             self.channels,
             config.sample_format()
@@ -101,26 +101,26 @@ impl Recorder {
             SampleFormat::F32 => build_stream::<f32>(&device, &config.into(), buffer)?,
             SampleFormat::I16 => build_stream_i16(&device, &config.into(), buffer)?,
             SampleFormat::U16 => build_stream_u16(&device, &config.into(), buffer)?,
-            fmt => anyhow::bail!("不支持的音频格式: {:?}", fmt),
+            fmt => anyhow::bail!("Unsupported audio format: {:?}", fmt),
         };
 
-        stream.play().context("无法启动录音流")?;
+        stream.play().context("Failed to start recording stream")?;
         self.stream = Some(SendStream(stream));
-        info!("录音已开始");
+        info!("Recording started");
         Ok(())
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
         // Drop the stream to stop recording
         self.stream.take();
-        info!("录音已停止");
+        info!("Recording stopped");
 
         let samples = {
             let buf = self.buffer.lock().unwrap();
             buf.clone()
         };
 
-        info!("录制了 {} 个采样点 ({:.1}秒)", samples.len(), samples.len() as f32 / self.sample_rate as f32);
+        info!("Recorded {} samples ({:.1}s)", samples.len(), samples.len() as f32 / self.sample_rate as f32);
 
         Ok(AudioData {
             samples,
@@ -147,7 +147,7 @@ where
                 buf.push(<f32 as FromSample<T>>::from_sample_(sample));
             }
         },
-        move |err| error!("录音错误: {}", err),
+        move |err| error!("Recording error: {}", err),
         None,
     )?;
     Ok(stream)
@@ -166,7 +166,7 @@ fn build_stream_i16(
                 buf.push(sample as f32 / i16::MAX as f32);
             }
         },
-        move |err| error!("录音错误: {}", err),
+        move |err| error!("Recording error: {}", err),
         None,
     )?;
     Ok(stream)
@@ -186,7 +186,7 @@ fn build_stream_u16(
                 buf.push((sample as f32 - 32768.0) / 32768.0);
             }
         },
-        move |err| error!("录音错误: {}", err),
+        move |err| error!("Recording error: {}", err),
         None,
     )?;
     Ok(stream)

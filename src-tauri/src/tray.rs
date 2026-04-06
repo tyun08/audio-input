@@ -24,7 +24,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
-                info!("用户退出");
+                info!("User quit");
                 app.exit(0);
             }
             "settings" => {
@@ -51,8 +51,8 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     let cfg = config_state.lock().unwrap();
                     let _ = crate::config::AppConfig::save(app, &cfg);
                 }
-                info!("AI 润色: {}", if new_enabled { "开启" } else { "关闭" });
-                // 重建菜单以刷新勾选状态
+                info!("AI polish: {}", if new_enabled { "on" } else { "off" });
+                // Rebuild menu to refresh check state
                 if let Some(tray) = app.tray_by_id("main-tray") {
                     if let Ok(menu) = build_tray_menu(app, new_enabled) {
                         let _ = tray.set_menu(Some(menu));
@@ -126,17 +126,17 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-// --- 内嵌图标 ---
+// --- Embedded icons ---
 
 fn idle_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png corrupted")
 }
 fn recording_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-recording.png")).expect("tray-recording.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-recording.png")).expect("tray-recording.png corrupted")
 }
 fn processing_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-processing.png")).expect("tray-processing.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-processing.png")).expect("tray-processing.png corrupted")
 }
 fn error_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png corrupted")
 }

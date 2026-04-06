@@ -2,6 +2,8 @@ mod audio;
 mod commands;
 mod config;
 mod input;
+#[cfg(target_os = "macos")]
+mod macos_shortcut;
 mod screenshot;
 mod shortcut;
 mod state;
@@ -19,13 +21,13 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{info, warn};
 
 pub fn run() {
-    // 依次尝试当前目录、父目录（src-tauri 的上级），确保 dev 模式能找到 .env
+    // Try current dir, then parent dir, to find .env in dev mode
     if dotenvy::dotenv().is_err() {
         let _ = dotenvy::from_path("../.env");
     }
 
-    // 同时写 stderr 和 ~/Library/Logs/com.audioinput.app/app.log
-    // 打包后 stderr 不可见，日志文件是唯一的调试手段
+    // Write to both stderr and a log file
+    // In packaged builds stderr is invisible; the log file is the only debug channel
     let log_path = {
         let mut p = dirs::cache_dir()
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
@@ -54,9 +56,9 @@ pub fn run() {
     } else {
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
-    info!("日志文件: {:?}", log_path);
+    info!("Log file: {:?}", log_path);
 
-    info!("Audio Input 启动");
+    info!("Audio Input starting");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -68,7 +70,7 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // macOS: 设置为 Accessory 激活策略（纯托盘应用，窗口不抢夺其他 app 的焦点）
+            // macOS: Set activation policy to Accessory (tray-only app, windows don't steal focus)
             #[cfg(target_os = "macos")]
             {
                 use objc::{class, msg_send, sel, sel_impl};
@@ -80,72 +82,112 @@ pub fn run() {
                 }
             }
 
-            // 初始化持久化配置
+            // Load persisted config
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
             app.manage(Arc::new(Mutex::new(config)));
 
-            // 初始化应用状态
+            // Init shared state
             let shared_state = new_shared_state();
             app.manage(shared_state.clone());
 
-            // 初始化截图上下文状态
+            // Init screenshot context state
             app.manage(new_screenshot_state());
 
-            // 初始化录音器
+            // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
             app.manage(RecorderState(Arc::clone(&recorder)));
 
-            // 设置系统托盘
+            // Setup system tray
             tray::setup_tray(&handle)?;
 
-            // 诊断：显示当前 binary 路径和 AX 权限状态
-            info!("Binary 路径: {:?}", std::env::current_exe().unwrap_or_default());
+            // Diagnostics: binary path and accessibility status
+            info!("Binary path: {:?}", std::env::current_exe().unwrap_or_default());
             if input::injector::check_accessibility_permission() {
-                info!("Accessibility 权限: 已授权 ✓");
+                info!("Accessibility permission: granted ✓");
             } else {
-                warn!("Accessibility 权限: 未授权 (AXIsProcessTrusted=false)");
+                warn!("Accessibility permission: denied (AXIsProcessTrusted=false)");
             }
 
-            // 注册全局快捷键（从配置读取，默认 Cmd+Shift+Space）
+            // Register global shortcut (from config, default Meta+Shift+Space).
+            //
+            // On macOS we use a CGEventTap at the HID level so our shortcut fires
+            // even when another app (e.g. 1Password) has registered the same combo
+            // via a session-level event tap.  Falls back to Tauri's Carbon-based
+            // global-shortcut plugin if CGEventTap is unavailable.
             {
                 use tauri::Emitter as _;
 
-                // Unregister any stale shortcuts first to maximise chance of success
-                let _ = handle.global_shortcut().unregister_all();
-
-                let handle2 = handle.clone();
-                let shared_state2 = shared_state.clone();
-                let recorder2 = Arc::clone(&recorder);
-
-                let sc = shortcut::parse_shortcut(&shortcut_str)
-                    .unwrap_or_else(|_| {
-                        use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
-                        Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space)
-                    });
-
-                match handle.global_shortcut().on_shortcut(
-                    sc,
-                    move |_app, _shortcut, event| {
-                        if event.state() == ShortcutState::Pressed {
-                            let app = handle2.clone();
-                            let state = shared_state2.clone();
-                            let rec = Arc::clone(&recorder2);
-                            tauri::async_runtime::spawn(async move {
-                                commands::toggle_recording(app, state, rec).await;
-                            });
+                #[cfg(target_os = "macos")]
+                let hid_ok = {
+                    let h = handle.clone();
+                    let ss = shared_state.clone();
+                    let rec = Arc::clone(&recorder);
+                    match macos_shortcut::install(&shortcut_str, move || {
+                        let app = h.clone();
+                        let state = ss.clone();
+                        let r = Arc::clone(&rec);
+                        tauri::async_runtime::spawn(async move {
+                            commands::toggle_recording(app, state, r).await;
+                        });
+                    }) {
+                        Ok(sh) => {
+                            app.manage(sh);
+                            info!(
+                                "Global shortcut {} registered via CGEventTap (HID-level, overrides other apps)",
+                                shortcut_str
+                            );
+                            true
                         }
-                    },
-                ) {
-                    Ok(_) => info!("全局快捷键 {} 注册成功", shortcut_str),
-                    Err(e) => {
-                        warn!("全局快捷键 {} 注册失败 ({}), 请在设置中更改快捷键", shortcut_str, e);
-                        let _ = handle.emit("shortcut-conflict", shortcut_str.clone());
+                        Err(e) => {
+                            warn!(
+                                "CGEventTap shortcut failed: {} — falling back to Carbon hotkey",
+                                e
+                            );
+                            false
+                        }
+                    }
+                };
+
+                #[cfg(not(target_os = "macos"))]
+                let hid_ok = false;
+
+                if !hid_ok {
+                    let _ = handle.global_shortcut().unregister_all();
+
+                    let handle2 = handle.clone();
+                    let shared_state2 = shared_state.clone();
+                    let recorder2 = Arc::clone(&recorder);
+
+                    let sc = shortcut::parse_shortcut(&shortcut_str)
+                        .unwrap_or_else(|_| {
+                            use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+                            Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space)
+                        });
+
+                    match handle.global_shortcut().on_shortcut(
+                        sc,
+                        move |_app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                let app = handle2.clone();
+                                let state = shared_state2.clone();
+                                let rec = Arc::clone(&recorder2);
+                                tauri::async_runtime::spawn(async move {
+                                    commands::toggle_recording(app, state, rec).await;
+                                });
+                            }
+                        },
+                    ) {
+                        Ok(_) => info!("Global shortcut {} registered (Carbon hotkey)", shortcut_str),
+                        Err(e) => {
+                            warn!("Global shortcut {} registration failed ({}), change it in Settings", shortcut_str, e);
+                            let _ = handle.emit("shortcut-conflict", shortcut_str.clone());
+                        }
                     }
                 }
             }
 
-            // 监听来自托盘点击的 toggle 事件
+            // Listen for toggle event from tray click
             {
                 let handle3 = handle.clone();
                 let shared_state3 = shared_state.clone();
@@ -187,5 +229,5 @@ pub fn run() {
             commands::save_screenshot_context_enabled,
         ])
         .run(tauri::generate_context!())
-        .expect("启动 Tauri 应用失败");
+        .expect("Failed to start Tauri application");
 }

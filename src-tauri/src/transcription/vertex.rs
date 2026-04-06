@@ -26,7 +26,7 @@ impl VertexClient {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
-            .context("无法创建 HTTP 客户端")?;
+            .context("Failed to create HTTP client")?;
 
         Ok(VertexClient {
             project_id,
@@ -47,12 +47,12 @@ impl VertexClient {
 
     pub async fn transcribe(&self, wav_bytes: Vec<u8>) -> Result<String> {
         if wav_bytes.len() < 1600 {
-            warn!("录音太短，跳过转录");
+            warn!("Recording too short, skipping transcription");
             return Ok(String::new());
         }
 
         info!(
-            "发送 {} bytes 到 Vertex AI Gemini ({}) 转录",
+            "Sending {} bytes to Vertex AI Gemini ({}) for transcription",
             wav_bytes.len(),
             self.model
         );
@@ -83,7 +83,7 @@ impl VertexClient {
         let text =
             send_gemini_request(&self.client, &self.gemini_url(&self.model), &self.access_token, &body).await?;
 
-        info!("Vertex AI 转录结果: {:?}", text);
+        info!("Vertex AI transcription result: {:?}", text);
         Ok(text)
     }
 }
@@ -102,7 +102,7 @@ pub async fn polish_text_vertex(
     let access_token = match get_access_token().await {
         Ok(t) => t,
         Err(e) => {
-            warn!("获取 Vertex AI access token 失败: {}", e);
+            warn!("Failed to get Vertex AI access token: {}", e);
             return (text.to_string(), true);
         }
     };
@@ -122,17 +122,17 @@ pub async fn polish_text_vertex(
         .unwrap();
 
     if let Some(img_data) = screenshot {
-        info!("使用 Vertex AI 视觉模型润色 (截图上下文已附加)");
+        info!("Using Vertex AI vision model for polish (screenshot attached)");
         match try_vision(&client, &url, &access_token, text, img_data, 0.1, false, max_tokens)
             .await
         {
             Ok(p) if p.chars().count() >= threshold => {
-                info!("Vertex AI 视觉润色完成");
+                info!("Vertex AI vision polish complete");
                 return (p, false);
             }
             Ok(short) => {
                 warn!(
-                    "视觉润色结果过短({}/{}), 重试",
+                    "Vision polish result too short ({}/{}), retrying",
                     short.chars().count(),
                     threshold
                 );
@@ -144,30 +144,30 @@ pub async fn polish_text_vertex(
                         return (p, false);
                     }
                 }
-                warn!("视觉润色重试失败，降级为纯文字润色");
+                warn!("Vision polish retry failed, falling back to text-only");
             }
             Err(e) => {
-                warn!("Vertex AI 视觉模型失败: {}，降级为纯文字润色", e);
+                warn!("Vertex AI vision model failed: {}, falling back to text-only", e);
             }
         }
     }
 
     match try_text(&client, &url, &access_token, text, 0.1, false, max_tokens).await {
         Ok(p) if p.chars().count() >= threshold => {
-            info!("Vertex AI 润色完成");
+            info!("Vertex AI polish complete");
             (p, false)
         }
         Ok(_) => {
             match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens).await {
                 Ok(p) if p.chars().count() >= threshold => (p, false),
                 _ => {
-                    warn!("Vertex AI 润色重试失败，返回原始文本");
+                    warn!("Vertex AI polish retry failed, returning original text");
                     (text.to_string(), true)
                 }
             }
         }
         Err(e) => {
-            warn!("Vertex AI 润色失败: {}", e);
+            warn!("Vertex AI polish failed: {}", e);
             (text.to_string(), true)
         }
     }
@@ -269,11 +269,11 @@ async fn send_gemini_request(
     let resp_body = resp.text().await?;
 
     if !status.is_success() {
-        bail!("Vertex AI API 错误: HTTP {} — {}", status, resp_body);
+        bail!("Vertex AI API error: HTTP {} — {}", status, resp_body);
     }
 
     let response: serde_json::Value =
-        serde_json::from_str(&resp_body).context("解析 Vertex AI 响应失败")?;
+        serde_json::from_str(&resp_body).context("Failed to parse Vertex AI response")?;
     let text = response["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .unwrap_or("")
@@ -281,7 +281,7 @@ async fn send_gemini_request(
         .to_string();
 
     if text.is_empty() {
-        bail!("Vertex AI 返回空内容");
+        bail!("Vertex AI returned empty content");
     }
 
     Ok(text)
@@ -303,29 +303,29 @@ async fn get_access_token() -> Result<String> {
     let adc_path = get_adc_path()?;
     let data = std::fs::read_to_string(&adc_path).with_context(|| {
         format!(
-            "无法读取 ADC 凭证: {:?}\n请运行: gcloud auth application-default login",
+            "Cannot read ADC credentials: {:?}\nRun: gcloud auth application-default login",
             adc_path
         )
     })?;
 
     let creds: serde_json::Value =
-        serde_json::from_str(&data).context("解析 ADC 凭证失败")?;
+        serde_json::from_str(&data).context("Failed to parse ADC credentials")?;
 
     let cred_type = creds["type"].as_str().unwrap_or("");
     if cred_type != "authorized_user" {
         bail!(
-            "仅支持 authorized_user 类型的凭证 (当前: {})\n请运行: gcloud auth application-default login",
+            "Only authorized_user credential type is supported (current: {})\nRun: gcloud auth application-default login",
             cred_type
         );
     }
 
-    let client_id = creds["client_id"].as_str().context("ADC 缺少 client_id")?;
+    let client_id = creds["client_id"].as_str().context("ADC missing client_id")?;
     let client_secret = creds["client_secret"]
         .as_str()
-        .context("ADC 缺少 client_secret")?;
+        .context("ADC missing client_secret")?;
     let refresh_token = creds["refresh_token"]
         .as_str()
-        .context("ADC 缺少 refresh_token")?;
+        .context("ADC missing refresh_token")?;
 
     let client = Client::new();
     let resp = client
@@ -338,14 +338,14 @@ async fn get_access_token() -> Result<String> {
         ])
         .send()
         .await
-        .context("请求 Google OAuth token 失败")?;
+        .context("Failed to request Google OAuth token")?;
 
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
-        bail!("获取 access token 失败: {}", body);
+        bail!("Failed to get access token: {}", body);
     }
 
-    let token: TokenResponse = resp.json().await.context("解析 token 响应失败")?;
+    let token: TokenResponse = resp.json().await.context("Failed to parse token response")?;
     Ok(token.access_token)
 }
 
@@ -354,7 +354,7 @@ fn get_adc_path() -> Result<std::path::PathBuf> {
         return Ok(std::path::PathBuf::from(path));
     }
 
-    let home = dirs::home_dir().context("无法获取 home 目录")?;
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
 
     #[cfg(target_os = "windows")]
     {

@@ -67,13 +67,13 @@ pub fn parse_shortcut(s: &str) -> Result<Shortcut> {
                     "F10" => Code::F10,
                     "F11" => Code::F11,
                     "F12" => Code::F12,
-                    other => bail!("未知按键: {}", other),
+                    other => bail!("Unknown key: {}", other),
                 });
             }
         }
     }
 
-    let code = key_code.context("快捷键中缺少主键")?;
+    let code = key_code.context("Shortcut missing main key")?;
     Ok(Shortcut::new(Some(mods), code))
 }
 
@@ -81,13 +81,24 @@ pub fn reregister_shortcut<R: Runtime>(
     app: &tauri::AppHandle<R>,
     shortcut_str: &str,
 ) -> Result<()> {
+    // On macOS, prefer updating the CGEventTap (HID-level) — it overrides other apps.
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        if let Some(handle) = app.try_state::<crate::macos_shortcut::ShortcutHandle>() {
+            handle.update(shortcut_str)?;
+            info!("Shortcut re-registered (CGEventTap): {}", shortcut_str);
+            return Ok(());
+        }
+    }
+
+    // Fallback: Tauri Carbon-based global-shortcut (Windows/Linux, or macOS without AX)
     use crate::commands::RecorderState;
     use crate::state::SharedState;
     use std::sync::Arc;
     use tauri::Manager;
     use tauri_plugin_global_shortcut::ShortcutState;
 
-    // Unregister all existing shortcuts
     let _ = app.global_shortcut().unregister_all();
 
     let shortcut = parse_shortcut(shortcut_str)?;
@@ -107,8 +118,8 @@ pub fn reregister_shortcut<R: Runtime>(
                 });
             }
         })
-        .context("注册快捷键失败")?;
+        .context("Failed to register shortcut")?;
 
-    info!("快捷键重新注册: {}", shortcut_str);
+    info!("Shortcut re-registered (Carbon): {}", shortcut_str);
     Ok(())
 }

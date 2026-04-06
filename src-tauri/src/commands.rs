@@ -35,7 +35,7 @@ pub async fn toggle_recording<R: Runtime>(
             stop_and_transcribe(app, shared_state, recorder_state).await;
         }
         AppState::Processing => {
-            warn!("正在处理中，请稍候");
+            warn!("Still processing, please wait");
         }
         AppState::Error(_) => {
             let mut state = shared_state.lock().unwrap();
@@ -51,13 +51,13 @@ async fn start_recording<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
-    info!("开始录音...");
+    info!("Recording started...");
 
     let result = {
         match recorder_state.lock() {
             Ok(mut recorder) => recorder.start(app),
             Err(e) => {
-                error!("recorder 锁中毒: {}", e);
+                error!("Recorder lock poisoned: {}", e);
                 return;
             }
         }
@@ -70,7 +70,7 @@ async fn start_recording<R: Runtime>(
             drop(state);
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
-            info!("状态 → Recording");
+            info!("State → Recording");
 
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
@@ -84,9 +84,9 @@ async fn start_recording<R: Runtime>(
                     tokio::task::spawn_blocking(move || {
                         let shot = capture_primary_screen();
                         if shot.is_some() {
-                            info!("截图已捕获，将用于润色上下文");
+                            info!("Screenshot captured for polish context");
                         } else {
-                            info!("截图捕获失败，将使用纯文字润色");
+                            info!("Screenshot capture failed, using text-only polish");
                         }
                         *ss.lock().unwrap() = shot;
                     });
@@ -96,7 +96,7 @@ async fn start_recording<R: Runtime>(
             }
         }
         Err(e) => {
-            error!("录音启动失败: {}", e);
+            error!("Recording start failed: {}", e);
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Error(e.to_string());
             drop(state);
@@ -117,7 +117,7 @@ async fn stop_and_transcribe<R: Runtime>(
         match recorder.stop() {
             Ok(data) => data,
             Err(e) => {
-                error!("停止录音失败: {}", e);
+                error!("Recording stop failed: {}", e);
                 set_error(&app, &shared_state, &e.to_string());
                 return;
             }
@@ -130,7 +130,7 @@ async fn stop_and_transcribe<R: Runtime>(
     }
     set_tray_icon(&app, "processing");
     let _ = app.emit("state-change", "processing");
-    info!("状态 → Processing");
+    info!("State → Processing");
 
     let wav_bytes = match encode_wav(
         &audio_data.samples,
@@ -139,7 +139,7 @@ async fn stop_and_transcribe<R: Runtime>(
     ) {
         Ok(b) => b,
         Err(e) => {
-            error!("WAV 编码失败: {}", e);
+            error!("WAV encoding failed: {}", e);
             set_error(&app, &shared_state, &e.to_string());
             return;
         }
@@ -162,13 +162,13 @@ async fn stop_and_transcribe<R: Runtime>(
         (p, pc, cfg.polish_enabled)
     };
 
-    info!("使用 provider: {}", provider);
+    info!("Using provider: {}", provider);
 
     // Transcribe
     let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
         Ok(t) => t,
         Err(e) => {
-            error!("转录失败: {}", e);
+            error!("Transcription failed: {}", e);
             let _ = app.emit("show-settings", ());
             set_error(&app, &shared_state, &e.to_string());
             return;
@@ -176,7 +176,7 @@ async fn stop_and_transcribe<R: Runtime>(
     };
 
     if raw_text.is_empty() {
-        warn!("转录结果为空 — 可能静音、麦克风未授权或录音太短");
+        warn!("Transcription empty — possibly silence, mic unauthorized, or recording too short");
         reset_to_idle(&app, &shared_state);
         return;
     }
@@ -189,8 +189,8 @@ async fn stop_and_transcribe<R: Runtime>(
             shot
         };
         info!(
-            "润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
-            if screenshot.is_some() { "有" } else { "无" }
+            "Polish enabled, calling LLM polish (screenshot context: {})...",
+            if screenshot.is_some() { "yes" } else { "no" }
         );
         let (polished, failed) =
             polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
@@ -210,7 +210,7 @@ async fn stop_and_transcribe<R: Runtime>(
 
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
-        error!("文字注入失败: {}", e);
+        error!("Text injection failed: {}", e);
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
         }
@@ -219,7 +219,7 @@ async fn stop_and_transcribe<R: Runtime>(
     }
 
     reset_to_idle(&app, &shared_state);
-    info!("状态 → Idle");
+    info!("State → Idle");
 }
 
 // ---------------------------------------------------------------------------
@@ -235,9 +235,9 @@ async fn transcribe_with_provider(
         "groq" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
             if api_key.is_empty() {
-                anyhow::bail!("未配置 Groq API Key");
+                anyhow::bail!("Groq API Key not configured");
             }
-            info!("Groq Key 前8位: {}...", &api_key[..api_key.len().min(8)]);
+            info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
             GroqClient::new(api_key.to_string())
                 .transcribe(wav_bytes)
                 .await
@@ -245,19 +245,19 @@ async fn transcribe_with_provider(
         "vertex_ai" => {
             let project_id = config["project_id"].as_str().unwrap_or("");
             if project_id.is_empty() {
-                anyhow::bail!("Vertex AI 未配置项目 ID");
+                anyhow::bail!("Vertex AI project ID not configured");
             }
             let location = config["location"].as_str().unwrap_or("us-central1");
             let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
             info!(
-                "Vertex AI: 项目={}, 区域={}, 模型={}",
+                "Vertex AI: project={}, region={}, model={}",
                 project_id, location, model
             );
             let client =
                 VertexClient::new(project_id.into(), location.into(), model.into()).await?;
             client.transcribe(wav_bytes).await
         }
-        other => anyhow::bail!("不支持的 provider: {}", other),
+        other => anyhow::bail!("Unsupported provider: {}", other),
     }
 }
 

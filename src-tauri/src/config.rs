@@ -73,7 +73,7 @@ impl AppConfig {
         if let Ok(data) = std::fs::read_to_string(&path) {
             if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&data) {
                 cfg.migrate_legacy();
-                info!("加载配置: {:?}", path);
+                info!("Config loaded: {:?}", path);
                 return cfg;
             }
         }
@@ -87,7 +87,7 @@ impl AppConfig {
         }
         let data = serde_json::to_string_pretty(config)?;
         std::fs::write(&path, data)?;
-        info!("保存配置: {:?}", path);
+        info!("Config saved: {:?}", path);
         Ok(())
     }
 

@@ -24,7 +24,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // App / general
     "app.name": "Audio Input",
     "app.desc":
-      "Press shortcut, speak, text auto-inputs to any app.\nSupports Groq Whisper and Google Vertex AI.",
+      "Press shortcut, speak, text auto-inputs to any app.\nmacOS & Windows · Groq Whisper & Google Vertex AI.",
 
     // Accessibility banner (App.svelte)
     "ax.need": "Accessibility permission is needed to auto-inject text",
@@ -47,8 +47,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.shortcut": "Global Shortcut",
     "settings.shortcut_apply": "Apply",
     "settings.shortcut_hint": "Meta = ⌘, Ctrl, Alt, Shift",
-    "settings.shortcut_conflict":
-      "Shortcut {0} may be occupied by another app. Try a different one.",
+"settings.shortcut_conflict":
+                  "Shortcut {0} may be occupied by another app. Try a different one.",
     "settings.autostart": "Launch at Login",
     "settings.autostart_desc": "Auto-start when you log in",
     "settings.screenshot": "Screenshot Context",
@@ -89,7 +89,7 @@ const messages: Record<Locale, Record<string, string>> = {
   zh: {
     "app.name": "Audio Input",
     "app.desc":
-      "按下快捷键，说话，文字自动输入到任意应用。\n支持 Groq Whisper 和 Google Vertex AI。",
+      "按下快捷键，说话，文字自动输入到任意应用。\nmacOS 与 Windows · Groq Whisper 和 Google Vertex AI。",
 
     "ax.need": "需要辅助功能权限才能自动注入文字",
     "ax.restart": "授权后请完全退出并重启 App",
@@ -110,8 +110,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.shortcut": "全局快捷键",
     "settings.shortcut_apply": "应用",
     "settings.shortcut_hint": "Meta = ⌘，Ctrl，Alt，Shift",
-    "settings.shortcut_conflict":
-      "快捷键 {0} 可能已被其他应用占用，请尝试更换",
+"settings.shortcut_conflict":
+                  "快捷键 {0} 可能已被其他应用占用，请尝试更换",
     "settings.autostart": "开机自启",
     "settings.autostart_desc": "登录时自动启动",
     "settings.screenshot": "截图上下文",
