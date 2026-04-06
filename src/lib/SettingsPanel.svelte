@@ -3,6 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
+  const isWindows = navigator.userAgent.includes("Windows");
+
   const dispatch = createEventDispatcher();
 
   export let polishEnabled: boolean = true;
@@ -17,13 +19,25 @@
   let saving = false;
   let saved = false;
   let error = "";
+  let opacity = 1.0;
 
   onMount(async () => {
     apiKey = await invoke<string>("get_saved_api_key");
     shortcut = await invoke<string>("get_shortcut");
     const cfg = await invoke<string | null>("get_preferred_device").catch(() => null);
     preferredDevice = cfg;
+    const savedOpacity = localStorage.getItem("window-opacity");
+    if (savedOpacity) {
+      opacity = parseFloat(savedOpacity);
+      await getCurrentWindow().setOpacity(opacity);
+    }
   });
+
+  async function handleOpacityChange(e: Event) {
+    opacity = parseFloat((e.target as HTMLInputElement).value);
+    localStorage.setItem("window-opacity", String(opacity));
+    await getCurrentWindow().setOpacity(opacity);
+  }
 
   async function handleSaveApiKey() {
     if (!apiKey.trim()) {
@@ -229,6 +243,25 @@
         <div class="toggle-knob"></div>
       </button>
     </div>
+
+    <div class="divider"></div>
+
+    <!-- Opacity -->
+    <div class="section">
+      <div class="row-label-block">
+        <span class="section-label">窗口不透明度</span>
+        <span class="row-desc">{Math.round(opacity * 100)}%</span>
+      </div>
+      <input
+        type="range"
+        min="0.2"
+        max="1"
+        step="0.05"
+        value={opacity}
+        on:input={handleOpacityChange}
+        class="opacity-slider"
+      />
+    </div>
   </div>
 
   {#if error}
@@ -246,9 +279,8 @@
     background: rgba(30, 30, 32, 0.92);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 16px;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255,255,255,0.06) inset;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -511,5 +543,11 @@
     font-size: 12px;
     color: rgba(134, 239, 172, 0.9);
     text-align: center;
+  }
+
+  .opacity-slider {
+    width: 100%;
+    accent-color: rgba(99, 102, 241, 0.85);
+    cursor: pointer;
   }
 </style>

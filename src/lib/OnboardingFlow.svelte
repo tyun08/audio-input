@@ -4,8 +4,10 @@
 
   const dispatch = createEventDispatcher();
 
+  const isWindows = navigator.userAgent.includes("Windows");
+  const totalSteps = isWindows ? 3 : 4;
+
   let step = 1;
-  const totalSteps = 4;
 
   let apiKey = "";
   let apiKeySaving = false;
@@ -22,7 +24,7 @@
     try {
       await invoke("save_api_key", { key: apiKey.trim() });
       apiKeySaved = true;
-      setTimeout(() => { step = 3; }, 600);
+      setTimeout(() => { step = isWindows ? 4 : 3; }, 600);
     } catch (e) {
       apiKeyError = String(e);
     } finally {
@@ -86,7 +88,7 @@
         <div class="err">{apiKeyError}</div>
       {/if}
       <div class="btn-row">
-        <button class="ghost-btn" on:click={() => { step = 3; }}>跳过</button>
+        <button class="ghost-btn" on:click={() => { step = isWindows ? 4 : 3; }}>跳过</button>
         <button class="primary-btn" on:click={saveApiKey} disabled={apiKeySaving}>
           {#if apiKeySaved}已保存{:else if apiKeySaving}保存中...{:else}保存并继续{/if}
         </button>
@@ -145,8 +147,8 @@
       </div>
       <h2>准备就绪！</h2>
       <p class="desc">
-        按下 <kbd>⌘⇧Space</kbd> 开始录音，松开自动转文字并输入到光标位置。
-        <br>点击菜单栏图标可打开设置。
+        按下 <kbd>{isWindows ? "Ctrl+Shift+Space" : "⌘⇧Space"}</kbd> 开始录音，松开自动转文字并输入到光标位置。
+        <br>点击{isWindows ? "系统托盘" : "菜单栏"}图标可打开设置。
       </p>
       <button class="primary-btn" on:click={finishOnboarding}>开始使用</button>
     </div>
