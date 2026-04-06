@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     outputs:
-      release-id: ${{ steps.create.outputs.id }}
+      release-id: ${{ steps.create.outputs.result }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
