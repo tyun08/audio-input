@@ -10,7 +10,8 @@ changelog:
       labels:
         - enhancement
       exclude:
-        - bug
+        labels:
+          - bug
     - title: Bug Fixes
       labels:
         - bug
