@@ -6,7 +6,8 @@
   import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
-  const PANEL_W = 340, PANEL_H = 560;
+  const SETTINGS_W = 340, SETTINGS_H = 620;
+  const ONBOARDING_W = 370, ONBOARDING_H = 540;
   const AX_W = 320, AX_H = 160;
 
   const HUD_POS_KEY = "hud-window-pos";
@@ -42,6 +43,7 @@
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
+  import { t } from "./lib/i18n";
 
   type AppState = "idle" | "recording" | "processing" | "error";
 
@@ -53,6 +55,7 @@
   let needsAccessibilityRestart = false;
   let showOnboarding = false;
   let polishFailed = false;
+  let shortcutConflict = "";
 
   // Settings data
   let polishEnabled = true;
@@ -64,11 +67,16 @@
   const unlisten: UnlistenFn[] = [];
 
   onMount(async () => {
+    // Clear stale inline styles left by previous HMR cycles
+    document.documentElement.removeAttribute('style');
+    document.body.removeAttribute('style');
+    localStorage.removeItem('window-opacity');
+
     // Check onboarding
     const onboardingDone = await invoke<boolean>("get_onboarding_completed").catch(() => true);
     if (!onboardingDone) {
       showOnboarding = true;
-      resizeTo(PANEL_W, PANEL_H);
+      resizeTo(ONBOARDING_W, ONBOARDING_H);
     }
 
     // 获取当前状态
@@ -93,11 +101,18 @@
       await listen<string>("state-change", (e) => {
         handleStateChange(e.payload);
         if (e.payload === "recording" || e.payload === "processing") {
+          if (showSettings) {
+            savePos(SETTINGS_POS_KEY);
+            showSettings = false;
+            invoke("set_native_opaque", { opaque: false });
+          }
           resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
-        } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
-          setTimeout(() => appWindow.hide(), 800);
-        } else if (e.payload === "idle") {
-          injectionFailed = false;
+        } else if (e.payload === "idle" && !showSettings && !needsAccessibilityRestart) {
+          if (injectionFailed || polishFailed) {
+            setTimeout(() => { injectionFailed = false; appWindow.hide(); }, 1500);
+          } else {
+            appWindow.hide();
+          }
         }
       })
     );
@@ -124,7 +139,8 @@
       await listen("api-key-missing", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
-        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
+        await invoke("set_native_opaque", { opaque: true });
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
 
@@ -133,24 +149,42 @@
       await listen("show-settings", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
-        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
+        await invoke("set_native_opaque", { opaque: true });
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
 
     // 监听辅助功能权限缺失
     unlisten.push(
       await listen("accessibility-missing", () => {
-        errorMsg = "请在系统设置中授予辅助功能权限";
+        errorMsg = "Accessibility permission required";
         appState = "error";
         appWindow.show();
       })
     );
 
-    // 监听润色失败
+    // Sync when tray toggles polish
+    unlisten.push(
+      await listen<boolean>("polish-changed", (e) => {
+        polishEnabled = e.payload;
+      })
+    );
+
     unlisten.push(
       await listen("polish-failed", () => {
         polishFailed = true;
         setTimeout(() => { polishFailed = false; }, 3000);
+      })
+    );
+
+    // 监听快捷键冲突
+    unlisten.push(
+      await listen<string>("shortcut-conflict", async (e) => {
+        shortcutConflict = e.payload;
+        await savePos(HUD_POS_KEY);
+        showSettings = true;
+        await invoke("set_native_opaque", { opaque: true });
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
   });
@@ -172,12 +206,14 @@
   async function handleSettingsSaved() {
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
+    await invoke("set_native_opaque", { opaque: false });
     if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleSettingsClosed() {
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
+    await invoke("set_native_opaque", { opaque: false });
     if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
@@ -204,12 +240,12 @@
         </svg>
       </div>
       <div class="ax-text">
-        <p>需要<strong>辅助功能</strong>权限才能自动注入文字</p>
-        <p class="hint">授权后请完全退出并重启 App</p>
+        <p>{$t('ax.need')}</p>
+        <p class="hint">{$t('ax.restart')}</p>
       </div>
       <div class="ax-buttons">
-        <button class="primary" on:click={() => invoke("open_accessibility_prefs")}>打开系统设置</button>
-        <button on:click={() => (needsAccessibilityRestart = false)}>忽略</button>
+        <button class="primary" on:click={() => invoke("open_accessibility_prefs")}>{$t('ax.open')}</button>
+        <button on:click={() => (needsAccessibilityRestart = false)}>{$t('ax.dismiss')}</button>
       </div>
     </div>
   {:else if showSettings}
@@ -219,6 +255,7 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       appState={appState}
+      bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
     />

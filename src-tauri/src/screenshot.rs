@@ -8,7 +8,7 @@ use tracing::{info, warn};
 /// Returns None if capture fails (e.g., Screen Recording permission denied).
 pub fn capture_primary_screen() -> Option<String> {
     let screens = Screen::all()
-        .map_err(|e| warn!("无法获取屏幕列表: {}", e))
+        .map_err(|e| warn!("Cannot get screen list: {}", e))
         .ok()?;
 
     let screen = screens
@@ -18,7 +18,7 @@ pub fn capture_primary_screen() -> Option<String> {
 
     let image = screen
         .capture()
-        .map_err(|e| warn!("截图失败 (可能缺少屏幕录制权限): {}", e))
+        .map_err(|e| warn!("Screenshot failed (may lack Screen Recording permission): {}", e))
         .ok()?;
 
     let width = image.width();
@@ -38,12 +38,12 @@ pub fn capture_primary_screen() -> Option<String> {
     let mut buf = Cursor::new(Vec::new());
     resized
         .write_to(&mut buf, image::ImageFormat::Jpeg)
-        .map_err(|e| warn!("JPEG 编码失败: {}", e))
+        .map_err(|e| warn!("JPEG encoding failed: {}", e))
         .ok()?;
 
     let jpeg_bytes = buf.into_inner();
     info!(
-        "截图完成: {}x{} → {} bytes JPEG",
+        "Screenshot done: {}x{} → {} bytes JPEG",
         width,
         height,
         jpeg_bytes.len()

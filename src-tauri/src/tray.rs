@@ -19,12 +19,12 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main-tray")
         .icon(idle_icon())
         .icon_as_template(true)
-        .tooltip("Audio Input — 点击或 ⌘⇧Space 开始录音")
+        .tooltip("Audio Input — Click or ⌘⇧Space to record")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
-                info!("用户退出");
+                info!("User quit");
                 app.exit(0);
             }
             "settings" => {
@@ -51,8 +51,9 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     let cfg = config_state.lock().unwrap();
                     let _ = crate::config::AppConfig::save(app, &cfg);
                 }
-                info!("AI 润色: {}", if new_enabled { "开启" } else { "关闭" });
-                // 重建菜单以刷新勾选状态
+                info!("AI polish: {}", if new_enabled { "on" } else { "off" });
+                let _ = app.emit("polish-changed", new_enabled);
+                // Rebuild menu to refresh check state
                 if let Some(tray) = app.tray_by_id("main-tray") {
                     if let Ok(menu) = build_tray_menu(app, new_enabled) {
                         let _ = tray.set_menu(Some(menu));
@@ -77,15 +78,15 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
-    let last     = MenuItem::with_id(app, "last-result", "尚无转录结果", false, None::<&str>)?;
+pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
+    let last     = MenuItem::with_id(app, "last-result", "No transcription yet", false, None::<&str>)?;
     let sep1     = PredefinedMenuItem::separator(app)?;
-    let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI 润色", true, polish_enabled, None::<&str>)?;
+    let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI Polish", true, polish_enabled, None::<&str>)?;
     let sep2     = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "设置...", true, None::<&str>)?;
-    let open_log = MenuItem::with_id(app, "open-log", "打开日志文件", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+    let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
     let sep3     = PredefinedMenuItem::separator(app)?;
-    let quit     = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let quit     = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     Menu::with_items(app, &[&last, &sep1, &polish, &sep2, &settings, &open_log, &sep3, &quit])
 }
@@ -110,7 +111,7 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
         } else {
             text.to_string()
         };
-        let _ = tray.set_tooltip(Some(format!("最近转录: {}", display)));
+        let _ = tray.set_tooltip(Some(format!("Last: {}", display)));
     }
 }
 
@@ -126,17 +127,17 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-// --- 内嵌图标 ---
+// --- Embedded icons ---
 
 fn idle_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png corrupted")
 }
 fn recording_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-recording.png")).expect("tray-recording.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-recording.png")).expect("tray-recording.png corrupted")
 }
 fn processing_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-processing.png")).expect("tray-processing.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-processing.png")).expect("tray-processing.png corrupted")
 }
 fn error_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png 损坏")
+    Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png corrupted")
 }

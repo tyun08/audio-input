@@ -5,17 +5,17 @@ use tracing::info;
 
 const TARGET_SAMPLE_RATE: u32 = 16000;
 
-/// 将录音采样数据编码为 WAV bytes（16kHz, 单声道, 16-bit PCM）
-/// Whisper 的最优输入格式
+/// Encode audio samples to WAV bytes (16kHz, mono, 16-bit PCM)
+/// Optimal input format for Whisper
 pub fn encode_wav(samples: &[f32], source_rate: u32, source_channels: u16) -> Result<Vec<u8>> {
-    // 下混到单声道
+    // Downmix to mono
     let mono = if source_channels > 1 {
         downsample_to_mono(samples, source_channels)
     } else {
         samples.to_vec()
     };
 
-    // 重采样到 16kHz
+    // Resample to 16kHz
     let resampled = if source_rate != TARGET_SAMPLE_RATE {
         resample(&mono, source_rate, TARGET_SAMPLE_RATE)
     } else {
@@ -23,7 +23,7 @@ pub fn encode_wav(samples: &[f32], source_rate: u32, source_channels: u16) -> Re
     };
 
     info!(
-        "编码 WAV: {} 采样点 @ {}Hz → {} 采样点 @ {}Hz",
+        "Encoding WAV: {} samples @ {}Hz → {} samples @ {}Hz",
         samples.len(),
         source_rate,
         resampled.len(),
@@ -58,7 +58,7 @@ fn downsample_to_mono(samples: &[f32], channels: u16) -> Vec<f32> {
         .collect()
 }
 
-/// 线性插值重采样
+/// Linear interpolation resampling
 fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     if from_rate == to_rate {
         return samples.to_vec();

@@ -4,7 +4,7 @@ use crate::{
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, ScreenshotState, SharedState},
-    transcription::{polish, GroqClient},
+    transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
 };
 use std::sync::{Arc, Mutex};
@@ -13,8 +13,10 @@ use tracing::{error, info, warn};
 
 pub struct RecorderState(pub Arc<Mutex<Recorder>>);
 
-/// 切换录音状态（Toggle 模式）
-/// Idle → Recording → (自动) → Processing → Idle
+// ---------------------------------------------------------------------------
+// Toggle recording (unchanged API)
+// ---------------------------------------------------------------------------
+
 pub async fn toggle_recording<R: Runtime>(
     app: AppHandle<R>,
     shared_state: SharedState,
@@ -33,10 +35,9 @@ pub async fn toggle_recording<R: Runtime>(
             stop_and_transcribe(app, shared_state, recorder_state).await;
         }
         AppState::Processing => {
-            warn!("正在处理中，请稍候");
+            warn!("Still processing, please wait");
         }
         AppState::Error(_) => {
-            // 从错误状态恢复，允许重新开始
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Idle;
             set_tray_icon(&app, "idle");
@@ -50,14 +51,13 @@ async fn start_recording<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
-    info!("开始录音...");
+    info!("Recording started...");
 
-    // Start recorder first — screenshot must not block this.
     let result = {
         match recorder_state.lock() {
             Ok(mut recorder) => recorder.start(app),
             Err(e) => {
-                error!("recorder 锁中毒: {}", e);
+                error!("Recorder lock poisoned: {}", e);
                 return;
             }
         }
@@ -70,9 +70,8 @@ async fn start_recording<R: Runtime>(
             drop(state);
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
-            info!("状态 → Recording");
+            info!("State → Recording");
 
-            // Spawn screenshot AFTER HUD has rendered.
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
                 let enabled = config.lock().unwrap().screenshot_context_enabled;
@@ -81,14 +80,13 @@ async fn start_recording<R: Runtime>(
             let ss = app.state::<ScreenshotState>().inner().clone();
             if screenshot_context_enabled {
                 tokio::spawn(async move {
-                    // Wait for HUD animation to finish before capturing.
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     tokio::task::spawn_blocking(move || {
                         let shot = capture_primary_screen();
                         if shot.is_some() {
-                            info!("截图已捕获，将用于润色上下文");
+                            info!("Screenshot captured for polish context");
                         } else {
-                            info!("截图捕获失败，将使用纯文字润色");
+                            info!("Screenshot capture failed, using text-only polish");
                         }
                         *ss.lock().unwrap() = shot;
                     });
@@ -98,7 +96,7 @@ async fn start_recording<R: Runtime>(
             }
         }
         Err(e) => {
-            error!("录音启动失败: {}", e);
+            error!("Recording start failed: {}", e);
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Error(e.to_string());
             drop(state);
@@ -114,29 +112,26 @@ async fn stop_and_transcribe<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
-    // 停止录音
     let audio_data = {
         let mut recorder = recorder_state.lock().unwrap();
         match recorder.stop() {
             Ok(data) => data,
             Err(e) => {
-                error!("停止录音失败: {}", e);
+                error!("Recording stop failed: {}", e);
                 set_error(&app, &shared_state, &e.to_string());
                 return;
             }
         }
     };
 
-    // 切换到 Processing 状态
     {
         let mut state = shared_state.lock().unwrap();
         *state = AppState::Processing;
     }
     set_tray_icon(&app, "processing");
     let _ = app.emit("state-change", "processing");
-    info!("状态 → Processing");
+    info!("State → Processing");
 
-    // 编码 WAV
     let wav_bytes = match encode_wav(
         &audio_data.samples,
         audio_data.sample_rate,
@@ -144,81 +139,78 @@ async fn stop_and_transcribe<R: Runtime>(
     ) {
         Ok(b) => b,
         Err(e) => {
-            error!("WAV 编码失败: {}", e);
+            error!("WAV encoding failed: {}", e);
             set_error(&app, &shared_state, &e.to_string());
             return;
         }
     };
 
-    // 读取 API Key
-    let api_key = match get_api_key(&app) {
-        Some(k) => {
-            info!("API Key 已加载（前8位: {}...）", &k[..k.len().min(8)]);
-            k
+    // Read provider + config
+    let (provider, pcfg, polish_enabled) = {
+        let config = app.state::<Arc<Mutex<AppConfig>>>();
+        let cfg = config.lock().unwrap();
+        let p = cfg.provider.clone();
+        let mut pc = cfg.get_pcfg(&p);
+        // Groq: env var override
+        if p == "groq" {
+            if let Ok(key) = std::env::var("GROQ_API_KEY") {
+                if !key.is_empty() {
+                    pc["api_key"] = serde_json::Value::String(key);
+                }
+            }
         }
-        None => {
-            warn!("未配置 API Key — 请通过托盘菜单「配置 API Key」填入");
-            let _ = app.emit("api-key-missing", ());
-            set_error(&app, &shared_state, "未配置 Groq API Key");
-            return;
-        }
+        (p, pc, cfg.polish_enabled)
     };
 
-    // 调用 Groq API
-    let client = GroqClient::new(api_key.clone());
-    let raw_text = match client.transcribe(wav_bytes).await {
+    info!("Using provider: {}", provider);
+
+    // Transcribe
+    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
         Ok(t) => t,
         Err(e) => {
-            error!("转录失败: {}", e);
+            error!("Transcription failed: {}", e);
+            let _ = app.emit("show-settings", ());
             set_error(&app, &shared_state, &e.to_string());
             return;
         }
     };
 
     if raw_text.is_empty() {
-        warn!("转录结果为空 — 可能静音、麦克风未授权或录音太短");
+        warn!("Transcription empty — possibly silence, mic unauthorized, or recording too short");
         reset_to_idle(&app, &shared_state);
         return;
     }
 
-    // 润色（可选）
-    let text = {
-        let polish_enabled = {
-            let config = app.state::<Arc<Mutex<AppConfig>>>();
-            let enabled = config.lock().unwrap().polish_enabled;
-            enabled
+    // Polish
+    let text = if polish_enabled {
+        let screenshot = {
+            let screenshot_state = app.state::<ScreenshotState>();
+            let shot = screenshot_state.lock().unwrap().take();
+            shot
         };
-        if polish_enabled {
-            // Take the screenshot out of state (clears it for the next recording).
-            let screenshot = {
-                let screenshot_state = app.state::<ScreenshotState>();
-                let shot = screenshot_state.lock().unwrap().take();
-                shot
-            };
-            info!("润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
-                  if screenshot.is_some() { "有" } else { "无" });
-            let (polished, failed) =
-                polish::polish_text(&raw_text, &api_key, screenshot.as_deref()).await;
-            if failed {
-                let _ = app.emit("polish-failed", ());
-            }
-            polished
-        } else {
-            // Clear screenshot state even if polish is disabled.
+        info!(
+            "Polish enabled, calling LLM polish (screenshot context: {})...",
+            if screenshot.is_some() { "yes" } else { "no" }
+        );
+        let (polished, failed) =
+            polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+        if failed {
+            let _ = app.emit("polish-failed", ());
+        }
+        polished
+    } else {
+        {
             let screenshot_state = app.state::<ScreenshotState>();
             screenshot_state.lock().unwrap().take();
-            raw_text
         }
+        raw_text
     };
 
-    // 更新托盘菜单显示最近转录
     crate::tray::set_tray_last_result(&app, &text);
 
-    // 注入文字
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
-        error!("文字注入失败: {}", e);
-        // 文字已写入剪贴板，通知前端让用户手动粘贴
+        error!("Text injection failed: {}", e);
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
         }
@@ -227,8 +219,72 @@ async fn stop_and_transcribe<R: Runtime>(
     }
 
     reset_to_idle(&app, &shared_state);
-    info!("状态 → Idle");
+    info!("State → Idle");
 }
+
+// ---------------------------------------------------------------------------
+// Provider dispatch helpers — add a match arm here for each new provider.
+// ---------------------------------------------------------------------------
+
+async fn transcribe_with_provider(
+    provider: &str,
+    config: &serde_json::Value,
+    wav_bytes: Vec<u8>,
+) -> anyhow::Result<String> {
+    match provider {
+        "groq" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                anyhow::bail!("Groq API Key not configured");
+            }
+            info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
+            GroqClient::new(api_key.to_string())
+                .transcribe(wav_bytes)
+                .await
+        }
+        "vertex_ai" => {
+            let project_id = config["project_id"].as_str().unwrap_or("");
+            if project_id.is_empty() {
+                anyhow::bail!("Vertex AI project ID not configured");
+            }
+            let location = config["location"].as_str().unwrap_or("us-central1");
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            info!(
+                "Vertex AI: project={}, region={}, model={}",
+                project_id, location, model
+            );
+            let client =
+                VertexClient::new(project_id.into(), location.into(), model.into()).await?;
+            client.transcribe(wav_bytes).await
+        }
+        other => anyhow::bail!("Unsupported provider: {}", other),
+    }
+}
+
+async fn polish_with_provider(
+    provider: &str,
+    config: &serde_json::Value,
+    text: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    match provider {
+        "groq" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            polish::polish_text(text, api_key, screenshot).await
+        }
+        "vertex_ai" => {
+            let project_id = config["project_id"].as_str().unwrap_or("");
+            let location = config["location"].as_str().unwrap_or("us-central1");
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            vertex::polish_text_vertex(text, project_id, location, model, screenshot).await
+        }
+        _ => (text.to_string(), true),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
 
 fn set_error<R: Runtime>(app: &AppHandle<R>, shared_state: &SharedState, msg: &str) {
     {
@@ -261,24 +317,9 @@ fn schedule_error_recovery<R: Runtime>(app: AppHandle<R>, shared_state: SharedSt
     });
 }
 
-fn get_api_key<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
-    // 优先环境变量
-    if let Ok(key) = std::env::var("GROQ_API_KEY") {
-        if !key.is_empty() {
-            return Some(key);
-        }
-    }
-    // 其次读持久化配置
-    let config = app.state::<Arc<Mutex<AppConfig>>>();
-    let cfg = config.lock().unwrap();
-    if cfg.api_key.is_empty() {
-        None
-    } else {
-        Some(cfg.api_key.clone())
-    }
-}
-
-// --- Tauri IPC Commands ---
+// ===========================================================================
+// Tauri IPC Commands
+// ===========================================================================
 
 #[tauri::command]
 pub fn open_accessibility_prefs() {
@@ -291,39 +332,66 @@ pub fn get_accessibility_status() -> bool {
 }
 
 #[tauri::command]
-pub async fn save_api_key(
-    key: String,
+pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
+    shared_state.lock().unwrap().to_string()
+}
+
+// --- Generic provider commands -----------------------------------------------
+
+#[tauri::command]
+pub fn get_provider(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> String {
+    config.lock().unwrap().provider.clone()
+}
+
+#[tauri::command]
+pub async fn save_provider(
+    provider: String,
     app: AppHandle,
     config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
 ) -> Result<(), String> {
     let updated = {
         let mut cfg = config.lock().unwrap();
-        cfg.api_key = key.clone();
+        cfg.provider = provider;
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_saved_api_key(
+pub fn get_provider_config(
+    provider: String,
     config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> String {
-    config.lock().unwrap().api_key.clone()
+) -> serde_json::Value {
+    config.lock().unwrap().get_pcfg(&provider)
 }
 
 #[tauri::command]
-pub fn get_app_state(
-    shared_state: tauri::State<'_, SharedState>,
-) -> String {
-    shared_state.lock().unwrap().to_string()
+pub async fn save_provider_config(
+    provider: String,
+    config_values: serde_json::Value,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.provider_configs.insert(provider, config_values);
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Polish commands ---
+#[tauri::command]
+pub fn check_provider_status(provider: String) -> bool {
+    match provider.as_str() {
+        "vertex_ai" => vertex::check_adc_available(),
+        _ => true,
+    }
+}
+
+// --- Polish ------------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_polish_enabled(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_polish_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().polish_enabled
 }
 
@@ -338,14 +406,28 @@ pub async fn save_polish_enabled(
         cfg.polish_enabled = enabled;
         cfg.clone()
     };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    // Sync tray menu checkbox
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Ok(menu) = crate::tray::build_tray_menu(&app, enabled) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+    Ok(())
 }
 
-// --- Audio device commands ---
+// --- Audio devices -----------------------------------------------------------
 
 #[tauri::command]
 pub fn list_audio_devices() -> Vec<String> {
     crate::audio::recorder::list_input_devices()
+}
+
+#[tauri::command]
+pub fn get_preferred_device(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Option<String> {
+    config.lock().unwrap().preferred_device.clone()
 }
 
 #[tauri::command]
@@ -362,12 +444,10 @@ pub async fn save_preferred_device(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Shortcut commands ---
+// --- Shortcut ----------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_shortcut(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> String {
+pub fn get_shortcut(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> String {
     config.lock().unwrap().shortcut.clone()
 }
 
@@ -383,25 +463,19 @@ pub async fn save_shortcut(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
-    // Re-register shortcut
     crate::shortcut::reregister_shortcut(&app, &shortcut).map_err(|e| e.to_string())
 }
 
-// --- Autostart commands ---
+// --- Autostart ---------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_autostart_enabled(
-    app: AppHandle,
-) -> bool {
+pub fn get_autostart_enabled(app: AppHandle) -> bool {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().unwrap_or(false)
 }
 
 #[tauri::command]
-pub async fn save_autostart_enabled(
-    enabled: bool,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn save_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     if enabled {
         app.autolaunch().enable().map_err(|e| e.to_string())
@@ -410,12 +484,10 @@ pub async fn save_autostart_enabled(
     }
 }
 
-// --- Screenshot context commands ---
+// --- Screenshot context ------------------------------------------------------
 
 #[tauri::command]
-pub fn get_screenshot_context_enabled(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_screenshot_context_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().screenshot_context_enabled
 }
 
@@ -433,12 +505,10 @@ pub async fn save_screenshot_context_enabled(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Onboarding commands ---
+// --- Onboarding --------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_onboarding_completed(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_onboarding_completed(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().onboarding_completed
 }
 
@@ -453,4 +523,61 @@ pub async fn save_onboarding_completed(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+/// Toggle NSWindow.isOpaque at runtime so WebKit uses the high-quality opaque
+/// text rendering path when showing panels, and transparent mode for the HUD.
+#[tauri::command]
+pub fn set_native_opaque(opaque: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let app: *mut objc::runtime::Object =
+                msg_send![class!(NSApplication), sharedApplication];
+            let windows: *mut objc::runtime::Object = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            for i in 0..count {
+                let win: *mut objc::runtime::Object =
+                    msg_send![windows, objectAtIndex: i];
+                let is_visible: bool = msg_send![win, isVisible];
+                if !is_visible {
+                    continue;
+                }
+                let _: () = msg_send![win, setOpaque: opaque];
+                let bg: *mut objc::runtime::Object = if opaque {
+                    msg_send![
+                        class!(NSColor),
+                        colorWithRed: 0.118f64
+                        green: 0.118f64
+                        blue: 0.125f64
+                        alpha: 1.0f64
+                    ]
+                } else {
+                    msg_send![class!(NSColor), clearColor]
+                };
+                let _: () = msg_send![win, setBackgroundColor: bg];
+
+                // Round the window frame view (superview of contentView)
+                // so the opaque background is clipped to rounded corners
+                let content: *mut objc::runtime::Object = msg_send![win, contentView];
+                let frame_view: *mut objc::runtime::Object = msg_send![content, superview];
+                if !frame_view.is_null() {
+                    let _: () = msg_send![frame_view, setWantsLayer: true];
+                    let layer: *mut objc::runtime::Object = msg_send![frame_view, layer];
+                    if !layer.is_null() {
+                        if opaque {
+                            let _: () = msg_send![layer, setCornerRadius: 16.0f64];
+                            let _: () = msg_send![layer, setMasksToBounds: true];
+                        } else {
+                            let _: () = msg_send![layer, setCornerRadius: 0.0f64];
+                            let _: () = msg_send![layer, setMasksToBounds: false];
+                        }
+                    }
+                }
+
+                let _: () = msg_send![win, invalidateShadow];
+            }
+        }
+    }
 }

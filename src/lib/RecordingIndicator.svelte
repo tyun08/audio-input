@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { t } from "./i18n";
 
   export let state: "idle" | "recording" | "processing" | "error" = "idle";
   export let errorMsg = "";
@@ -21,10 +22,10 @@
     seconds = 0;
   }
 
-  let _prev = state;
-  $: if (state !== _prev) {
-    _prev = state;
-    if (state === "recording") startTimer(); else stopTimer();
+  $: if (state === "recording") {
+    if (timer === null) startTimer();
+  } else {
+    if (timer !== null) stopTimer();
   }
 
   function fmt(s: number) {
@@ -51,22 +52,22 @@
 
   {:else if state === "processing"}
     <div class="spinner"></div>
-    <span class="label blue">Transcribing…</span>
+    <span class="label blue">{$t('hud.transcribing')}</span>
 
   {:else if state === "error"}
     <div class="err-dot"></div>
-    <span class="label red">{errorMsg || "Error"}</span>
+    <span class="label red">{errorMsg || $t('hud.error')}</span>
 
   {:else if injectionFailed && lastTranscription}
     <svg class="clip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none">
       <rect x="8" y="2" width="8" height="4" rx="1" stroke="rgba(255,200,80,0.9)" stroke-width="1.8"/>
       <path d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1" stroke="rgba(255,200,80,0.9)" stroke-width="1.8" stroke-linecap="round"/>
     </svg>
-    <span class="label amber">Copied — ⌘V to paste</span>
+    <span class="label amber">{$t('hud.copied')}</span>
 
   {:else if polishFailed}
     <div class="err-dot"></div>
-    <span class="label amber">Polish failed — original used</span>
+    <span class="label amber">{$t('hud.polish_failed')}</span>
   {/if}
 
 </div>

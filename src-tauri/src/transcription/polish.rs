@@ -65,14 +65,14 @@ fn compute_max_tokens(char_count: usize) -> u32 {
     ((char_count as u32 * 3 / 2) + 256).max(512).min(65_536)
 }
 
-const SYSTEM_PROMPT_TEXT: &str = "You are a transcription cleanup assistant. \
+pub(crate) const SYSTEM_PROMPT_TEXT: &str = "You are a transcription cleanup assistant. \
     For speech-to-text output: \
     1) Add punctuation and sentence breaks \
     2) Fix obvious speech recognition errors (homophones, mishearing) \
     3) Preserve the original meaning without rewriting. \
     Output only the cleaned text, no explanations. Respond in the same language as the input.";
 
-const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup assistant with access to a \
+pub(crate) const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup assistant with access to a \
     screenshot of the user's current screen for context. \
     Use visible text — especially brand names, product names, and technical terms — as a \
     reference when the transcription contains a word that sounds similar but may be a \
@@ -93,15 +93,15 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
     let max_tokens = compute_max_tokens(original_len);
 
     if let Some(img_data) = screenshot {
-        info!("使用视觉模型润色 (截图上下文已附加)");
+        info!("Using vision model for polish (screenshot context attached)");
         match try_polish_vision(text, api_key, img_data, 0.1, false, max_tokens).await {
             Ok(polished) if polished.chars().count() >= threshold => {
-                info!("视觉模型润色完成");
+                info!("Vision model polish complete");
                 return (polished, false);
             }
             Ok(short) => {
                 warn!(
-                    "视觉模型润色结果字数({})低于阈值({}), 重试",
+                    "Vision polish result too short ({}/{} chars), retrying",
                     short.chars().count(),
                     threshold
                 );
@@ -109,14 +109,14 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
                     try_polish_vision(text, api_key, img_data, 0.3, true, max_tokens).await
                 {
                     if p.chars().count() >= threshold {
-                        info!("视觉模型重试润色成功");
+                        info!("Vision model retry succeeded");
                         return (p, false);
                     }
                 }
-                warn!("视觉模型重试仍失败，降级为纯文字润色");
+                warn!("Vision model retry failed, falling back to text-only polish");
             }
             Err(e) => {
-                warn!("视觉模型失败: {}，降级为纯文字润色", e);
+                warn!("Vision model failed: {}, falling back to text-only polish", e);
             }
         }
     }
@@ -124,35 +124,35 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
     // Text-only path (either no screenshot or vision failed)
     match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
         Ok(polished) if polished.chars().count() >= threshold => {
-            info!("润色完成");
+            info!("Polish complete");
             (polished, false)
         }
         Ok(short) => {
             warn!(
-                "润色结果字数({})低于阈值({}), 重试",
+                "Polish result too short ({}/{} chars), retrying",
                 short.chars().count(),
                 threshold
             );
             match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
                 Ok(p) if p.chars().count() >= threshold => {
-                    info!("重试润色成功");
+                    info!("Polish retry succeeded");
                     (p, false)
                 }
                 Ok(_) | Err(_) => {
-                    warn!("重试润色仍失败，返回原始文本");
+                    warn!("Polish retry still failed, returning original text");
                     (text.to_string(), true)
                 }
             }
         }
         Err(e) => {
-            warn!("主模型润色失败: {}，尝试备用模型 {}", e, FALLBACK_MODEL);
+            warn!("Primary model polish failed: {}, trying fallback model {}", e, FALLBACK_MODEL);
             match try_polish_text(text, api_key, FALLBACK_MODEL, 0.1, false, max_tokens).await {
                 Ok(p) if p.chars().count() >= threshold => {
-                    info!("备用模型润色成功");
+                    info!("Fallback model polish succeeded");
                     (p, false)
                 }
                 Ok(_) | Err(_) => {
-                    warn!("备用模型润色失败，返回原始文本");
+                    warn!("Fallback model polish failed, returning original text");
                     (text.to_string(), true)
                 }
             }
@@ -272,7 +272,7 @@ async fn send_request(
     let body = resp.text().await?;
 
     if !status.is_success() {
-        anyhow::bail!("Groq 润色 API 错误: HTTP {} {}", status, body);
+        anyhow::bail!("Groq polish API error: HTTP {} {}", status, body);
     }
 
     let response: ChatResponse = serde_json::from_str(&body)?;
@@ -284,7 +284,7 @@ async fn send_request(
         .unwrap_or_default();
 
     if polished.is_empty() {
-        anyhow::bail!("润色返回空内容");
+        anyhow::bail!("Polish returned empty content");
     }
 
     Ok(polished)
