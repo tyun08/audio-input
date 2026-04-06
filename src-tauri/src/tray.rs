@@ -35,7 +35,10 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
                     .join("com.audioinput.app")
                     .join("app.log");
+                #[cfg(target_os = "macos")]
                 let _ = std::process::Command::new("open").arg(&log_path).spawn();
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("explorer").arg(&log_path).spawn();
             }
             "toggle-polish" => {
                 let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();

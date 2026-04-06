@@ -119,7 +119,7 @@ pub fn run() {
                         Shortcut::new(Some(Modifiers::META | Modifiers::SHIFT), Code::Space)
                     });
 
-                handle.global_shortcut().on_shortcut(
+                match handle.global_shortcut().on_shortcut(
                     sc,
                     move |_app, _shortcut, event| {
                         if event.state() == ShortcutState::Pressed {
@@ -131,9 +131,10 @@ pub fn run() {
                             });
                         }
                     },
-                )?;
-
-                info!("全局快捷键 {} 注册成功", shortcut_str);
+                ) {
+                    Ok(_) => info!("全局快捷键 {} 注册成功", shortcut_str),
+                    Err(e) => warn!("全局快捷键 {} 注册失败 ({}), 请在设置中更改快捷键", shortcut_str, e),
+                }
             }
 
             // 监听来自托盘点击的 toggle 事件

@@ -24,7 +24,10 @@ fn default_polish_enabled() -> bool {
 }
 
 fn default_shortcut() -> String {
-    "Meta+Shift+Space".to_string()
+    #[cfg(target_os = "windows")]
+    return "Ctrl+Shift+Space".to_string();
+    #[cfg(not(target_os = "windows"))]
+    return "Meta+Shift+Space".to_string();
 }
 
 impl Default for AppConfig {
@@ -33,7 +36,7 @@ impl Default for AppConfig {
             api_key: String::new(),
             polish_enabled: true,
             preferred_device: None,
-            shortcut: "Meta+Shift+Space".to_string(),
+            shortcut: default_shortcut(),
             onboarding_completed: false,
             screenshot_context_enabled: false,
         }
