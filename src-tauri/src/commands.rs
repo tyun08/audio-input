@@ -1,6 +1,6 @@
 use crate::{
     audio::{encode_wav, Recorder},
-    config::{AppConfig, Provider},
+    config::AppConfig,
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, ScreenshotState, SharedState},
@@ -13,8 +13,10 @@ use tracing::{error, info, warn};
 
 pub struct RecorderState(pub Arc<Mutex<Recorder>>);
 
-/// 切换录音状态（Toggle 模式）
-/// Idle → Recording → (自动) → Processing → Idle
+// ---------------------------------------------------------------------------
+// Toggle recording (unchanged API)
+// ---------------------------------------------------------------------------
+
 pub async fn toggle_recording<R: Runtime>(
     app: AppHandle<R>,
     shared_state: SharedState,
@@ -36,7 +38,6 @@ pub async fn toggle_recording<R: Runtime>(
             warn!("正在处理中，请稍候");
         }
         AppState::Error(_) => {
-            // 从错误状态恢复，允许重新开始
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Idle;
             set_tray_icon(&app, "idle");
@@ -52,7 +53,6 @@ async fn start_recording<R: Runtime>(
 ) {
     info!("开始录音...");
 
-    // Start recorder first — screenshot must not block this.
     let result = {
         match recorder_state.lock() {
             Ok(mut recorder) => recorder.start(app),
@@ -72,7 +72,6 @@ async fn start_recording<R: Runtime>(
             let _ = app.emit("state-change", "recording");
             info!("状态 → Recording");
 
-            // Spawn screenshot AFTER HUD has rendered.
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
                 let enabled = config.lock().unwrap().screenshot_context_enabled;
@@ -81,7 +80,6 @@ async fn start_recording<R: Runtime>(
             let ss = app.state::<ScreenshotState>().inner().clone();
             if screenshot_context_enabled {
                 tokio::spawn(async move {
-                    // Wait for HUD animation to finish before capturing.
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     tokio::task::spawn_blocking(move || {
                         let shot = capture_primary_screen();
@@ -114,7 +112,6 @@ async fn stop_and_transcribe<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
-    // 停止录音
     let audio_data = {
         let mut recorder = recorder_state.lock().unwrap();
         match recorder.stop() {
@@ -127,7 +124,6 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
-    // 切换到 Processing 状态
     {
         let mut state = shared_state.lock().unwrap();
         *state = AppState::Processing;
@@ -136,7 +132,6 @@ async fn stop_and_transcribe<R: Runtime>(
     let _ = app.emit("state-change", "processing");
     info!("状态 → Processing");
 
-    // 编码 WAV
     let wav_bytes = match encode_wav(
         &audio_data.samples,
         audio_data.sample_rate,
@@ -150,86 +145,33 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
-    // 读取 provider 配置
-    let (provider, api_key, project_id, location, vertex_model) = {
+    // Read provider + config
+    let (provider, pcfg, polish_enabled) = {
         let config = app.state::<Arc<Mutex<AppConfig>>>();
         let cfg = config.lock().unwrap();
-        (
-            cfg.provider.clone(),
-            cfg.api_key.clone(),
-            cfg.gcp_project_id.clone(),
-            cfg.gcp_location.clone(),
-            cfg.vertex_model.clone(),
-        )
+        let p = cfg.provider.clone();
+        let mut pc = cfg.get_pcfg(&p);
+        // Groq: env var override
+        if p == "groq" {
+            if let Ok(key) = std::env::var("GROQ_API_KEY") {
+                if !key.is_empty() {
+                    pc["api_key"] = serde_json::Value::String(key);
+                }
+            }
+        }
+        (p, pc, cfg.polish_enabled)
     };
 
-    // 验证 provider 配置
-    match &provider {
-        Provider::Groq => {
-            let effective_key = std::env::var("GROQ_API_KEY")
-                .ok()
-                .filter(|k| !k.is_empty())
-                .unwrap_or(api_key.clone());
-            if effective_key.is_empty() {
-                warn!("未配置 Groq API Key");
-                let _ = app.emit("api-key-missing", ());
-                set_error(&app, &shared_state, "未配置 Groq API Key");
-                return;
-            }
-        }
-        Provider::VertexAi => {
-            if project_id.is_empty() {
-                warn!("Vertex AI 项目 ID 未配置");
-                let _ = app.emit("show-settings", ());
-                set_error(&app, &shared_state, "Vertex AI 未配置项目 ID");
-                return;
-            }
-        }
-    }
+    info!("使用 provider: {}", provider);
 
-    let effective_api_key = std::env::var("GROQ_API_KEY")
-        .ok()
-        .filter(|k| !k.is_empty())
-        .unwrap_or(api_key);
-
-    if provider == Provider::Groq {
-        info!(
-            "使用 Groq（Key 前8位: {}...）",
-            &effective_api_key[..effective_api_key.len().min(8)]
-        );
-    } else {
-        info!("使用 Vertex AI（项目: {}, 区域: {}, 模型: {}）", project_id, location, vertex_model);
-    }
-
-    // 转录
-    let raw_text = match &provider {
-        Provider::Groq => {
-            let client = GroqClient::new(effective_api_key.clone());
-            match client.transcribe(wav_bytes).await {
-                Ok(t) => t,
-                Err(e) => {
-                    error!("Groq 转录失败: {}", e);
-                    set_error(&app, &shared_state, &e.to_string());
-                    return;
-                }
-            }
-        }
-        Provider::VertexAi => {
-            match VertexClient::new(project_id.clone(), location.clone(), vertex_model.clone()).await {
-                Ok(client) => match client.transcribe(wav_bytes).await {
-                    Ok(t) => t,
-                    Err(e) => {
-                        error!("Vertex AI 转录失败: {}", e);
-                        set_error(&app, &shared_state, &e.to_string());
-                        return;
-                    }
-                },
-                Err(e) => {
-                    error!("Vertex AI 客户端初始化失败: {}", e);
-                    set_error(&app, &shared_state, &format!("Vertex AI 认证失败: {}", e));
-                    return;
-                }
-            }
+    // Transcribe
+    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
+        Ok(t) => t,
+        Err(e) => {
+            error!("转录失败: {}", e);
+            let _ = app.emit("show-settings", ());
+            set_error(&app, &shared_state, &e.to_string());
+            return;
         }
     };
 
@@ -239,59 +181,36 @@ async fn stop_and_transcribe<R: Runtime>(
         return;
     }
 
-    // 润色（可选）
-    let text = {
-        let polish_enabled = {
-            let config = app.state::<Arc<Mutex<AppConfig>>>();
-            let enabled = config.lock().unwrap().polish_enabled;
-            enabled
+    // Polish
+    let text = if polish_enabled {
+        let screenshot = {
+            let screenshot_state = app.state::<ScreenshotState>();
+            let shot = screenshot_state.lock().unwrap().take();
+            shot
         };
-        if polish_enabled {
-            let screenshot = {
-                let screenshot_state = app.state::<ScreenshotState>();
-                let shot = screenshot_state.lock().unwrap().take();
-                shot
-            };
-            info!(
-                "润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
-                if screenshot.is_some() { "有" } else { "无" }
-            );
-            let (polished, failed) = match &provider {
-                Provider::Groq => {
-                    polish::polish_text(&raw_text, &effective_api_key, screenshot.as_deref()).await
-                }
-                Provider::VertexAi => {
-                    vertex::polish_text_vertex(
-                        &raw_text,
-                        &project_id,
-                        &location,
-                        &vertex_model,
-                        screenshot.as_deref(),
-                    )
-                    .await
-                }
-            };
-            if failed {
-                let _ = app.emit("polish-failed", ());
-            }
-            polished
-        } else {
-            {
-                let screenshot_state = app.state::<ScreenshotState>();
-                screenshot_state.lock().unwrap().take();
-            }
-            raw_text
+        info!(
+            "润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
+            if screenshot.is_some() { "有" } else { "无" }
+        );
+        let (polished, failed) =
+            polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+        if failed {
+            let _ = app.emit("polish-failed", ());
         }
+        polished
+    } else {
+        {
+            let screenshot_state = app.state::<ScreenshotState>();
+            screenshot_state.lock().unwrap().take();
+        }
+        raw_text
     };
 
-    // 更新托盘菜单显示最近转录
     crate::tray::set_tray_last_result(&app, &text);
 
-    // 注入文字
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
         error!("文字注入失败: {}", e);
-        // 文字已写入剪贴板，通知前端让用户手动粘贴
         if let Some(win) = app.get_webview_window("main") {
             let _ = win.show();
         }
@@ -302,6 +221,70 @@ async fn stop_and_transcribe<R: Runtime>(
     reset_to_idle(&app, &shared_state);
     info!("状态 → Idle");
 }
+
+// ---------------------------------------------------------------------------
+// Provider dispatch helpers — add a match arm here for each new provider.
+// ---------------------------------------------------------------------------
+
+async fn transcribe_with_provider(
+    provider: &str,
+    config: &serde_json::Value,
+    wav_bytes: Vec<u8>,
+) -> anyhow::Result<String> {
+    match provider {
+        "groq" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                anyhow::bail!("未配置 Groq API Key");
+            }
+            info!("Groq Key 前8位: {}...", &api_key[..api_key.len().min(8)]);
+            GroqClient::new(api_key.to_string())
+                .transcribe(wav_bytes)
+                .await
+        }
+        "vertex_ai" => {
+            let project_id = config["project_id"].as_str().unwrap_or("");
+            if project_id.is_empty() {
+                anyhow::bail!("Vertex AI 未配置项目 ID");
+            }
+            let location = config["location"].as_str().unwrap_or("us-central1");
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            info!(
+                "Vertex AI: 项目={}, 区域={}, 模型={}",
+                project_id, location, model
+            );
+            let client =
+                VertexClient::new(project_id.into(), location.into(), model.into()).await?;
+            client.transcribe(wav_bytes).await
+        }
+        other => anyhow::bail!("不支持的 provider: {}", other),
+    }
+}
+
+async fn polish_with_provider(
+    provider: &str,
+    config: &serde_json::Value,
+    text: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    match provider {
+        "groq" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            polish::polish_text(text, api_key, screenshot).await
+        }
+        "vertex_ai" => {
+            let project_id = config["project_id"].as_str().unwrap_or("");
+            let location = config["location"].as_str().unwrap_or("us-central1");
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            vertex::polish_text_vertex(text, project_id, location, model, screenshot).await
+        }
+        _ => (text.to_string(), true),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
 
 fn set_error<R: Runtime>(app: &AppHandle<R>, shared_state: &SharedState, msg: &str) {
     {
@@ -334,8 +317,9 @@ fn schedule_error_recovery<R: Runtime>(app: AppHandle<R>, shared_state: SharedSt
     });
 }
 
-
-// --- Tauri IPC Commands ---
+// ===========================================================================
+// Tauri IPC Commands
+// ===========================================================================
 
 #[tauri::command]
 pub fn open_accessibility_prefs() {
@@ -348,39 +332,66 @@ pub fn get_accessibility_status() -> bool {
 }
 
 #[tauri::command]
-pub async fn save_api_key(
-    key: String,
+pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
+    shared_state.lock().unwrap().to_string()
+}
+
+// --- Generic provider commands -----------------------------------------------
+
+#[tauri::command]
+pub fn get_provider(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> String {
+    config.lock().unwrap().provider.clone()
+}
+
+#[tauri::command]
+pub async fn save_provider(
+    provider: String,
     app: AppHandle,
     config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
 ) -> Result<(), String> {
     let updated = {
         let mut cfg = config.lock().unwrap();
-        cfg.api_key = key.clone();
+        cfg.provider = provider;
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_saved_api_key(
+pub fn get_provider_config(
+    provider: String,
     config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> String {
-    config.lock().unwrap().api_key.clone()
+) -> serde_json::Value {
+    config.lock().unwrap().get_pcfg(&provider)
 }
 
 #[tauri::command]
-pub fn get_app_state(
-    shared_state: tauri::State<'_, SharedState>,
-) -> String {
-    shared_state.lock().unwrap().to_string()
+pub async fn save_provider_config(
+    provider: String,
+    config_values: serde_json::Value,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.provider_configs.insert(provider, config_values);
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Polish commands ---
+#[tauri::command]
+pub fn check_provider_status(provider: String) -> bool {
+    match provider.as_str() {
+        "vertex_ai" => vertex::check_adc_available(),
+        _ => true,
+    }
+}
+
+// --- Polish ------------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_polish_enabled(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_polish_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().polish_enabled
 }
 
@@ -398,11 +409,18 @@ pub async fn save_polish_enabled(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Audio device commands ---
+// --- Audio devices -----------------------------------------------------------
 
 #[tauri::command]
 pub fn list_audio_devices() -> Vec<String> {
     crate::audio::recorder::list_input_devices()
+}
+
+#[tauri::command]
+pub fn get_preferred_device(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Option<String> {
+    config.lock().unwrap().preferred_device.clone()
 }
 
 #[tauri::command]
@@ -419,12 +437,10 @@ pub async fn save_preferred_device(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Shortcut commands ---
+// --- Shortcut ----------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_shortcut(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> String {
+pub fn get_shortcut(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> String {
     config.lock().unwrap().shortcut.clone()
 }
 
@@ -440,25 +456,19 @@ pub async fn save_shortcut(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
-    // Re-register shortcut
     crate::shortcut::reregister_shortcut(&app, &shortcut).map_err(|e| e.to_string())
 }
 
-// --- Autostart commands ---
+// --- Autostart ---------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_autostart_enabled(
-    app: AppHandle,
-) -> bool {
+pub fn get_autostart_enabled(app: AppHandle) -> bool {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().unwrap_or(false)
 }
 
 #[tauri::command]
-pub async fn save_autostart_enabled(
-    enabled: bool,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn save_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     if enabled {
         app.autolaunch().enable().map_err(|e| e.to_string())
@@ -467,12 +477,10 @@ pub async fn save_autostart_enabled(
     }
 }
 
-// --- Screenshot context commands ---
+// --- Screenshot context ------------------------------------------------------
 
 #[tauri::command]
-pub fn get_screenshot_context_enabled(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_screenshot_context_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().screenshot_context_enabled
 }
 
@@ -490,12 +498,10 @@ pub async fn save_screenshot_context_enabled(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
-// --- Onboarding commands ---
+// --- Onboarding --------------------------------------------------------------
 
 #[tauri::command]
-pub fn get_onboarding_completed(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> bool {
+pub fn get_onboarding_completed(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
     config.lock().unwrap().onboarding_completed
 }
 
@@ -510,70 +516,4 @@ pub async fn save_onboarding_completed(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
-}
-
-// --- Provider commands ---
-
-#[tauri::command]
-pub fn get_provider(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> String {
-    let cfg = config.lock().unwrap();
-    serde_json::to_value(&cfg.provider)
-        .ok()
-        .and_then(|v| v.as_str().map(String::from))
-        .unwrap_or_else(|| "groq".to_string())
-}
-
-#[tauri::command]
-pub async fn save_provider(
-    provider: String,
-    app: AppHandle,
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> Result<(), String> {
-    let p: Provider =
-        serde_json::from_value(serde_json::Value::String(provider)).map_err(|e| e.to_string())?;
-    let updated = {
-        let mut cfg = config.lock().unwrap();
-        cfg.provider = p;
-        cfg.clone()
-    };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
-}
-
-// --- Vertex AI config commands ---
-
-#[tauri::command]
-pub fn get_vertex_config(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> serde_json::Value {
-    let cfg = config.lock().unwrap();
-    serde_json::json!({
-        "project_id": cfg.gcp_project_id,
-        "location": cfg.gcp_location,
-        "model": cfg.vertex_model,
-    })
-}
-
-#[tauri::command]
-pub async fn save_vertex_config(
-    project_id: String,
-    location: String,
-    model: String,
-    app: AppHandle,
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> Result<(), String> {
-    let updated = {
-        let mut cfg = config.lock().unwrap();
-        cfg.gcp_project_id = project_id;
-        cfg.gcp_location = location;
-        cfg.vertex_model = model;
-        cfg.clone()
-    };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn check_vertex_auth() -> bool {
-    vertex::check_adc_available()
 }

@@ -6,7 +6,8 @@
   import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
-  const PANEL_W = 340, PANEL_H = 620;
+  const SETTINGS_W = 340, SETTINGS_H = 620;
+  const ONBOARDING_W = 370, ONBOARDING_H = 540;
   const AX_W = 320, AX_H = 160;
 
   const HUD_POS_KEY = "hud-window-pos";
@@ -53,6 +54,7 @@
   let needsAccessibilityRestart = false;
   let showOnboarding = false;
   let polishFailed = false;
+  let shortcutConflict = "";
 
   // Settings data
   let polishEnabled = true;
@@ -68,7 +70,7 @@
     const onboardingDone = await invoke<boolean>("get_onboarding_completed").catch(() => true);
     if (!onboardingDone) {
       showOnboarding = true;
-      resizeTo(PANEL_W, PANEL_H);
+      resizeTo(ONBOARDING_W, ONBOARDING_H);
     }
 
     // 获取当前状态
@@ -124,7 +126,7 @@
       await listen("api-key-missing", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
-        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
 
@@ -133,7 +135,7 @@
       await listen("show-settings", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
-        await resizeTo(PANEL_W, PANEL_H, SETTINGS_POS_KEY);
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
 
@@ -151,6 +153,16 @@
       await listen("polish-failed", () => {
         polishFailed = true;
         setTimeout(() => { polishFailed = false; }, 3000);
+      })
+    );
+
+    // 监听快捷键冲突
+    unlisten.push(
+      await listen<string>("shortcut-conflict", async (e) => {
+        shortcutConflict = e.payload;
+        await savePos(HUD_POS_KEY);
+        showSettings = true;
+        await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
   });
@@ -219,6 +231,7 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       appState={appState}
+      bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
     />

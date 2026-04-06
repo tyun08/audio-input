@@ -109,6 +109,11 @@ pub fn run() {
 
             // 注册全局快捷键（从配置读取，默认 Cmd+Shift+Space）
             {
+                use tauri::Emitter as _;
+
+                // Unregister any stale shortcuts first to maximise chance of success
+                let _ = handle.global_shortcut().unregister_all();
+
                 let handle2 = handle.clone();
                 let shared_state2 = shared_state.clone();
                 let recorder2 = Arc::clone(&recorder);
@@ -133,7 +138,10 @@ pub fn run() {
                     },
                 ) {
                     Ok(_) => info!("全局快捷键 {} 注册成功", shortcut_str),
-                    Err(e) => warn!("全局快捷键 {} 注册失败 ({}), 请在设置中更改快捷键", shortcut_str, e),
+                    Err(e) => {
+                        warn!("全局快捷键 {} 注册失败 ({}), 请在设置中更改快捷键", shortcut_str, e);
+                        let _ = handle.emit("shortcut-conflict", shortcut_str.clone());
+                    }
                 }
             }
 
@@ -156,14 +164,18 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::save_api_key,
-            commands::get_saved_api_key,
             commands::get_app_state,
             commands::open_accessibility_prefs,
             commands::get_accessibility_status,
+            commands::get_provider,
+            commands::save_provider,
+            commands::get_provider_config,
+            commands::save_provider_config,
+            commands::check_provider_status,
             commands::get_polish_enabled,
             commands::save_polish_enabled,
             commands::list_audio_devices,
+            commands::get_preferred_device,
             commands::save_preferred_device,
             commands::get_shortcut,
             commands::save_shortcut,
@@ -173,11 +185,6 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
-            commands::get_provider,
-            commands::save_provider,
-            commands::get_vertex_config,
-            commands::save_vertex_config,
-            commands::check_vertex_auth,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
