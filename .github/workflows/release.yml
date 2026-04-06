@@ -103,13 +103,24 @@ jobs:
     if: ${{ needs.build.result == 'success' }}
 
     steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit v${{ needs.create-release.outputs.version }} \
+            --draft=false \
+            --repo tyun08/audio-input
+
       - name: Download DMG and compute SHA256
         id: sha
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ needs.create-release.outputs.version }}
-          DMG_URL="https://github.com/tyun08/audio-input/releases/download/v${VERSION}/Audio%20Input_${VERSION}_aarch64.dmg"
-          sleep 30
-          curl -sL "$DMG_URL" -o audio-input.dmg
+          gh release download v${VERSION} \
+            --repo tyun08/audio-input \
+            --pattern "*aarch64.dmg" \
+            -O audio-input.dmg
           SHA=$(shasum -a 256 audio-input.dmg | awk '{print $1}')
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
