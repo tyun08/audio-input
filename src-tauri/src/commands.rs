@@ -406,7 +406,14 @@ pub async fn save_polish_enabled(
         cfg.polish_enabled = enabled;
         cfg.clone()
     };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    // Sync tray menu checkbox
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Ok(menu) = crate::tray::build_tray_menu(&app, enabled) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+    Ok(())
 }
 
 // --- Audio devices -----------------------------------------------------------

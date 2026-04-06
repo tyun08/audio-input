@@ -52,6 +52,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     let _ = crate::config::AppConfig::save(app, &cfg);
                 }
                 info!("AI polish: {}", if new_enabled { "on" } else { "off" });
+                let _ = app.emit("polish-changed", new_enabled);
                 // Rebuild menu to refresh check state
                 if let Some(tray) = app.tray_by_id("main-tray") {
                     if let Ok(menu) = build_tray_menu(app, new_enabled) {
@@ -77,7 +78,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
+pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
     let last     = MenuItem::with_id(app, "last-result", "No transcription yet", false, None::<&str>)?;
     let sep1     = PredefinedMenuItem::separator(app)?;
     let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI Polish", true, polish_enabled, None::<&str>)?;

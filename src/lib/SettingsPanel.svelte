@@ -36,7 +36,7 @@
     const savedOpacity = localStorage.getItem("window-opacity");
     if (savedOpacity) {
       opacity = parseFloat(savedOpacity);
-      await getCurrentWindow().setOpacity(opacity);
+      document.documentElement.style.opacity = String(opacity);
     }
   });
 
@@ -74,7 +74,7 @@
   async function handleOpacityChange(e: Event) {
     opacity = parseFloat((e.target as HTMLInputElement).value);
     localStorage.setItem("window-opacity", String(opacity));
-    await getCurrentWindow().setOpacity(opacity);
+    document.documentElement.style.opacity = String(opacity);
   }
 
   async function handlePolishToggle() {

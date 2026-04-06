@@ -85,6 +85,12 @@
       resizeTo(AX_W, AX_H);
     }
 
+    // Restore window opacity
+    const savedOpacity = localStorage.getItem("window-opacity");
+    if (savedOpacity) {
+      document.documentElement.style.opacity = savedOpacity;
+    }
+
     // Load settings data
     polishEnabled = await invoke<boolean>("get_polish_enabled").catch(() => true);
     audioDevices = await invoke<string[]>("list_audio_devices").catch(() => []);
@@ -96,6 +102,10 @@
       await listen<string>("state-change", (e) => {
         handleStateChange(e.payload);
         if (e.payload === "recording" || e.payload === "processing") {
+          if (showSettings) {
+            savePos(SETTINGS_POS_KEY);
+            showSettings = false;
+          }
           resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
         } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
           setTimeout(() => appWindow.hide(), 800);
@@ -149,7 +159,13 @@
       })
     );
 
-    // 监听润色失败
+    // Sync when tray toggles polish
+    unlisten.push(
+      await listen<boolean>("polish-changed", (e) => {
+        polishEnabled = e.payload;
+      })
+    );
+
     unlisten.push(
       await listen("polish-failed", () => {
         polishFailed = true;
@@ -204,7 +220,7 @@
   }
 </script>
 
-<div class="container">
+<div class="container" class:panel-mode={showSettings || showOnboarding}>
   {#if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
   {:else if needsAccessibilityRestart}
@@ -261,6 +277,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+  .container.panel-mode {
+    overflow: hidden;
+    border-radius: 16px;
   }
 
   .ax-banner {
