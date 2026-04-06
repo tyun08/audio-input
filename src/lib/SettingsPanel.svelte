@@ -20,10 +20,10 @@
 
   let preferredDevice: string | null = null;
   let shortcut = "Meta+Shift+Space";
+  export let windowOpacity: number = 1.0;
   let saving = false;
   let saved = false;
   let error = "";
-  let opacity = 1.0;
 
   $: currentProvider = getProvider(provider);
   $: fieldGroups = groupFields(currentProvider?.fields ?? []);
@@ -33,11 +33,6 @@
     await loadProviderConfig();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
-    const savedOpacity = localStorage.getItem("window-opacity");
-    if (savedOpacity) {
-      opacity = parseFloat(savedOpacity);
-      document.documentElement.style.opacity = String(opacity);
-    }
   });
 
   async function loadProviderConfig() {
@@ -71,10 +66,9 @@
     }
   }
 
-  async function handleOpacityChange(e: Event) {
-    opacity = parseFloat((e.target as HTMLInputElement).value);
-    localStorage.setItem("window-opacity", String(opacity));
-    document.documentElement.style.opacity = String(opacity);
+  function handleOpacityChange(e: Event) {
+    windowOpacity = parseFloat((e.target as HTMLInputElement).value);
+    localStorage.setItem("window-opacity", String(windowOpacity));
   }
 
   async function handlePolishToggle() {
@@ -327,9 +321,9 @@
     <div class="section">
       <div class="row-label-block">
         <span class="section-label">{$t('settings.opacity')}</span>
-        <span class="row-desc">{Math.round(opacity * 100)}%</span>
+        <span class="row-desc">{Math.round(windowOpacity * 100)}%</span>
       </div>
-      <input type="range" min="0.2" max="1" step="0.05" value={opacity} on:input={handleOpacityChange} class="opacity-slider" />
+      <input type="range" min="0.2" max="1" step="0.05" value={windowOpacity} on:input={handleOpacityChange} class="opacity-slider" />
     </div>
   </div>
 
@@ -339,13 +333,12 @@
 
 <style>
   .settings-panel {
-    width: 320px;
-    background: rgba(30,30,32,0.92);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-radius: 16px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    width: 100%;
+    height: 100%;
+    background: #1e1e20;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
     font-family: -apple-system,"SF Pro Text",BlinkMacSystemFont,sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -360,7 +353,7 @@
   @keyframes spin { to { transform:rotate(360deg); } }
   .close-btn { background:rgba(255,255,255,0.08); border:none; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background .15s; padding:0; }
   .close-btn:hover { background:rgba(255,255,255,0.15); }
-  .sections { padding:4px 0; overflow-y:auto; max-height:calc(100vh - 56px); }
+  .sections { padding:4px 0; overflow-y:auto; flex:1; min-height:0; }
   .section { padding:11px 16px; display:flex; flex-direction:column; gap:7px; }
   .section.row-section { flex-direction:row; align-items:center; justify-content:space-between; }
   .section-label { font-size:13px; font-weight:500; color:rgba(255,255,255,0.8); }

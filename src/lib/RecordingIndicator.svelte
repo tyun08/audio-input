@@ -22,10 +22,10 @@
     seconds = 0;
   }
 
-  let _prev = state;
-  $: if (state !== _prev) {
-    _prev = state;
-    if (state === "recording") startTimer(); else stopTimer();
+  $: if (state === "recording") {
+    if (timer === null) startTimer();
+  } else {
+    if (timer !== null) stopTimer();
   }
 
   function fmt(s: number) {

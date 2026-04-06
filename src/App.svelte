@@ -62,6 +62,7 @@
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
+  let windowOpacity = parseFloat(localStorage.getItem("window-opacity") || "1");
 
   const appWindow = getCurrentWindow();
   const unlisten: UnlistenFn[] = [];
@@ -85,12 +86,6 @@
       resizeTo(AX_W, AX_H);
     }
 
-    // Restore window opacity
-    const savedOpacity = localStorage.getItem("window-opacity");
-    if (savedOpacity) {
-      document.documentElement.style.opacity = savedOpacity;
-    }
-
     // Load settings data
     polishEnabled = await invoke<boolean>("get_polish_enabled").catch(() => true);
     audioDevices = await invoke<string[]>("list_audio_devices").catch(() => []);
@@ -107,10 +102,12 @@
             showSettings = false;
           }
           resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
-        } else if (e.payload === "idle" && !showSettings && !injectionFailed && !needsAccessibilityRestart) {
-          setTimeout(() => appWindow.hide(), 800);
-        } else if (e.payload === "idle") {
-          injectionFailed = false;
+        } else if (e.payload === "idle" && !showSettings && !needsAccessibilityRestart) {
+          if (injectionFailed || polishFailed) {
+            setTimeout(() => { injectionFailed = false; appWindow.hide(); }, 1500);
+          } else {
+            appWindow.hide();
+          }
         }
       })
     );
@@ -220,7 +217,7 @@
   }
 </script>
 
-<div class="container" class:panel-mode={showSettings || showOnboarding}>
+<div class="container" class:panel-mode={showSettings || showOnboarding} style={windowOpacity < 1 ? `opacity:${windowOpacity}` : ''}>
   {#if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
   {:else if needsAccessibilityRestart}
@@ -244,6 +241,7 @@
   {:else if showSettings}
     <SettingsPanel
       bind:polishEnabled
+      bind:windowOpacity
       {audioDevices}
       bind:autostartEnabled
       bind:screenshotContextEnabled
@@ -264,8 +262,10 @@
     padding: 0;
   }
 
-  :global(body) {
+  :global(html), :global(body) {
     background: transparent;
+  }
+  :global(body) {
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
     -webkit-font-smoothing: antialiased;
     user-select: none;
