@@ -107,7 +107,7 @@ jobs:
         id: sha
         run: |
           VERSION=${{ needs.create-release.outputs.version }}
-          DMG_URL="https://github.com/tonyyun/audio-input/releases/download/v${VERSION}/Audio%20Input_${VERSION}_aarch64.dmg"
+          DMG_URL="https://github.com/tyun08/audio-input/releases/download/v${VERSION}/Audio%20Input_${VERSION}_aarch64.dmg"
           sleep 30
           curl -sL "$DMG_URL" -o audio-input.dmg
           SHA=$(shasum -a 256 audio-input.dmg | awk '{print $1}')
@@ -117,7 +117,7 @@ jobs:
       - name: Checkout homebrew-tap
         uses: actions/checkout@v4
         with:
-          repository: tonyyun/homebrew-tap
+          repository: tyun08/homebrew-tap
           token: ${{ secrets.TAP_TOKEN }}
           path: tap
 

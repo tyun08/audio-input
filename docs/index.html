@@ -294,7 +294,7 @@
       overflow: hidden;
       white-space: nowrap;
       width: 0;
-      animation: typing 1.6s steps(44, end) 2.9s forwards;
+      animation: typing 2s steps(50, end) 2.9s forwards;
       border-right: 2px solid var(--accent);
     }
 
@@ -728,7 +728,7 @@
     <a href="#providers" class="hide-sm">Providers</a>
     <a href="#install" class="hide-sm">Install</a>
     <a href="#setup" class="hide-sm">Setup</a>
-    <a href="https://github.com/tonyyun/audio-input" class="nav-gh">
+    <a href="https://github.com/tyun08/audio-input" class="nav-gh">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
       </svg>
@@ -741,15 +741,15 @@
 <section class="hero">
   <div class="badge">
     <span class="badge-dot"></span>
-    v0.3.5 &middot; Free &amp; Open Source &middot; macOS &amp; Windows
+    Free &amp; Open Source &middot; macOS &amp; Windows
   </div>
 
   <h1>Press a hotkey. Speak.<br /><em>Text appears&nbsp;&mdash; anywhere.</em></h1>
 
   <p class="subtitle">
-    Global hotkey voice input for every app on macOS and Windows.
-    Choose between Groq Whisper or Google Vertex AI.
-    Open source, no telemetry, extensible.
+    An AI voice input that actually <em style="font-style:normal;color:var(--accent);">gets you</em> — technical jargon, slang, code snippets, mixed languages.
+    Far more accurate than Mac&rsquo;s built-in dictation.
+    Works in every app. Open source.
   </p>
 
   <!-- Animated demo terminal -->
@@ -784,7 +784,7 @@
         </div>
         <div class="demo-row">
           <span class="demo-label">Output</span>
-          <span class="demo-output">Transcribed and polished by AI.</span>
+          <span class="demo-output">AI that actually understands what you mean.</span>
         </div>
       </div>
     </div>
@@ -798,7 +798,7 @@
       <button class="copy-btn" id="copyBtn" onclick="copyCmd()">Copy</button>
     </div>
     <p class="alt-link">
-      or <a href="https://github.com/tonyyun/audio-input/releases">download from Releases</a> &middot; macOS Ventura+ &middot; Windows 10+
+      or <a href="https://github.com/tyun08/audio-input/releases">download from Releases</a> &middot; macOS Ventura+ &middot; Windows 10+
     </p>
   </div>
 </section>
@@ -833,8 +833,8 @@
             <path d="M20 2v6h-6"/>
           </svg>
         </div>
-        <h3>AI-Powered Polish</h3>
-        <p>An optional LLM pass removes filler words, fixes punctuation, and cleans up sentence flow. Screenshot context makes it even smarter.</p>
+        <h3>AI That Gets Your Vocabulary</h3>
+        <p>Understands domain jargon, slang, and mixed-language speech that trips up Mac&rsquo;s built-in dictation. An optional LLM pass also removes filler words and fixes punctuation. Screenshot context makes it even smarter.</p>
       </div>
 
       <div class="feat-card">
@@ -879,31 +879,6 @@
         </div>
         <h3>Featherweight</h3>
         <p>~20&thinsp;MB RAM. Built with Tauri + Rust. No Electron, no background bloat. It just sits in your menu bar.</p>
-      </div>
-
-      <div class="feat-card">
-        <div class="feat-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M5 8l6 6"/>
-            <path d="M4 14l6-6 2-3"/>
-            <path d="M2 5h12"/>
-            <path d="M7 2h1"/>
-            <path d="M22 22l-5-10-5 10"/>
-            <path d="M14 18h6"/>
-          </svg>
-        </div>
-        <h3>English &amp; 中文 UI</h3>
-        <p>Interface defaults to English with one-click switch to Chinese. Language preference persists across restarts.</p>
-      </div>
-
-      <div class="feat-card">
-        <div class="feat-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-          </svg>
-        </div>
-        <h3>Open Source</h3>
-        <p>MIT licensed. Audit the code, fork it, add your own provider. No subscription, no upsell.</p>
       </div>
 
     </div>
@@ -995,13 +970,13 @@
       </div>
       <p class="install-alt">
         Prefer a manual download?
-        <a href="https://github.com/tonyyun/audio-input/releases" style="color:var(--accent);">
+        <a href="https://github.com/tyun08/audio-input/releases" style="color:var(--accent);">
           GitHub Releases &rarr;
         </a>
       </p>
       <p class="install-alt" style="margin-top:0.5rem;">
         <strong style="color:var(--text);">Windows:</strong> Download the <code style="background:var(--surface-hi);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.82rem;color:var(--muted);">.msi</code> installer from
-        <a href="https://github.com/tonyyun/audio-input/releases" style="color:var(--accent);">Releases</a>. Windows 10+ required.
+        <a href="https://github.com/tyun08/audio-input/releases" style="color:var(--accent);">Releases</a>. Windows 10+ required.
       </p>
     </div>
   </div>
@@ -1074,11 +1049,11 @@
 <!-- FOOTER -->
 <footer>
   <div class="footer-links">
-    <a href="https://github.com/tonyyun/audio-input">GitHub</a>
-    <a href="https://github.com/tonyyun/audio-input/releases">Releases</a>
-    <a href="https://github.com/tonyyun/audio-input/issues">Issues</a>
-    <a href="https://github.com/tonyyun/audio-input/blob/main/PRIVACY.md">Privacy</a>
-    <a href="https://github.com/tonyyun/audio-input/blob/main/LICENSE">MIT License</a>
+    <a href="https://github.com/tyun08/audio-input">GitHub</a>
+    <a href="https://github.com/tyun08/audio-input/releases">Releases</a>
+    <a href="https://github.com/tyun08/audio-input/issues">Issues</a>
+    <a href="https://github.com/tyun08/audio-input/blob/main/PRIVACY.md">Privacy</a>
+    <a href="https://github.com/tyun08/audio-input/blob/main/LICENSE">MIT License</a>
   </div>
   <div>
     Audio Input &middot; Built with Tauri + Rust + Svelte &middot; Powered by
