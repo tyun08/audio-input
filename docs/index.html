@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Audio Input — Press a hotkey. Speak. Text appears — anywhere.</title>
-  <meta name="description" content="Global hotkey voice transcription for macOS. Powered by Groq Whisper, polished by AI. Free, open source, BYOK." />
+  <meta name="description" content="Global hotkey voice transcription for macOS. Choose Groq Whisper or Google Vertex AI Gemini. AI-polished, multi-language, open source." />
   <meta property="og:title" content="Audio Input — Voice input for every app on macOS" />
-  <meta property="og:description" content="Press ⌘⇧Space, speak, text appears. AI-polished. Free & open source." />
+  <meta property="og:description" content="Press ⌘⇧Space, speak, text appears. Groq or Vertex AI. AI-polished. Free & open source." />
   <meta property="og:type" content="website" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -66,9 +66,7 @@
       gap: 0.5rem;
     }
 
-    .nav-logo svg {
-      color: var(--accent);
-    }
+    .nav-logo svg { color: var(--accent); }
 
     .nav-links {
       display: flex;
@@ -146,7 +144,7 @@
     .subtitle {
       font-size: 1.1rem;
       color: var(--muted);
-      max-width: 480px;
+      max-width: 520px;
       margin: 0 auto 3rem;
       line-height: 1.65;
     }
@@ -201,7 +199,6 @@
       gap: 1.1rem;
     }
 
-    /* Step rows */
     .demo-row {
       display: flex;
       align-items: center;
@@ -246,7 +243,6 @@
       letter-spacing: 0.01em;
     }
 
-    /* Waveform animation */
     .waveform {
       display: flex;
       align-items: center;
@@ -293,7 +289,6 @@
       50%       { opacity: 0.6; transform: scale(0.85); }
     }
 
-    /* Typewriter text */
     .demo-output {
       color: var(--text);
       overflow: hidden;
@@ -412,9 +407,7 @@
       margin-bottom: 3rem;
     }
 
-    .features-header .section-sub {
-      margin: 0 auto;
-    }
+    .features-header .section-sub { margin: 0 auto; }
 
     .feat-grid {
       display: grid;
@@ -459,6 +452,72 @@
       line-height: 1.55;
     }
 
+    /* ── PROVIDERS SECTION ── */
+    .providers-section { border-top: 1px solid var(--border); }
+
+    .provider-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-top: 2.5rem;
+    }
+
+    .prov-card {
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 14px;
+      padding: 2rem;
+      transition: border-color 0.15s;
+    }
+    .prov-card:hover { border-color: var(--accent); }
+
+    .prov-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .prov-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .prov-icon.groq { background: rgba(255,165,0,0.12); border: 1px solid rgba(255,165,0,0.25); color: #ffa500; }
+    .prov-icon.vertex { background: rgba(66,133,244,0.12); border: 1px solid rgba(66,133,244,0.25); color: #4285f4; }
+
+    .prov-name { font-size: 1.1rem; font-weight: 600; }
+    .prov-tag { font-size: 0.72rem; color: var(--dim); margin-top: 0.15rem; }
+
+    .prov-card ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .prov-card li {
+      font-size: 0.85rem;
+      color: var(--muted);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      line-height: 1.5;
+    }
+
+    .prov-card li::before {
+      content: "✓";
+      color: var(--green);
+      font-weight: 600;
+      flex-shrink: 0;
+      margin-top: 0.05rem;
+    }
+
     /* ── INSTALL SECTION ── */
     .install-section .section-inner {
       display: grid;
@@ -483,10 +542,7 @@
       gap: 0.5rem;
     }
 
-    .code-header-dots {
-      display: flex;
-      gap: 5px;
-    }
+    .code-header-dots { display: flex; gap: 5px; }
 
     .ch-dot {
       width: 9px;
@@ -512,7 +568,6 @@
     .code-line { display: flex; gap: 0.75rem; }
     .code-ps { color: var(--dim); user-select: none; }
     .code-cmd { color: var(--text); }
-    .code-comment { color: var(--dim); font-style: italic; }
 
     .install-alt {
       margin-top: 1rem;
@@ -522,22 +577,45 @@
     }
 
     /* ── SETUP STEPS ── */
-    .setup-section {
-      border-top: 1px solid var(--border);
-    }
+    .setup-section { border-top: 1px solid var(--border); }
 
     .setup-section .section-inner {
-      max-width: 600px;
+      max-width: 620px;
       margin: 0 auto;
       text-align: center;
     }
+
+    .setup-tabs {
+      display: inline-flex;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border-hi);
+      border-radius: 10px;
+      padding: 3px;
+      margin: 2rem auto 0;
+    }
+
+    .setup-tab {
+      padding: 0.5rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+      transition: all 0.2s;
+    }
+    .setup-tab:hover { color: var(--text); }
+    .setup-tab.active { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(124,111,255,0.3); }
 
     .steps {
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
       text-align: left;
-      margin-top: 2.5rem;
+      margin-top: 1.5rem;
     }
 
     .step {
@@ -579,9 +657,9 @@
       line-height: 1.5;
     }
 
-    .step-body a {
-      color: var(--accent);
-    }
+    .step-body a { color: var(--accent); }
+
+    .hidden { display: none !important; }
 
     /* ── FOOTER ── */
     footer {
@@ -619,6 +697,8 @@
         gap: 2rem;
       }
 
+      .provider-cards { grid-template-columns: 1fr; }
+
       .install-strip {
         flex-direction: column;
         width: 100%;
@@ -645,6 +725,7 @@
   </div>
   <div class="nav-links">
     <a href="#features" class="hide-sm">Features</a>
+    <a href="#providers" class="hide-sm">Providers</a>
     <a href="#install" class="hide-sm">Install</a>
     <a href="#setup" class="hide-sm">Setup</a>
     <a href="https://github.com/tonyyun/audio-input" class="nav-gh">
@@ -660,14 +741,15 @@
 <section class="hero">
   <div class="badge">
     <span class="badge-dot"></span>
-    Free &amp; Open Source &middot; macOS
+    v0.3.5 &middot; Free &amp; Open Source &middot; macOS
   </div>
 
   <h1>Press a hotkey. Speak.<br /><em>Text appears&nbsp;&mdash; anywhere.</em></h1>
 
   <p class="subtitle">
     Global hotkey voice input for every app on macOS.
-    Open source, no account, no telemetry. Your API key&nbsp;&mdash; your data.
+    Choose between Groq Whisper or Google Vertex AI.
+    Open source, no telemetry, extensible.
   </p>
 
   <!-- Animated demo terminal -->
@@ -680,7 +762,6 @@
         <span class="tbar-title">Audio Input</span>
       </div>
       <div class="demo-body">
-
         <div class="demo-row">
           <span class="demo-label">Hotkey</span>
           <span class="demo-key">
@@ -690,32 +771,21 @@
           </span>
           <span style="color:var(--dim);font-size:0.78rem;margin-left:auto;">Hold to record</span>
         </div>
-
         <div class="demo-row">
           <span class="demo-label">Recording</span>
           <span class="mic-dot"></span>
           <div class="waveform">
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
-            <div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
           </div>
           <span style="color:var(--dim);font-size:0.78rem;margin-left:auto;">Release to send</span>
         </div>
-
         <div class="demo-row">
           <span class="demo-label">Output</span>
           <span class="demo-output">Transcribed and polished by AI.</span>
         </div>
-
       </div>
     </div>
   </div>
@@ -752,7 +822,7 @@
           </svg>
         </div>
         <h3>Works Everywhere</h3>
-        <p>Injects text directly into any focused input via macOS Accessibility API. Slack, Notion, Terminal, browsers — anywhere.</p>
+        <p>Injects text directly into any focused input via macOS Accessibility API. Slack, Notion, Terminal, browsers &mdash; anywhere.</p>
       </div>
 
       <div class="feat-card">
@@ -764,7 +834,18 @@
           </svg>
         </div>
         <h3>AI-Powered Polish</h3>
-        <p>An optional LLM pass removes filler words, fixes punctuation, and cleans up sentence flow. Screenshot context makes it smarter.</p>
+        <p>An optional LLM pass removes filler words, fixes punctuation, and cleans up sentence flow. Screenshot context makes it even smarter.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+        </div>
+        <h3>Multi-Provider</h3>
+        <p>Groq Whisper (free API key) or Google Vertex AI Gemini (enterprise ADC). Switch providers with one click. Extensible to new providers.</p>
       </div>
 
       <div class="feat-card">
@@ -774,19 +855,20 @@
             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
           </svg>
         </div>
-        <h3>Privacy First (BYOK)</h3>
-        <p>Bring Your Own API Key. Audio goes directly to Groq &mdash; no server of ours ever sees it. Unlike closed-source alternatives, you can read every line of code.</p>
+        <h3>Privacy First</h3>
+        <p>Audio goes directly to your chosen provider &mdash; no intermediary server. Fully open source, BYOK. You own your data.</p>
       </div>
 
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-            <polyline points="13 2 13 9 20 9"/>
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
           </svg>
         </div>
         <h3>50+ Languages</h3>
-        <p>Powered by Whisper large-v3-turbo. Chinese, English, Japanese, Korean, Spanish and more — auto-detected.</p>
+        <p>Whisper large-v3-turbo and Gemini handle Chinese, English, Japanese, Korean, Spanish, and many more &mdash; auto-detected.</p>
       </div>
 
       <div class="feat-card">
@@ -802,15 +884,83 @@
       <div class="feat-card">
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            <path d="M5 8l6 6"/>
+            <path d="M4 14l6-6 2-3"/>
+            <path d="M2 5h12"/>
+            <path d="M7 2h1"/>
+            <path d="M22 22l-5-10-5 10"/>
+            <path d="M14 18h6"/>
+          </svg>
+        </div>
+        <h3>English &amp; 中文 UI</h3>
+        <p>Interface defaults to English with one-click switch to Chinese. Language preference persists across restarts.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
           </svg>
         </div>
         <h3>Open Source</h3>
-        <p>MIT licensed. Audit the code, fork it, extend it. No subscription, no upsell. A better alternative to SuperWhisper.</p>
+        <p>MIT licensed. Audit the code, fork it, add your own provider. No subscription, no upsell.</p>
       </div>
 
+    </div>
+  </div>
+</section>
+
+<!-- PROVIDERS -->
+<section class="providers-section" id="providers">
+  <div class="section-inner">
+    <div style="text-align:center;margin-bottom:0.5rem;">
+      <p class="section-label">Providers</p>
+      <h2 class="section-title">Your cloud, your choice</h2>
+      <p class="section-sub" style="margin:0 auto;">Switch providers any time. Adding a new one takes 3 files.</p>
+    </div>
+
+    <div class="provider-cards">
+      <div class="prov-card">
+        <div class="prov-card-header">
+          <div class="prov-icon groq">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="prov-name">Groq</div>
+            <div class="prov-tag">Free API Key</div>
+          </div>
+        </div>
+        <ul>
+          <li>Whisper large-v3-turbo transcription</li>
+          <li>LLaMA-based AI polish</li>
+          <li>Free tier &mdash; generous for daily use</li>
+          <li>Sign up at <a href="https://console.groq.com">console.groq.com</a></li>
+        </ul>
+      </div>
+
+      <div class="prov-card">
+        <div class="prov-card-header">
+          <div class="prov-icon vertex">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke-linecap="round"/>
+              <line x1="12" y1="22.08" x2="12" y2="12" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="prov-name">Vertex AI</div>
+            <div class="prov-tag">Google Cloud</div>
+          </div>
+        </div>
+        <ul>
+          <li>Gemini 2.5 Flash / Pro transcription</li>
+          <li>Multimodal polish with screenshot context</li>
+          <li>No API key &mdash; uses <code style="background:var(--surface-hi);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.82rem;color:var(--muted);">gcloud</code> ADC</li>
+          <li>Enterprise-grade for teams already on GCP</li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
@@ -859,43 +1009,61 @@
   <div class="section-inner">
     <p class="section-label">Setup</p>
     <h2 class="section-title">Up and running in 3 steps</h2>
-    <p class="section-sub" style="margin:0 auto;">No account needed. Just a free API key.</p>
+    <p class="section-sub" style="margin:0 auto;">Pick a provider and start talking.</p>
 
-    <div class="steps">
+    <div class="setup-tabs">
+      <button class="setup-tab active" onclick="switchSetup('groq')">Groq (Free)</button>
+      <button class="setup-tab" onclick="switchSetup('vertex')">Vertex AI</button>
+    </div>
 
+    <!-- Groq steps -->
+    <div class="steps" id="steps-groq">
       <div class="step">
         <div class="step-num">1</div>
         <div class="step-body">
           <h4>Get a free Groq API key</h4>
-          <p>
-            Sign up at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>.
-            The free tier is generous enough for daily use.
-          </p>
+          <p>Sign up at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>. The free tier is generous enough for daily use.</p>
         </div>
       </div>
-
       <div class="step">
         <div class="step-num">2</div>
         <div class="step-body">
-          <h4>Set your key in the app</h4>
-          <p>
-            Launch Audio Input. Right-click the menu bar icon
-            and choose <strong>Configure API Key</strong>, then paste your Groq key.
-          </p>
+          <h4>Paste your key in the app</h4>
+          <p>Launch Audio Input, select <strong>Groq</strong> as your provider, and paste the API key. Done.</p>
         </div>
       </div>
-
       <div class="step">
         <div class="step-num">3</div>
         <div class="step-body">
           <h4>Press <kbd style="background:var(--surface-hi);border:1px solid var(--border-hi);border-radius:4px;padding:0.1rem 0.4rem;font-family:var(--mono);font-size:0.85rem;">&#8984;&#8679;Space</kbd> and speak</h4>
-          <p>
-            Hold the hotkey, dictate, release. Your words appear at the cursor in
-            any app &mdash; polished and ready.
-          </p>
+          <p>Hold the hotkey, dictate, release. Your words appear at the cursor &mdash; polished and ready.</p>
         </div>
       </div>
+    </div>
 
+    <!-- Vertex AI steps -->
+    <div class="steps hidden" id="steps-vertex">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <h4>Authenticate with gcloud</h4>
+          <p>Run <code style="background:var(--surface-hi);padding:0.15rem 0.4rem;border-radius:4px;font-family:var(--mono);font-size:0.82rem;color:var(--muted);">gcloud auth application-default login</code> in your terminal. No API key needed.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <h4>Select Vertex AI and enter your project</h4>
+          <p>Launch Audio Input, switch to <strong>Vertex AI</strong>, enter your GCP project ID, and pick a Gemini model.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <h4>Press <kbd style="background:var(--surface-hi);border:1px solid var(--border-hi);border-radius:4px;padding:0.1rem 0.4rem;font-family:var(--mono);font-size:0.85rem;">&#8984;&#8679;Space</kbd> and speak</h4>
+          <p>Hold the hotkey, dictate, release. Gemini transcribes and polishes your words in one pass.</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -906,11 +1074,13 @@
     <a href="https://github.com/tonyyun/audio-input">GitHub</a>
     <a href="https://github.com/tonyyun/audio-input/releases">Releases</a>
     <a href="https://github.com/tonyyun/audio-input/issues">Issues</a>
+    <a href="https://github.com/tonyyun/audio-input/blob/main/PRIVACY.md">Privacy</a>
     <a href="https://github.com/tonyyun/audio-input/blob/main/LICENSE">MIT License</a>
   </div>
   <div>
     Audio Input &middot; Built with Tauri + Rust + Svelte &middot; Powered by
-    <a href="https://groq.com" target="_blank" rel="noopener">Groq</a> Whisper
+    <a href="https://groq.com" target="_blank" rel="noopener">Groq</a> Whisper &amp;
+    <a href="https://cloud.google.com/vertex-ai" target="_blank" rel="noopener">Vertex AI</a> Gemini
   </div>
 </footer>
 
@@ -928,6 +1098,14 @@
     });
   }
 
+  function switchSetup(provider) {
+    document.querySelectorAll('.setup-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.steps').forEach(s => s.classList.add('hidden'));
+
+    event.target.classList.add('active');
+    document.getElementById('steps-' + provider).classList.remove('hidden');
+  }
+
   // Restart the typing animation when the demo scrolls into view
   (function () {
     const output = document.querySelector('.demo-output');
@@ -936,7 +1114,6 @@
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
-          // Replay animations by toggling a class
           const rows = document.querySelectorAll('.demo-row');
           rows.forEach(r => { r.style.animation = 'none'; r.offsetHeight; r.style.animation = ''; });
           output.style.animation = 'none';
