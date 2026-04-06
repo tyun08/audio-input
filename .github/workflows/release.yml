@@ -89,6 +89,11 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      - name: Sync version from tag into tauri.conf.json
+        run: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
+
       - name: Build and upload to release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -111,7 +116,7 @@ jobs:
             --draft=false \
             --repo tyun08/audio-input
 
-      - name: Download DMG and compute SHA256
+      - name: Download DMGs and compute SHA256
         id: sha
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,9 +125,15 @@ jobs:
           gh release download v${VERSION} \
             --repo tyun08/audio-input \
             --pattern "*aarch64.dmg" \
-            -O audio-input.dmg
-          SHA=$(shasum -a 256 audio-input.dmg | awk '{print $1}')
-          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+            -O arm.dmg
+          gh release download v${VERSION} \
+            --repo tyun08/audio-input \
+            --pattern "*x64.dmg" \
+            -O intel.dmg
+          SHA_ARM=$(shasum -a 256 arm.dmg | awk '{print $1}')
+          SHA_INTEL=$(shasum -a 256 intel.dmg | awk '{print $1}')
+          echo "sha256_arm=$SHA_ARM" >> "$GITHUB_OUTPUT"
+          echo "sha256_intel=$SHA_INTEL" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Checkout homebrew-tap
@@ -135,9 +146,13 @@ jobs:
       - name: Update cask formula
         run: |
           VERSION=${{ steps.sha.outputs.version }}
-          SHA=${{ steps.sha.outputs.sha256 }}
+          SHA_ARM=${{ steps.sha.outputs.sha256_arm }}
+          SHA_INTEL=${{ steps.sha.outputs.sha256_intel }}
           sed -i "s/version \".*\"/version \"${VERSION}\"/" tap/Casks/audio-input.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${SHA}\"/" tap/Casks/audio-input.rb
+          # Update arm sha256 (first occurrence)
+          sed -i "0,/sha256 \".*\"/{s/sha256 \".*\"/sha256 \"${SHA_ARM}\"/}" tap/Casks/audio-input.rb
+          # Update intel sha256 (second occurrence)
+          sed -i "0,/sha256 \".*\"/{!s/sha256 \".*\"/sha256 \"${SHA_INTEL}\"/}" tap/Casks/audio-input.rb
 
       - name: Commit and push
         run: |

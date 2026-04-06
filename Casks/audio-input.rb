@@ -2,12 +2,12 @@ cask "audio-input" do
   version "0.2.0"
 
   on_arm do
-    url "https://github.com/tyun08/audio-input/releases/download/v#{version}/Audio%20Input_#{version}_aarch64.dmg"
+    url "https://github.com/tyun08/audio-input/releases/download/v#{version}/Audio.Input_#{version}_aarch64.dmg"
     sha256 "PLACEHOLDER_SHA256" # Run: shasum -a 256 Audio\ Input_#{version}_aarch64.dmg
   end
 
   on_intel do
-    url "https://github.com/tyun08/audio-input/releases/download/v#{version}/Audio%20Input_#{version}_x64.dmg"
+    url "https://github.com/tyun08/audio-input/releases/download/v#{version}/Audio.Input_#{version}_x64.dmg"
     sha256 "PLACEHOLDER_SHA256" # Run: shasum -a 256 Audio\ Input_#{version}_x64.dmg
   end
 
