@@ -54,7 +54,6 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot": "Screenshot Context",
     "settings.screenshot_desc":
       "Capture screen while recording for better polish",
-    "settings.opacity": "Window Opacity",
     "settings.language": "Language",
 
     // Onboarding
@@ -116,7 +115,6 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.autostart_desc": "登录时自动启动",
     "settings.screenshot": "截图上下文",
     "settings.screenshot_desc": "录音时截屏，提升润色准确度",
-    "settings.opacity": "窗口不透明度",
     "settings.language": "语言",
 
     "onboarding.start": "开始配置",

@@ -20,7 +20,6 @@
 
   let preferredDevice: string | null = null;
   let shortcut = "Meta+Shift+Space";
-  export let windowOpacity: number = 1.0;
   let saving = false;
   let saved = false;
   let error = "";
@@ -64,11 +63,6 @@
     } finally {
       saving = false;
     }
-  }
-
-  function handleOpacityChange(e: Event) {
-    windowOpacity = parseFloat((e.target as HTMLInputElement).value);
-    localStorage.setItem("window-opacity", String(windowOpacity));
   }
 
   async function handlePolishToggle() {
@@ -315,16 +309,6 @@
       </button>
     </div>
 
-    <div class="divider"></div>
-
-    <!-- Opacity -->
-    <div class="section">
-      <div class="row-label-block">
-        <span class="section-label">{$t('settings.opacity')}</span>
-        <span class="row-desc">{Math.round(windowOpacity * 100)}%</span>
-      </div>
-      <input type="range" min="0.2" max="1" step="0.05" value={windowOpacity} on:input={handleOpacityChange} class="opacity-slider" />
-    </div>
   </div>
 
   {#if error}<div class="error-banner">{error}</div>{/if}
@@ -333,12 +317,13 @@
 
 <style>
   .settings-panel {
-    width: 100%;
-    height: 100%;
-    background: #1e1e20;
+    width: 320px;
+    background: rgba(30,30,32,0.92);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5);
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
     font-family: -apple-system,"SF Pro Text",BlinkMacSystemFont,sans-serif;
     -webkit-font-smoothing: antialiased;
   }
@@ -353,7 +338,7 @@
   @keyframes spin { to { transform:rotate(360deg); } }
   .close-btn { background:rgba(255,255,255,0.08); border:none; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background .15s; padding:0; }
   .close-btn:hover { background:rgba(255,255,255,0.15); }
-  .sections { padding:4px 0; overflow-y:auto; flex:1; min-height:0; }
+  .sections { padding:4px 0; overflow-y:auto; max-height:calc(100vh - 56px); }
   .section { padding:11px 16px; display:flex; flex-direction:column; gap:7px; }
   .section.row-section { flex-direction:row; align-items:center; justify-content:space-between; }
   .section-label { font-size:13px; font-weight:500; color:rgba(255,255,255,0.8); }
@@ -411,5 +396,4 @@
   .conflict-banner { padding:6px 10px; border-radius:8px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2); font-size:11px; color:rgba(251,191,36,0.85); line-height:1.5; }
   .error-banner { margin:0 16px 12px; padding:7px 10px; border-radius:8px; background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.25); font-size:12px; color:#f87171; }
   .saved-banner { margin:0 16px 12px; padding:7px 10px; border-radius:8px; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); font-size:12px; color:rgba(134,239,172,0.9); text-align:center; }
-  .opacity-slider { width:100%; accent-color:rgba(99,102,241,0.85); cursor:pointer; }
 </style>

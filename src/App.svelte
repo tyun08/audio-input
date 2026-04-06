@@ -62,12 +62,16 @@
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
-  let windowOpacity = parseFloat(localStorage.getItem("window-opacity") || "1");
 
   const appWindow = getCurrentWindow();
   const unlisten: UnlistenFn[] = [];
 
   onMount(async () => {
+    // Clear stale inline styles left by previous HMR cycles
+    document.documentElement.removeAttribute('style');
+    document.body.removeAttribute('style');
+    localStorage.removeItem('window-opacity');
+
     // Check onboarding
     const onboardingDone = await invoke<boolean>("get_onboarding_completed").catch(() => true);
     if (!onboardingDone) {
@@ -100,6 +104,7 @@
           if (showSettings) {
             savePos(SETTINGS_POS_KEY);
             showSettings = false;
+            invoke("set_native_opaque", { opaque: false });
           }
           resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
         } else if (e.payload === "idle" && !showSettings && !needsAccessibilityRestart) {
@@ -134,6 +139,7 @@
       await listen("api-key-missing", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
+        await invoke("set_native_opaque", { opaque: true });
         await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
@@ -143,6 +149,7 @@
       await listen("show-settings", async () => {
         await savePos(HUD_POS_KEY);
         showSettings = true;
+        await invoke("set_native_opaque", { opaque: true });
         await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
@@ -176,6 +183,7 @@
         shortcutConflict = e.payload;
         await savePos(HUD_POS_KEY);
         showSettings = true;
+        await invoke("set_native_opaque", { opaque: true });
         await resizeTo(SETTINGS_W, SETTINGS_H, SETTINGS_POS_KEY);
       })
     );
@@ -198,12 +206,14 @@
   async function handleSettingsSaved() {
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
+    await invoke("set_native_opaque", { opaque: false });
     if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleSettingsClosed() {
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
+    await invoke("set_native_opaque", { opaque: false });
     if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
@@ -217,7 +227,7 @@
   }
 </script>
 
-<div class="container" class:panel-mode={showSettings || showOnboarding} style={windowOpacity < 1 ? `opacity:${windowOpacity}` : ''}>
+<div class="container">
   {#if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
   {:else if needsAccessibilityRestart}
@@ -241,7 +251,6 @@
   {:else if showSettings}
     <SettingsPanel
       bind:polishEnabled
-      bind:windowOpacity
       {audioDevices}
       bind:autostartEnabled
       bind:screenshotContextEnabled
@@ -262,10 +271,8 @@
     padding: 0;
   }
 
-  :global(html), :global(body) {
-    background: transparent;
-  }
   :global(body) {
+    background: transparent;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
     -webkit-font-smoothing: antialiased;
     user-select: none;
@@ -277,10 +284,6 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  .container.panel-mode {
-    overflow: hidden;
-    border-radius: 16px;
   }
 
   .ax-banner {

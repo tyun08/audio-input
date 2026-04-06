@@ -227,6 +227,7 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::set_native_opaque,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");

@@ -524,3 +524,60 @@ pub async fn save_onboarding_completed(
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
+
+/// Toggle NSWindow.isOpaque at runtime so WebKit uses the high-quality opaque
+/// text rendering path when showing panels, and transparent mode for the HUD.
+#[tauri::command]
+pub fn set_native_opaque(opaque: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let app: *mut objc::runtime::Object =
+                msg_send![class!(NSApplication), sharedApplication];
+            let windows: *mut objc::runtime::Object = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            for i in 0..count {
+                let win: *mut objc::runtime::Object =
+                    msg_send![windows, objectAtIndex: i];
+                let is_visible: bool = msg_send![win, isVisible];
+                if !is_visible {
+                    continue;
+                }
+                let _: () = msg_send![win, setOpaque: opaque];
+                let bg: *mut objc::runtime::Object = if opaque {
+                    msg_send![
+                        class!(NSColor),
+                        colorWithRed: 0.118f64
+                        green: 0.118f64
+                        blue: 0.125f64
+                        alpha: 1.0f64
+                    ]
+                } else {
+                    msg_send![class!(NSColor), clearColor]
+                };
+                let _: () = msg_send![win, setBackgroundColor: bg];
+
+                // Round the window frame view (superview of contentView)
+                // so the opaque background is clipped to rounded corners
+                let content: *mut objc::runtime::Object = msg_send![win, contentView];
+                let frame_view: *mut objc::runtime::Object = msg_send![content, superview];
+                if !frame_view.is_null() {
+                    let _: () = msg_send![frame_view, setWantsLayer: true];
+                    let layer: *mut objc::runtime::Object = msg_send![frame_view, layer];
+                    if !layer.is_null() {
+                        if opaque {
+                            let _: () = msg_send![layer, setCornerRadius: 16.0f64];
+                            let _: () = msg_send![layer, setMasksToBounds: true];
+                        } else {
+                            let _: () = msg_send![layer, setCornerRadius: 0.0f64];
+                            let _: () = msg_send![layer, setMasksToBounds: false];
+                        }
+                    }
+                }
+
+                let _: () = msg_send![win, invalidateShadow];
+            }
+        }
+    }
+}
