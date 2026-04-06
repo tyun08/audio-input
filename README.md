@@ -1,8 +1,10 @@
 # Audio Input
 
-I love the voice input in ChatGPT — but I couldn't find a good standalone tool that works system-wide on macOS. So I built one in Rust.
+Press a global hotkey, speak, and your words are transcribed into whatever is focused — any app, any input.
 
-Press a global hotkey, speak, and your words are transcribed and typed into whatever is focused. Works in every app. Free and open-source alternative to [SuperWhisper](https://superwhisper.com).
+Open source (MIT). No account, no telemetry, no server of ours. Your Groq API key goes directly to Groq.
+
+Free alternative to [SuperWhisper](https://superwhisper.com).
 
 [![Release](https://img.shields.io/github/v/release/tonyyun/audio-input)](https://github.com/tonyyun/audio-input/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
