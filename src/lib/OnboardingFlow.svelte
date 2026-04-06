@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
 
   const dispatch = createEventDispatcher();
@@ -9,27 +9,57 @@
 
   let step = 1;
 
+  let provider: "groq" | "vertex_ai" = "groq";
   let apiKey = "";
-  let apiKeySaving = false;
-  let apiKeySaved = false;
-  let apiKeyError = "";
+  let gcpProjectId = "";
+  let gcpLocation = "us-central1";
+  let vertexModel = "gemini-2.5-flash";
+  let adcAvailable = false;
 
-  async function saveApiKey() {
-    if (!apiKey.trim()) {
-      apiKeyError = "请输入 API Key";
-      return;
-    }
-    apiKeySaving = true;
-    apiKeyError = "";
+  let configSaving = false;
+  let configSaved = false;
+  let configError = "";
+
+  onMount(async () => {
+    adcAvailable = await invoke<boolean>("check_vertex_auth").catch(() => false);
+  });
+
+  async function saveConfig() {
+    configSaving = true;
+    configError = "";
     try {
-      await invoke("save_api_key", { key: apiKey.trim() });
-      apiKeySaved = true;
-      setTimeout(() => { step = isWindows ? 4 : 3; }, 600);
+      await invoke("save_provider", { provider });
+      if (provider === "groq") {
+        if (!apiKey.trim()) {
+          configError = "请输入 API Key";
+          configSaving = false;
+          return;
+        }
+        await invoke("save_api_key", { key: apiKey.trim() });
+      } else {
+        if (!gcpProjectId.trim()) {
+          configError = "请输入项目 ID";
+          configSaving = false;
+          return;
+        }
+        await invoke("save_vertex_config", {
+          projectId: gcpProjectId.trim(),
+          location: gcpLocation.trim() || "us-central1",
+          model: vertexModel,
+        });
+      }
+      configSaved = true;
+      setTimeout(() => { step = isWindows ? totalSteps : 3; }, 500);
     } catch (e) {
-      apiKeyError = String(e);
+      configError = String(e);
     } finally {
-      apiKeySaving = false;
+      configSaving = false;
     }
+  }
+
+  async function skipConfig() {
+    await invoke("save_provider", { provider });
+    step = isWindows ? totalSteps : 3;
   }
 
   async function finishOnboarding() {
@@ -63,34 +93,101 @@
         </svg>
       </div>
       <h1 class="app-name">Audio Input</h1>
-      <p class="app-desc">按下快捷键，说话，文字自动输入到任意应用。<br>基于 Groq Whisper 的极速语音转文字。</p>
+      <p class="app-desc">按下快捷键，说话，文字自动输入到任意应用。<br>支持 Groq Whisper 和 Google Vertex AI。</p>
       <button class="primary-btn" on:click={next}>开始配置</button>
     </div>
 
-  <!-- Step 2: API Key -->
+  <!-- Step 2: Provider + Config -->
   {:else if step === 2}
     <div class="step">
-      <div class="step-num">2 / 4</div>
-      <h2>配置 Groq API Key</h2>
-      <p class="desc">
-        前往 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费注册并获取 API Key（免费额度足够日常使用）。
-      </p>
-      <input
-        type="password"
-        class="api-input"
-        placeholder="gsk_..."
-        bind:value={apiKey}
-        on:keydown={(e) => e.key === "Enter" && saveApiKey()}
-        autocomplete="off"
-        spellcheck="false"
-      />
-      {#if apiKeyError}
-        <div class="err">{apiKeyError}</div>
+      <div class="step-num">{step} / {totalSteps}</div>
+      <h2>配置 AI 服务</h2>
+
+      <!-- Provider toggle -->
+      <div class="provider-tabs">
+        <button
+          class="provider-tab"
+          class:active={provider === "groq"}
+          on:click={() => { provider = "groq"; configError = ""; }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="tab-text">
+            <span class="tab-name">Groq</span>
+            <span class="tab-desc">免费 API Key</span>
+          </div>
+        </button>
+        <button
+          class="provider-tab"
+          class:active={provider === "vertex_ai"}
+          on:click={() => { provider = "vertex_ai"; configError = ""; }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="12" y1="22.08" x2="12" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <div class="tab-text">
+            <span class="tab-name">Vertex AI</span>
+            <span class="tab-desc">Google Cloud</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Config form -->
+      {#if provider === "groq"}
+        <p class="desc">
+          前往 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费获取 API Key。
+        </p>
+        <input
+          type="password"
+          class="config-input"
+          placeholder="gsk_..."
+          bind:value={apiKey}
+          on:keydown={(e) => e.key === "Enter" && saveConfig()}
+          autocomplete="off"
+          spellcheck="false"
+        />
+      {:else}
+        <p class="desc">使用 gcloud 本地凭证连接 Vertex AI Gemini。</p>
+        <input
+          type="text"
+          class="config-input"
+          placeholder="GCP 项目 ID"
+          bind:value={gcpProjectId}
+          on:keydown={(e) => e.key === "Enter" && saveConfig()}
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <div class="mini-row">
+          <input
+            type="text"
+            class="config-input mini mono"
+            placeholder="us-central1"
+            bind:value={gcpLocation}
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <select class="config-select" bind:value={vertexModel}>
+            <option value="gemini-2.5-flash">2.5 Flash</option>
+            <option value="gemini-2.5-pro">2.5 Pro</option>
+            <option value="gemini-2.0-flash">2.0 Flash</option>
+          </select>
+        </div>
+        <div class="adc-status" class:ok={adcAvailable}>
+          <div class="adc-dot"></div>
+          <span>{adcAvailable ? "gcloud 凭证已就绪" : "运行 gcloud auth application-default login"}</span>
+        </div>
+      {/if}
+
+      {#if configError}
+        <div class="err">{configError}</div>
       {/if}
       <div class="btn-row">
-        <button class="ghost-btn" on:click={() => { step = isWindows ? 4 : 3; }}>跳过</button>
-        <button class="primary-btn" on:click={saveApiKey} disabled={apiKeySaving}>
-          {#if apiKeySaved}已保存{:else if apiKeySaving}保存中...{:else}保存并继续{/if}
+        <button class="ghost-btn" on:click={skipConfig}>跳过</button>
+        <button class="primary-btn" on:click={saveConfig} disabled={configSaving}>
+          {#if configSaved}已保存{:else if configSaving}保存中...{:else}保存并继续{/if}
         </button>
       </div>
     </div>
@@ -98,13 +195,12 @@
   <!-- Step 3: Accessibility -->
   {:else if step === 3}
     <div class="step">
-      <div class="step-num">3 / 4</div>
+      <div class="step-num">{step} / {totalSteps}</div>
       <h2>授权辅助功能</h2>
       <p class="desc">
         Audio Input 需要辅助功能权限才能将文字注入到其他应用。这是必要权限，不用于任何其他用途。
       </p>
 
-      <!-- CSS illustration of system settings path -->
       <div class="ax-illustration">
         <div class="path-step">
           <div class="path-icon">
@@ -136,8 +232,8 @@
       </div>
     </div>
 
-  <!-- Step 4: Done -->
-  {:else if step === 4}
+  <!-- Step 4 (or 3 on Windows): Done -->
+  {:else if step === totalSteps}
     <div class="step">
       <div class="done-check">
         <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -241,7 +337,59 @@
     text-decoration: none;
   }
 
-  .api-input {
+  /* Provider tabs */
+  .provider-tabs {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .provider-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: rgba(255,255,255,0.4);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    text-align: left;
+  }
+
+  .provider-tab:hover {
+    border-color: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.6);
+  }
+
+  .provider-tab.active {
+    border-color: rgba(129, 140, 248, 0.45);
+    background: rgba(99, 102, 241, 0.08);
+    color: rgba(165, 180, 252, 0.95);
+  }
+
+  .tab-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .tab-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .tab-desc {
+    font-size: 10px;
+    opacity: 0.55;
+    font-weight: 400;
+  }
+
+  /* Config inputs */
+  .config-input {
     width: 100%;
     padding: 9px 12px;
     border-radius: 10px;
@@ -249,24 +397,88 @@
     background: rgba(255,255,255,0.05);
     color: rgba(255,255,255,0.9);
     font-size: 13px;
-    font-family: "SF Mono", "Fira Code", monospace;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     outline: none;
     text-align: left;
     transition: border-color 0.15s;
   }
 
-  .api-input:focus {
+  .config-input.mono {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+  }
+
+  .config-input:focus {
     border-color: rgba(129, 140, 248, 0.5);
   }
 
-  .api-input::placeholder {
+  .config-input::placeholder {
     color: rgba(255,255,255,0.2);
+  }
+
+  .mini-row {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .config-input.mini {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .config-select {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    color: rgba(255,255,255,0.9);
+    font-size: 12px;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    outline: none;
+    cursor: pointer;
+    appearance: auto;
   }
 
   .err {
     font-size: 12px;
     color: #f87171;
     align-self: flex-start;
+  }
+
+  /* ADC status */
+  .adc-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(248, 113, 113, 0.75);
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(248, 113, 113, 0.05);
+    border: 1px solid rgba(248, 113, 113, 0.1);
+    text-align: left;
+  }
+
+  .adc-status.ok {
+    color: rgba(134, 239, 172, 0.8);
+    background: rgba(74, 222, 128, 0.05);
+    border-color: rgba(74, 222, 128, 0.12);
+  }
+
+  .adc-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(248, 113, 113, 0.65);
+    flex-shrink: 0;
+  }
+
+  .adc-status.ok .adc-dot {
+    background: rgba(74, 222, 128, 0.65);
   }
 
   /* Accessibility illustration */

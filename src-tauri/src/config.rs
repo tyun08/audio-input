@@ -4,9 +4,30 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
 use tracing::info;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Provider {
+    Groq,
+    VertexAi,
+}
+
+impl Default for Provider {
+    fn default() -> Self {
+        Provider::Groq
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub api_key: String,
+    #[serde(default)]
+    pub provider: Provider,
+    #[serde(default)]
+    pub gcp_project_id: String,
+    #[serde(default = "default_gcp_location")]
+    pub gcp_location: String,
+    #[serde(default = "default_vertex_model")]
+    pub vertex_model: String,
     #[serde(default = "default_polish_enabled")]
     pub polish_enabled: bool,
     #[serde(default)]
@@ -23,6 +44,14 @@ fn default_polish_enabled() -> bool {
     true
 }
 
+fn default_gcp_location() -> String {
+    "us-central1".to_string()
+}
+
+fn default_vertex_model() -> String {
+    "gemini-2.5-flash".to_string()
+}
+
 fn default_shortcut() -> String {
     #[cfg(target_os = "windows")]
     return "Ctrl+Shift+Space".to_string();
@@ -34,6 +63,10 @@ impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
             api_key: String::new(),
+            provider: Provider::Groq,
+            gcp_project_id: String::new(),
+            gcp_location: default_gcp_location(),
+            vertex_model: default_vertex_model(),
             polish_enabled: true,
             preferred_device: None,
             shortcut: default_shortcut(),

@@ -6,7 +6,7 @@
   import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
-  const PANEL_W = 340, PANEL_H = 560;
+  const PANEL_W = 340, PANEL_H = 620;
   const AX_W = 320, AX_H = 160;
 
   const HUD_POS_KEY = "hud-window-pos";

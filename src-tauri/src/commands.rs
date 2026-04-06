@@ -1,10 +1,10 @@
 use crate::{
     audio::{encode_wav, Recorder},
-    config::AppConfig,
+    config::{AppConfig, Provider},
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, ScreenshotState, SharedState},
-    transcription::{polish, GroqClient},
+    transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
 };
 use std::sync::{Arc, Mutex};
@@ -150,28 +150,86 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
-    // 读取 API Key
-    let api_key = match get_api_key(&app) {
-        Some(k) => {
-            info!("API Key 已加载（前8位: {}...）", &k[..k.len().min(8)]);
-            k
-        }
-        None => {
-            warn!("未配置 API Key — 请通过托盘菜单「配置 API Key」填入");
-            let _ = app.emit("api-key-missing", ());
-            set_error(&app, &shared_state, "未配置 Groq API Key");
-            return;
-        }
+    // 读取 provider 配置
+    let (provider, api_key, project_id, location, vertex_model) = {
+        let config = app.state::<Arc<Mutex<AppConfig>>>();
+        let cfg = config.lock().unwrap();
+        (
+            cfg.provider.clone(),
+            cfg.api_key.clone(),
+            cfg.gcp_project_id.clone(),
+            cfg.gcp_location.clone(),
+            cfg.vertex_model.clone(),
+        )
     };
 
-    // 调用 Groq API
-    let client = GroqClient::new(api_key.clone());
-    let raw_text = match client.transcribe(wav_bytes).await {
-        Ok(t) => t,
-        Err(e) => {
-            error!("转录失败: {}", e);
-            set_error(&app, &shared_state, &e.to_string());
-            return;
+    // 验证 provider 配置
+    match &provider {
+        Provider::Groq => {
+            let effective_key = std::env::var("GROQ_API_KEY")
+                .ok()
+                .filter(|k| !k.is_empty())
+                .unwrap_or(api_key.clone());
+            if effective_key.is_empty() {
+                warn!("未配置 Groq API Key");
+                let _ = app.emit("api-key-missing", ());
+                set_error(&app, &shared_state, "未配置 Groq API Key");
+                return;
+            }
+        }
+        Provider::VertexAi => {
+            if project_id.is_empty() {
+                warn!("Vertex AI 项目 ID 未配置");
+                let _ = app.emit("show-settings", ());
+                set_error(&app, &shared_state, "Vertex AI 未配置项目 ID");
+                return;
+            }
+        }
+    }
+
+    let effective_api_key = std::env::var("GROQ_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty())
+        .unwrap_or(api_key);
+
+    if provider == Provider::Groq {
+        info!(
+            "使用 Groq（Key 前8位: {}...）",
+            &effective_api_key[..effective_api_key.len().min(8)]
+        );
+    } else {
+        info!("使用 Vertex AI（项目: {}, 区域: {}, 模型: {}）", project_id, location, vertex_model);
+    }
+
+    // 转录
+    let raw_text = match &provider {
+        Provider::Groq => {
+            let client = GroqClient::new(effective_api_key.clone());
+            match client.transcribe(wav_bytes).await {
+                Ok(t) => t,
+                Err(e) => {
+                    error!("Groq 转录失败: {}", e);
+                    set_error(&app, &shared_state, &e.to_string());
+                    return;
+                }
+            }
+        }
+        Provider::VertexAi => {
+            match VertexClient::new(project_id.clone(), location.clone(), vertex_model.clone()).await {
+                Ok(client) => match client.transcribe(wav_bytes).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!("Vertex AI 转录失败: {}", e);
+                        set_error(&app, &shared_state, &e.to_string());
+                        return;
+                    }
+                },
+                Err(e) => {
+                    error!("Vertex AI 客户端初始化失败: {}", e);
+                    set_error(&app, &shared_state, &format!("Vertex AI 认证失败: {}", e));
+                    return;
+                }
+            }
         }
     };
 
@@ -189,24 +247,39 @@ async fn stop_and_transcribe<R: Runtime>(
             enabled
         };
         if polish_enabled {
-            // Take the screenshot out of state (clears it for the next recording).
             let screenshot = {
                 let screenshot_state = app.state::<ScreenshotState>();
                 let shot = screenshot_state.lock().unwrap().take();
                 shot
             };
-            info!("润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
-                  if screenshot.is_some() { "有" } else { "无" });
-            let (polished, failed) =
-                polish::polish_text(&raw_text, &api_key, screenshot.as_deref()).await;
+            info!(
+                "润色开关已开启，调用 LLM 润色 (截图上下文: {})...",
+                if screenshot.is_some() { "有" } else { "无" }
+            );
+            let (polished, failed) = match &provider {
+                Provider::Groq => {
+                    polish::polish_text(&raw_text, &effective_api_key, screenshot.as_deref()).await
+                }
+                Provider::VertexAi => {
+                    vertex::polish_text_vertex(
+                        &raw_text,
+                        &project_id,
+                        &location,
+                        &vertex_model,
+                        screenshot.as_deref(),
+                    )
+                    .await
+                }
+            };
             if failed {
                 let _ = app.emit("polish-failed", ());
             }
             polished
         } else {
-            // Clear screenshot state even if polish is disabled.
-            let screenshot_state = app.state::<ScreenshotState>();
-            screenshot_state.lock().unwrap().take();
+            {
+                let screenshot_state = app.state::<ScreenshotState>();
+                screenshot_state.lock().unwrap().take();
+            }
             raw_text
         }
     };
@@ -261,22 +334,6 @@ fn schedule_error_recovery<R: Runtime>(app: AppHandle<R>, shared_state: SharedSt
     });
 }
 
-fn get_api_key<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
-    // 优先环境变量
-    if let Ok(key) = std::env::var("GROQ_API_KEY") {
-        if !key.is_empty() {
-            return Some(key);
-        }
-    }
-    // 其次读持久化配置
-    let config = app.state::<Arc<Mutex<AppConfig>>>();
-    let cfg = config.lock().unwrap();
-    if cfg.api_key.is_empty() {
-        None
-    } else {
-        Some(cfg.api_key.clone())
-    }
-}
 
 // --- Tauri IPC Commands ---
 
@@ -453,4 +510,70 @@ pub async fn save_onboarding_completed(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Provider commands ---
+
+#[tauri::command]
+pub fn get_provider(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> String {
+    let cfg = config.lock().unwrap();
+    serde_json::to_value(&cfg.provider)
+        .ok()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(|| "groq".to_string())
+}
+
+#[tauri::command]
+pub async fn save_provider(
+    provider: String,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let p: Provider =
+        serde_json::from_value(serde_json::Value::String(provider)).map_err(|e| e.to_string())?;
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.provider = p;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Vertex AI config commands ---
+
+#[tauri::command]
+pub fn get_vertex_config(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> serde_json::Value {
+    let cfg = config.lock().unwrap();
+    serde_json::json!({
+        "project_id": cfg.gcp_project_id,
+        "location": cfg.gcp_location,
+        "model": cfg.vertex_model,
+    })
+}
+
+#[tauri::command]
+pub async fn save_vertex_config(
+    project_id: String,
+    location: String,
+    model: String,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.gcp_project_id = project_id;
+        cfg.gcp_location = location;
+        cfg.vertex_model = model;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn check_vertex_auth() -> bool {
+    vertex::check_adc_available()
 }

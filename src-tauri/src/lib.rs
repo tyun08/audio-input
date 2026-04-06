@@ -173,6 +173,11 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_provider,
+            commands::save_provider,
+            commands::get_vertex_config,
+            commands::save_vertex_config,
+            commands::check_vertex_auth,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Tauri 应用失败");
