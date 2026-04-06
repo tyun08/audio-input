@@ -43,6 +43,7 @@
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
+  import { t } from "./lib/i18n";
 
   type AppState = "idle" | "recording" | "processing" | "error";
 
@@ -142,7 +143,7 @@
     // 监听辅助功能权限缺失
     unlisten.push(
       await listen("accessibility-missing", () => {
-        errorMsg = "请在系统设置中授予辅助功能权限";
+        errorMsg = "Accessibility permission required";
         appState = "error";
         appWindow.show();
       })
@@ -216,12 +217,12 @@
         </svg>
       </div>
       <div class="ax-text">
-        <p>需要<strong>辅助功能</strong>权限才能自动注入文字</p>
-        <p class="hint">授权后请完全退出并重启 App</p>
+        <p>{$t('ax.need')}</p>
+        <p class="hint">{$t('ax.restart')}</p>
       </div>
       <div class="ax-buttons">
-        <button class="primary" on:click={() => invoke("open_accessibility_prefs")}>打开系统设置</button>
-        <button on:click={() => (needsAccessibilityRestart = false)}>忽略</button>
+        <button class="primary" on:click={() => invoke("open_accessibility_prefs")}>{$t('ax.open')}</button>
+        <button on:click={() => (needsAccessibilityRestart = false)}>{$t('ax.dismiss')}</button>
       </div>
     </div>
   {:else if showSettings}

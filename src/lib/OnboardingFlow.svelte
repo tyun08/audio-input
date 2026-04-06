@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { providers, getProvider, groupFields } from "./providers";
+  import { t, locale, type Locale } from "./i18n";
 
   const dispatch = createEventDispatcher();
 
@@ -69,6 +70,10 @@
   function next() {
     if (step < totalSteps) step++;
   }
+
+  function switchLocale(loc: Locale) {
+    $locale = loc;
+  }
 </script>
 
 <div class="onboarding">
@@ -81,6 +86,10 @@
   <!-- Step 1: Welcome -->
   {#if step === 1}
     <div class="step">
+      <div class="lang-pick">
+        <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
+        <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
+      </div>
       <div class="app-icon">
         <svg width="44" height="44" viewBox="0 0 48 48" fill="none">
           <rect width="48" height="48" rx="12" fill="rgba(99,102,241,0.18)"/>
@@ -90,16 +99,16 @@
           <line x1="18" y1="42" x2="30" y2="42" stroke="rgba(129,140,248,0.9)" stroke-width="3" stroke-linecap="round"/>
         </svg>
       </div>
-      <h1 class="app-name">Audio Input</h1>
-      <p class="app-desc">按下快捷键，说话，文字自动输入到任意应用。</p>
-      <button class="primary-btn" on:click={next}>开始配置</button>
+      <h1 class="app-name">{$t('app.name')}</h1>
+      <p class="app-desc">{$t('app.desc')}</p>
+      <button class="primary-btn" on:click={next}>{$t('onboarding.start')}</button>
     </div>
 
   <!-- Step 2: Provider + Config -->
   {:else if step === 2}
     <div class="step">
       <div class="step-num">{step} / {totalSteps}</div>
-      <h2>配置 AI 服务</h2>
+      <h2>{$t('onboarding.configure')}</h2>
 
       <div class="provider-tabs">
         {#each providers as p}
@@ -111,14 +120,14 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none">{@html p.icon}</svg>
             <div class="tab-text">
               <span class="tab-name">{p.name}</span>
-              <span class="tab-desc">{p.tagline}</span>
+              <span class="tab-desc">{p.tagline[$locale]}</span>
             </div>
           </button>
         {/each}
       </div>
 
       {#if currentProvider?.hint}
-        <p class="desc">{@html currentProvider.hint}</p>
+        <p class="desc">{@html currentProvider.hint[$locale]}</p>
       {/if}
 
       <!-- Dynamic config fields -->
@@ -134,7 +143,7 @@
             <input
               type="password"
               class="config-input"
-              placeholder={group[0].placeholder ?? group[0].label}
+              placeholder={group[0].placeholder ?? group[0].label[$locale]}
               bind:value={configValues[group[0].key]}
               on:keydown={(e) => e.key === "Enter" && saveConfig()}
               autocomplete="off"
@@ -145,7 +154,7 @@
               type="text"
               class="config-input"
               class:mono={group[0].mono}
-              placeholder={group[0].placeholder ?? group[0].label}
+              placeholder={group[0].placeholder ?? group[0].label[$locale]}
               bind:value={configValues[group[0].key]}
               on:keydown={(e) => e.key === "Enter" && saveConfig()}
               autocomplete="off"
@@ -166,7 +175,7 @@
                   type="text"
                   class="config-input mini"
                   class:mono={field.mono}
-                  placeholder={field.placeholder ?? field.label}
+                  placeholder={field.placeholder ?? field.label[$locale]}
                   bind:value={configValues[field.key]}
                   autocomplete="off"
                   spellcheck="false"
@@ -180,7 +189,7 @@
       {#if authStatus !== null && currentProvider?.authOkText}
         <div class="auth-badge" class:ok={authStatus}>
           <div class="auth-dot"></div>
-          <span>{authStatus ? currentProvider.authOkText : currentProvider.authFailText}</span>
+          <span>{authStatus ? currentProvider.authOkText[$locale] : (currentProvider.authFailText ?? currentProvider.authOkText)[$locale]}</span>
         </div>
       {/if}
 
@@ -188,9 +197,9 @@
         <div class="err">{configError}</div>
       {/if}
       <div class="btn-row">
-        <button class="ghost-btn" on:click={skipConfig}>跳过</button>
+        <button class="ghost-btn" on:click={skipConfig}>{$t('onboarding.skip')}</button>
         <button class="primary-btn" on:click={saveConfig} disabled={configSaving}>
-          {#if configSaved}已保存{:else if configSaving}保存中...{:else}保存并继续{/if}
+          {#if configSaved}{$t('onboarding.saved')}{:else if configSaving}{$t('settings.saving')}{:else}{$t('onboarding.save_continue')}{/if}
         </button>
       </div>
     </div>
@@ -199,8 +208,8 @@
   {:else if step === 3 && !isWindows}
     <div class="step">
       <div class="step-num">{step} / {totalSteps}</div>
-      <h2>授权辅助功能</h2>
-      <p class="desc">Audio Input 需要辅助功能权限才能将文字注入到其他应用。</p>
+      <h2>{$t('onboarding.ax_title')}</h2>
+      <p class="desc">{$t('onboarding.ax_desc')}</p>
       <div class="ax-illustration">
         <div class="path-step">
           <div class="path-icon">
@@ -210,18 +219,18 @@
               <line x1="12" y1="12" x2="12" y2="18" stroke="rgba(129,140,248,0.8)" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
           </div>
-          <span>系统设置</span>
+          <span>{$t('onboarding.ax_path1')}</span>
         </div>
         <div class="path-arrow">›</div>
-        <div class="path-step"><span>隐私与安全性</span></div>
+        <div class="path-step"><span>{$t('onboarding.ax_path2')}</span></div>
         <div class="path-arrow">›</div>
-        <div class="path-step"><span>辅助功能</span></div>
+        <div class="path-step"><span>{$t('onboarding.ax_path3')}</span></div>
         <div class="path-arrow">›</div>
-        <div class="path-step highlight"><span>+ Audio Input</span></div>
+        <div class="path-step highlight"><span>{$t('onboarding.ax_path4')}</span></div>
       </div>
       <div class="btn-row">
-        <button class="ghost-btn" on:click={next}>已完成</button>
-        <button class="primary-btn" on:click={() => invoke("open_accessibility_prefs")}>打开系统设置</button>
+        <button class="ghost-btn" on:click={next}>{$t('onboarding.ax_done')}</button>
+        <button class="primary-btn" on:click={() => invoke("open_accessibility_prefs")}>{$t('onboarding.ax_open')}</button>
       </div>
     </div>
 
@@ -234,12 +243,11 @@
           <path d="M8 14l4 4 8-8" stroke="rgba(74,222,128,0.9)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
-      <h2>准备就绪！</h2>
+      <h2>{$t('onboarding.ready')}</h2>
       <p class="desc">
-        按下 <kbd>{isWindows ? "Ctrl+Shift+Space" : "⌘⇧Space"}</kbd> 开始录音，松开自动转文字并输入到光标位置。
-        <br>点击{isWindows ? "系统托盘" : "菜单栏"}图标可打开设置。
+        {$t(isWindows ? 'onboarding.ready_win' : 'onboarding.ready_mac', isWindows ? 'Ctrl+Shift+Space' : '⌘⇧Space')}
       </p>
-      <button class="primary-btn" on:click={finishOnboarding}>开始使用</button>
+      <button class="primary-btn" on:click={finishOnboarding}>{$t('onboarding.finish')}</button>
     </div>
   {/if}
 </div>
@@ -255,9 +263,15 @@
   .app-icon { margin-top:4px; }
   .app-name { font-size:22px; font-weight:700; color:rgba(255,255,255,0.92); letter-spacing:-0.02em; }
   h2 { font-size:17px; font-weight:600; color:rgba(255,255,255,0.9); letter-spacing:-0.01em; }
-  .app-desc,.desc { font-size:13px; color:rgba(255,255,255,0.5); line-height:1.6; max-width:260px; }
+  .app-desc,.desc { font-size:13px; color:rgba(255,255,255,0.5); line-height:1.6; max-width:260px; white-space:pre-line; }
   .desc :global(a) { color:rgba(129,140,248,0.85); text-decoration:none; }
   .desc :global(code) { font-family:"SF Mono","Fira Code",monospace; font-size:10px; background:rgba(255,255,255,0.06); padding:1px 4px; border-radius:3px; color:rgba(255,255,255,0.5); }
+
+  /* Language picker on welcome step */
+  .lang-pick { display:flex; gap:0; background:rgba(255,255,255,0.04); border-radius:8px; padding:2px; border:1px solid rgba(255,255,255,0.06); }
+  .lang-pick button { padding:4px 14px; border:none; border-radius:6px; background:transparent; color:rgba(255,255,255,0.35); font-size:12px; font-weight:500; cursor:pointer; transition:all .2s; font-family:-apple-system,"SF Pro Text",BlinkMacSystemFont,sans-serif; }
+  .lang-pick button:hover { color:rgba(255,255,255,0.55); }
+  .lang-pick button.active { background:rgba(99,102,241,0.2); color:rgba(165,180,252,0.95); }
 
   /* Provider tabs */
   .provider-tabs { display:flex; gap:8px; width:100%; flex-wrap:wrap; }
@@ -291,7 +305,6 @@
   .path-arrow { font-size:13px; color:rgba(255,255,255,0.2); }
   .path-icon { display:flex; align-items:center; }
   .done-check { margin-top:8px; }
-  kbd { display:inline-block; padding:2px 6px; border-radius:5px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); font-family:-apple-system,"SF Pro Text",BlinkMacSystemFont,sans-serif; font-size:12px; color:rgba(255,255,255,0.75); }
 
   /* Buttons */
   .btn-row { display:flex; gap:10px; width:100%; justify-content:center; margin-top:4px; }

@@ -19,7 +19,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main-tray")
         .icon(idle_icon())
         .icon_as_template(true)
-        .tooltip("Audio Input — 点击或 ⌘⇧Space 开始录音")
+        .tooltip("Audio Input — Click or ⌘⇧Space to record")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -78,14 +78,14 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 }
 
 fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
-    let last     = MenuItem::with_id(app, "last-result", "尚无转录结果", false, None::<&str>)?;
+    let last     = MenuItem::with_id(app, "last-result", "No transcription yet", false, None::<&str>)?;
     let sep1     = PredefinedMenuItem::separator(app)?;
-    let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI 润色", true, polish_enabled, None::<&str>)?;
+    let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI Polish", true, polish_enabled, None::<&str>)?;
     let sep2     = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "设置...", true, None::<&str>)?;
-    let open_log = MenuItem::with_id(app, "open-log", "打开日志文件", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+    let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
     let sep3     = PredefinedMenuItem::separator(app)?;
-    let quit     = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let quit     = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     Menu::with_items(app, &[&last, &sep1, &polish, &sep2, &settings, &open_log, &sep3, &quit])
 }
@@ -110,7 +110,7 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
         } else {
             text.to_string()
         };
-        let _ = tray.set_tooltip(Some(format!("最近转录: {}", display)));
+        let _ = tray.set_tooltip(Some(format!("Last: {}", display)));
     }
 }
 

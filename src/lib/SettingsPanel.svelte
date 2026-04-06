@@ -2,7 +2,8 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { providers, getProvider, groupFields, type ProviderDef, type ProviderField } from "./providers";
+  import { providers, getProvider, groupFields } from "./providers";
+  import { t, locale, type Locale } from "./i18n";
 
   const dispatch = createEventDispatcher();
 
@@ -107,6 +108,10 @@
     await invoke("save_screenshot_context_enabled", { enabled: screenshotContextEnabled });
   }
 
+  function switchLocale(loc: Locale) {
+    $locale = loc;
+  }
+
   function showSaved() {
     saved = true;
     setTimeout(() => { saved = false; }, 1800);
@@ -127,12 +132,12 @@
 <div class="settings-panel">
   <!-- Header -->
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="header" role="toolbar" aria-label="设置标题栏" on:mousedown={handleHeaderMousedown}>
-    <span class="title">设置</span>
+  <div class="header" role="toolbar" aria-label="Settings" on:mousedown={handleHeaderMousedown}>
+    <span class="title">{$t('settings.title')}</span>
     {#if appState === "recording"}
-      <div class="rec-badge"><div class="rec-dot"></div><span>录音中</span></div>
+      <div class="rec-badge"><div class="rec-dot"></div><span>{$t('settings.recording')}</span></div>
     {:else if appState === "processing"}
-      <div class="rec-badge processing"><div class="proc-spinner"></div><span>转录中</span></div>
+      <div class="rec-badge processing"><div class="proc-spinner"></div><span>{$t('settings.transcribing')}</span></div>
     {/if}
     <button class="close-btn" on:click={() => dispatch("close")}>
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -142,9 +147,20 @@
   </div>
 
   <div class="sections">
+    <!-- Language -->
+    <div class="section row-section">
+      <span class="section-label">{$t('settings.language')}</span>
+      <div class="lang-toggle">
+        <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
+        <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
     <!-- Provider selector (dynamic) -->
     <div class="section">
-      <span class="section-label">语音服务</span>
+      <span class="section-label">{$t('settings.voice_service')}</span>
       <div class="provider-tabs" class:scrollable={providers.length > 3}>
         {#each providers as p}
           <button
@@ -165,7 +181,7 @@
         {#each fieldGroups as group}
           {#if group.length === 1}
             <div class="field">
-              <span class="field-label">{group[0].label}</span>
+              <span class="field-label">{group[0].label[$locale]}</span>
               {#if group[0].type === "select"}
                 <select class="select-input" bind:value={configValues[group[0].key]}>
                   {#each group[0].options ?? [] as opt}
@@ -197,7 +213,7 @@
             <div class="field-row">
               {#each group as field}
                 <div class="field flex1">
-                  <span class="field-label">{field.label}</span>
+                  <span class="field-label">{field.label[$locale]}</span>
                   {#if field.type === "select"}
                     <select class="select-input" bind:value={configValues[field.key]}>
                       {#each field.options ?? [] as opt}
@@ -222,18 +238,18 @@
         {/each}
 
         <button class="action-btn full-width" on:click={handleSaveConfig} disabled={saving}>
-          {saving ? "保存中..." : "保存"}
+          {saving ? $t('settings.saving') : $t('settings.save')}
         </button>
 
         {#if authStatus !== null && currentProvider.authOkText}
           <div class="auth-status" class:ok={authStatus}>
             <div class="auth-dot"></div>
-            <span>{authStatus ? currentProvider.authOkText : currentProvider.authFailText}</span>
+            <span>{authStatus ? currentProvider.authOkText[$locale] : (currentProvider.authFailText ?? currentProvider.authOkText)[$locale]}</span>
           </div>
         {/if}
 
         {#if currentProvider.hint}
-          <p class="hint">{@html currentProvider.hint}</p>
+          <p class="hint">{@html currentProvider.hint[$locale]}</p>
         {/if}
       </div>
     {/if}
@@ -243,10 +259,10 @@
     <!-- Polish -->
     <div class="section row-section">
       <div class="row-label-block">
-        <span class="section-label">AI 润色</span>
-        <span class="row-desc">自动添加标点、修正错字</span>
+        <span class="section-label">{$t('settings.polish')}</span>
+        <span class="row-desc">{$t('settings.polish_desc')}</span>
       </div>
-      <button class="toggle" class:on={polishEnabled} on:click={handlePolishToggle} aria-label="切换润色">
+      <button class="toggle" class:on={polishEnabled} on:click={handlePolishToggle} aria-label="Toggle polish">
         <div class="toggle-knob"></div>
       </button>
     </div>
@@ -255,9 +271,9 @@
 
     <!-- Microphone -->
     <div class="section">
-      <span class="section-label">麦克风</span>
+      <span class="section-label">{$t('settings.mic')}</span>
       <select class="select-input" on:change={handleDeviceChange} value={preferredDevice ?? "__default__"}>
-        <option value="__default__">系统默认</option>
+        <option value="__default__">{$t('settings.mic_default')}</option>
         {#each audioDevices as device}
           <option value={device}>{device}</option>
         {/each}
@@ -268,15 +284,15 @@
 
     <!-- Shortcut -->
     <div class="section">
-      <span class="section-label">全局快捷键</span>
+      <span class="section-label">{$t('settings.shortcut')}</span>
       <div class="input-row">
         <input type="text" bind:value={shortcut} class="text-input mono" placeholder="Meta+Shift+Space" />
-        <button class="action-btn" on:click={handleShortcutChange}>应用</button>
+        <button class="action-btn" on:click={handleShortcutChange}>{$t('settings.shortcut_apply')}</button>
       </div>
       {#if shortcutConflict}
-        <div class="conflict-banner">快捷键 <kbd>{shortcutConflict}</kbd> 可能已被其他应用占用，请尝试更换</div>
+        <div class="conflict-banner">{$t('settings.shortcut_conflict', shortcutConflict)}</div>
       {/if}
-      <p class="hint">Meta = ⌘，Ctrl，Alt，Shift</p>
+      <p class="hint">{$t('settings.shortcut_hint')}</p>
     </div>
 
     <div class="divider"></div>
@@ -284,10 +300,10 @@
     <!-- Autostart -->
     <div class="section row-section">
       <div class="row-label-block">
-        <span class="section-label">开机自启</span>
-        <span class="row-desc">登录时自动启动</span>
+        <span class="section-label">{$t('settings.autostart')}</span>
+        <span class="row-desc">{$t('settings.autostart_desc')}</span>
       </div>
-      <button class="toggle" class:on={autostartEnabled} on:click={handleAutostartToggle} aria-label="切换开机自启">
+      <button class="toggle" class:on={autostartEnabled} on:click={handleAutostartToggle} aria-label="Toggle autostart">
         <div class="toggle-knob"></div>
       </button>
     </div>
@@ -297,10 +313,10 @@
     <!-- Screenshot context -->
     <div class="section row-section">
       <div class="row-label-block">
-        <span class="section-label">截图上下文</span>
-        <span class="row-desc">录音时截屏，提升润色准确度</span>
+        <span class="section-label">{$t('settings.screenshot')}</span>
+        <span class="row-desc">{$t('settings.screenshot_desc')}</span>
       </div>
-      <button class="toggle" class:on={screenshotContextEnabled} on:click={handleScreenshotContextToggle} aria-label="切换截图上下文" disabled={!polishEnabled}>
+      <button class="toggle" class:on={screenshotContextEnabled} on:click={handleScreenshotContextToggle} aria-label="Toggle screenshot context" disabled={!polishEnabled}>
         <div class="toggle-knob"></div>
       </button>
     </div>
@@ -310,7 +326,7 @@
     <!-- Opacity -->
     <div class="section">
       <div class="row-label-block">
-        <span class="section-label">窗口不透明度</span>
+        <span class="section-label">{$t('settings.opacity')}</span>
         <span class="row-desc">{Math.round(opacity * 100)}%</span>
       </div>
       <input type="range" min="0.2" max="1" step="0.05" value={opacity} on:input={handleOpacityChange} class="opacity-slider" />
@@ -318,7 +334,7 @@
   </div>
 
   {#if error}<div class="error-banner">{error}</div>{/if}
-  {#if saved}<div class="saved-banner">已保存</div>{/if}
+  {#if saved}<div class="saved-banner">{$t('settings.saved')}</div>{/if}
 </div>
 
 <style>
@@ -365,6 +381,12 @@
   .action-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .action-btn.full-width { width:100%; }
 
+  /* Language toggle */
+  .lang-toggle { display:flex; background:rgba(255,255,255,0.04); border-radius:8px; padding:2px; border:1px solid rgba(255,255,255,0.06); }
+  .lang-toggle button { padding:4px 12px; border:none; border-radius:6px; background:transparent; color:rgba(255,255,255,0.4); font-size:12px; font-weight:500; cursor:pointer; transition:all .2s; font-family:-apple-system,"SF Pro Text",BlinkMacSystemFont,sans-serif; }
+  .lang-toggle button:hover { color:rgba(255,255,255,0.6); }
+  .lang-toggle button.active { background:rgba(99,102,241,0.2); color:rgba(165,180,252,0.95); }
+
   /* Provider tabs */
   .provider-tabs { display:flex; gap:0; background:rgba(255,255,255,0.04); border-radius:10px; padding:3px; border:1px solid rgba(255,255,255,0.06); }
   .provider-tabs.scrollable { overflow-x:auto; }
@@ -394,7 +416,6 @@
 
   /* Banners */
   .conflict-banner { padding:6px 10px; border-radius:8px; background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2); font-size:11px; color:rgba(251,191,36,0.85); line-height:1.5; }
-  .conflict-banner :global(kbd) { display:inline-block; padding:1px 5px; border-radius:4px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); font-family:-apple-system,sans-serif; font-size:11px; }
   .error-banner { margin:0 16px 12px; padding:7px 10px; border-radius:8px; background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.25); font-size:12px; color:#f87171; }
   .saved-banner { margin:0 16px 12px; padding:7px 10px; border-radius:8px; background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.25); font-size:12px; color:rgba(134,239,172,0.9); text-align:center; }
   .opacity-slider { width:100%; accent-color:rgba(99,102,241,0.85); cursor:pointer; }
