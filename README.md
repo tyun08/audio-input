@@ -6,7 +6,7 @@ Open source (MIT). No account, no telemetry, no server of ours. Your Groq API ke
 
 Free alternative to [SuperWhisper](https://superwhisper.com).
 
-[![Release](https://img.shields.io/github/v/release/tonyyun/audio-input)](https://github.com/tonyyun/audio-input/releases)
+[![Release](https://img.shields.io/github/v/release/tyun08/audio-input)](https://github.com/tyun08/audio-input/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#)
 
@@ -93,7 +93,7 @@ Audio is sent to [Groq](https://groq.com) for transcription — Groq's data rete
 # Install Rust if needed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-git clone https://github.com/tonyyun/audio-input
+git clone https://github.com/tyun08/audio-input
 cd audio-input
 npm install
 npm run tauri dev    # dev mode
@@ -111,7 +111,7 @@ npm run tauri build  # release build → produces .dmg + .app in src-tauri/targe
 4. **WebView2 Runtime** — pre-installed on Windows 11; on Windows 10 get it from https://developer.microsoft.com/microsoft-edge/webview2/
 
 ```powershell
-git clone https://github.com/tonyyun/audio-input
+git clone https://github.com/tyun08/audio-input
 cd audio-input
 npm install
 npm run tauri dev
