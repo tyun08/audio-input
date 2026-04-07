@@ -6,7 +6,7 @@
   import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
 
   const HUD_W = 200, HUD_H = 44;
-  const SETTINGS_W = 340, SETTINGS_H = 620;
+  const SETTINGS_W = 480, SETTINGS_H = 380;
   const ONBOARDING_W = 370, ONBOARDING_H = 540;
   const AX_W = 320, AX_H = 160;
 
@@ -271,6 +271,11 @@
     padding: 0;
   }
 
+  :global(html), :global(body) {
+    height: 100%;
+    width: 100%;
+  }
+
   :global(body) {
     background: transparent;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
@@ -279,11 +284,19 @@
   }
 
   .container {
+    position: relative;
     width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .container :global(.settings-root) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
 
   .ax-banner {
