@@ -90,6 +90,7 @@ jobs:
         run: npm ci
 
       - name: Sync version from tag into tauri.conf.json
+        shell: bash
         run: |
           VERSION=${{ needs.create-release.outputs.version }}
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
