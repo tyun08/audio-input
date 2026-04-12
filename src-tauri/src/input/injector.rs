@@ -11,8 +11,10 @@ pub async fn inject_text(text: &str) -> Result<()> {
 
     info!("inject_text: {} chars", text.chars().count());
 
-    // Write to clipboard first (works as fallback on all platforms)
-    write_clipboard(text)?;
+    // Keep the clipboard handle alive until after the paste so macOS doesn't
+    // reclaim ownership and clear the content when the handle is dropped.
+    let mut clipboard = arboard::Clipboard::new().context("clipboard init failed")?;
+    clipboard.set_text(text).context("clipboard write failed")?;
     info!("clipboard write OK");
 
     sleep(Duration::from_millis(100)).await;
@@ -25,14 +27,7 @@ pub async fn inject_text(text: &str) -> Result<()> {
     paste_via_keyevent()?;
 
     sleep(Duration::from_millis(200)).await;
-    Ok(())
-}
-
-// --- Clipboard -----------------------------------------------------------------
-
-fn write_clipboard(text: &str) -> Result<()> {
-    let mut ctx = arboard::Clipboard::new().context("clipboard init failed")?;
-    ctx.set_text(text).context("clipboard write failed")?;
+    // clipboard dropped here, after paste is complete
     Ok(())
 }
 

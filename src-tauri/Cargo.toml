@@ -35,6 +35,7 @@ image = { version = "0.24", default-features = false, features = ["jpeg"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
+block = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 enigo = "0.2"
