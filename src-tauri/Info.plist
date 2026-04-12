@@ -6,5 +6,27 @@
   <string>Audio Input 需要麦克风权限以进行语音输入转录。</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict>
+        <key>default</key>
+        <string>Polish with Audio Input</string>
+      </dict>
+      <key>NSMessage</key>
+      <string>polishSelectedText</string>
+      <key>NSPortName</key>
+      <string>Audio Input</string>
+      <key>NSSendTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+      </array>
+      <key>NSReturnTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

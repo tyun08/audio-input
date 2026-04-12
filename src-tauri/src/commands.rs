@@ -164,8 +164,11 @@ async fn stop_and_transcribe<R: Runtime>(
 
     info!("Using provider: {}", provider);
 
+    // Load vocabulary for Whisper context injection
+    let vocabulary = load_vocabulary(&app);
+
     // Transcribe
-    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
+    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes, vocabulary.as_deref()).await {
         Ok(t) => t,
         Err(e) => {
             error!("Transcription failed: {}", e);
@@ -230,6 +233,7 @@ async fn transcribe_with_provider(
     provider: &str,
     config: &serde_json::Value,
     wav_bytes: Vec<u8>,
+    vocabulary: Option<&str>,
 ) -> anyhow::Result<String> {
     match provider {
         "groq" => {
@@ -239,7 +243,7 @@ async fn transcribe_with_provider(
             }
             info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
             GroqClient::new(api_key.to_string())
-                .transcribe(wav_bytes)
+                .transcribe(wav_bytes, vocabulary)
                 .await
         }
         "vertex_ai" => {
@@ -261,7 +265,7 @@ async fn transcribe_with_provider(
     }
 }
 
-async fn polish_with_provider(
+pub async fn polish_with_provider(
     provider: &str,
     config: &serde_json::Value,
     text: &str,
@@ -482,6 +486,48 @@ pub async fn save_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(),
     } else {
         app.autolaunch().disable().map_err(|e| e.to_string())
     }
+}
+
+// --- Vocabulary --------------------------------------------------------------
+
+fn vocabulary_path<R: tauri::Runtime>(app: &AppHandle<R>) -> std::path::PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("vocabulary.json")
+}
+
+/// Loads vocabulary from disk and formats it as a comma-separated string for
+/// the Whisper `prompt` parameter.  Returns `None` if the file is absent or empty.
+fn load_vocabulary<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<String> {
+    let path = vocabulary_path(app);
+    let data = std::fs::read_to_string(&path).ok()?;
+    let words: Vec<String> = serde_json::from_str(&data).ok()?;
+    if words.is_empty() {
+        return None;
+    }
+    Some(words.join(", "))
+}
+
+#[tauri::command]
+pub fn get_vocabulary(app: AppHandle) -> Vec<String> {
+    let path = vocabulary_path(&app);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|d| serde_json::from_str(&d).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub async fn save_vocabulary(app: AppHandle, words: Vec<String>) -> Result<(), String> {
+    let path = vocabulary_path(&app);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let data = serde_json::to_string_pretty(&words).map_err(|e| e.to_string())?;
+    std::fs::write(&path, data).map_err(|e| e.to_string())?;
+    info!("Vocabulary saved: {} words", words.len());
+    Ok(())
 }
 
 // --- Screenshot context ------------------------------------------------------

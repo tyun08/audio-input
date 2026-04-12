@@ -4,6 +4,8 @@ mod config;
 mod input;
 #[cfg(target_os = "macos")]
 mod macos_shortcut;
+#[cfg(target_os = "macos")]
+mod macos_service;
 mod screenshot;
 mod shortcut;
 mod state;
@@ -100,6 +102,10 @@ pub fn run() {
 
             // Setup system tray
             tray::setup_tray(&handle)?;
+
+            // Register macOS right-click service ("Polish with Audio Input")
+            #[cfg(target_os = "macos")]
+            macos_service::register_service_provider(handle.clone());
 
             // Diagnostics: binary path and accessibility status
             info!("Binary path: {:?}", std::env::current_exe().unwrap_or_default());
@@ -227,6 +233,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_vocabulary,
+            commands::save_vocabulary,
             commands::set_native_opaque,
         ])
         .run(tauri::generate_context!())

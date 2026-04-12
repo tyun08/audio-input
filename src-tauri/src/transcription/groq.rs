@@ -34,7 +34,7 @@ impl GroqClient {
         GroqClient { api_key, client }
     }
 
-    pub async fn transcribe(&self, wav_bytes: Vec<u8>) -> Result<String> {
+    pub async fn transcribe(&self, wav_bytes: Vec<u8>, vocabulary: Option<&str>) -> Result<String> {
         // Skip empty/too-short recordings (< 0.1s = < 1600 bytes for 16kHz 16-bit mono)
         if wav_bytes.len() < 1600 {
             warn!("Recording too short, skipping transcription");
@@ -48,11 +48,18 @@ impl GroqClient {
             .mime_str("audio/wav")
             .context("Failed to set MIME type")?;
 
-        let form = multipart::Form::new()
+        let mut form = multipart::Form::new()
             .part("file", file_part)
             .text("model", "whisper-large-v3-turbo")
             .text("temperature", "0")
             .text("response_format", "verbose_json");
+
+        if let Some(vocab) = vocabulary {
+            if !vocab.is_empty() {
+                form = form.text("prompt", vocab.to_string());
+                info!("Whisper prompt injected ({} chars)", vocab.len());
+            }
+        }
 
         let resp = self
             .client

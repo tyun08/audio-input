@@ -6,7 +6,7 @@ export default defineConfig(async () => ({
   plugins: [svelte({ preprocess: vitePreprocess() })],
   clearScreen: false,
   server: {
-    port: 1420,
+    port: parseInt(process.env.PORT ?? "1420"),
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**"],

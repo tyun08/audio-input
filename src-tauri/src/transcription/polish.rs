@@ -3,8 +3,7 @@ use std::time::Duration;
 use tracing::{info, warn};
 
 const VISION_MODEL: &str = "meta-llama/llama-4-scout-17b-16e-instruct";
-const PRIMARY_MODEL: &str = "openai/gpt-oss-20b";
-const FALLBACK_MODEL: &str = "mistral-saba-24b";
+const PRIMARY_MODEL: &str = "openai/gpt-oss-120b";
 
 // --- Request structs ---
 
@@ -89,26 +88,46 @@ pub(crate) const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup a
 /// If `screenshot` is Some, tries the vision model first for better context accuracy.
 pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) -> (String, bool) {
     let original_len = text.chars().count();
-    let threshold = (original_len as f64 * 0.8) as usize;
+    let lower = (original_len as f64 * 0.8) as usize;
+    let upper = (original_len as f64 * 1.5) as usize;
     let max_tokens = compute_max_tokens(original_len);
+
+    // Returns true if the polished result is within acceptable length bounds.
+    let in_bounds = |s: &str| -> bool {
+        let n = s.chars().count();
+        n >= lower && n <= upper
+    };
 
     if let Some(img_data) = screenshot {
         info!("Using vision model for polish (screenshot context attached)");
         match try_polish_vision(text, api_key, img_data, 0.1, false, max_tokens).await {
-            Ok(polished) if polished.chars().count() >= threshold => {
+            Ok(polished) if in_bounds(&polished) => {
                 info!("Vision model polish complete");
                 return (polished, false);
             }
-            Ok(short) => {
+            Ok(bad) => {
+                let n = bad.chars().count();
+                if n > upper {
+                    warn!("Vision polish result too long ({}/{} chars), falling back to large model", n, upper);
+                    match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
+                        Ok(p) if in_bounds(&p) => {
+                            info!("Large model polish succeeded after vision hallucination");
+                            return (p, false);
+                        }
+                        _ => {
+                            warn!("Large model fallback also failed, returning original");
+                            return (text.to_string(), true);
+                        }
+                    }
+                }
                 warn!(
                     "Vision polish result too short ({}/{} chars), retrying",
-                    short.chars().count(),
-                    threshold
+                    n, lower
                 );
                 if let Ok(p) =
                     try_polish_vision(text, api_key, img_data, 0.3, true, max_tokens).await
                 {
-                    if p.chars().count() >= threshold {
+                    if in_bounds(&p) {
                         info!("Vision model retry succeeded");
                         return (p, false);
                     }
@@ -123,18 +142,28 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
 
     // Text-only path (either no screenshot or vision failed)
     match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
-        Ok(polished) if polished.chars().count() >= threshold => {
+        Ok(polished) if in_bounds(&polished) => {
             info!("Polish complete");
             (polished, false)
         }
-        Ok(short) => {
-            warn!(
-                "Polish result too short ({}/{} chars), retrying",
-                short.chars().count(),
-                threshold
-            );
+        Ok(bad) => {
+            let n = bad.chars().count();
+            if n > upper {
+                warn!("Polish result too long ({}/{} chars), falling back to large model", n, upper);
+                match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
+                    Ok(p) if in_bounds(&p) => {
+                        info!("Large model polish succeeded after primary hallucination");
+                        return (p, false);
+                    }
+                    _ => {
+                        warn!("Large model fallback also failed, returning original");
+                        return (text.to_string(), true);
+                    }
+                }
+            }
+            warn!("Polish result too short ({}/{} chars), retrying", n, lower);
             match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
-                Ok(p) if p.chars().count() >= threshold => {
+                Ok(p) if in_bounds(&p) => {
                     info!("Polish retry succeeded");
                     (p, false)
                 }
@@ -145,9 +174,9 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
             }
         }
         Err(e) => {
-            warn!("Primary model polish failed: {}, trying fallback model {}", e, FALLBACK_MODEL);
-            match try_polish_text(text, api_key, FALLBACK_MODEL, 0.1, false, max_tokens).await {
-                Ok(p) if p.chars().count() >= threshold => {
+            warn!("Primary model polish failed: {}, trying fallback model {}", e, PRIMARY_MODEL);
+            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
+                Ok(p) if in_bounds(&p) => {
                     info!("Fallback model polish succeeded");
                     (p, false)
                 }
@@ -225,7 +254,7 @@ async fn try_polish_text(
     max_tokens: u32,
 ) -> anyhow::Result<String> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(10))
         .build()?;
 
     let user_content = if with_completeness_hint {
