@@ -82,6 +82,35 @@ pub fn run() {
                 }
             }
 
+            // macOS hardened runtime: explicitly request microphone access via AVFoundation.
+            // Without this, CoreAudio silently returns zero-filled buffers even when the
+            // com.apple.security.device.microphone entitlement is present.
+            #[cfg(target_os = "macos")]
+            {
+                use block::ConcreteBlock;
+                use objc::{class, msg_send, sel, sel_impl};
+                unsafe {
+                    // AVMediaTypeAudio = @"soun"
+                    let media_type: *mut objc::runtime::Object = msg_send![
+                        class!(NSString),
+                        stringWithUTF8String: b"soun\0".as_ptr() as *const std::os::raw::c_char
+                    ];
+                    let block = ConcreteBlock::new(|granted: bool| {
+                        if granted {
+                            tracing::info!("Microphone access granted");
+                        } else {
+                            tracing::warn!("Microphone access denied by user");
+                        }
+                    });
+                    let block = block.copy();
+                    let _: () = msg_send![
+                        class!(AVCaptureDevice),
+                        requestAccessForMediaType: media_type
+                        completionHandler: &*block
+                    ];
+                }
+            }
+
             // Load persisted config
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();

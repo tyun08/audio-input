@@ -54,7 +54,7 @@ extern "C" {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const KCG_HID_EVENT_TAP: u32 = 0;
+const KCG_SESSION_EVENT_TAP: u32 = 1;
 const KCG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
 
@@ -214,7 +214,7 @@ where
 
     unsafe {
         let tap = CGEventTapCreate(
-            KCG_HID_EVENT_TAP,
+            KCG_SESSION_EVENT_TAP,
             KCG_HEAD_INSERT_EVENT_TAP,
             KCG_EVENT_TAP_OPTION_DEFAULT,
             event_mask,
