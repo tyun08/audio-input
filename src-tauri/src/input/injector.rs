@@ -49,7 +49,7 @@ fn paste_via_keyevent() -> Result<()> {
         fn CFRelease(cf: *const std::ffi::c_void);
     }
 
-    const KCG_HID_EVENT_TAP: i32 = 0;
+    const KCG_SESSION_EVENT_TAP: i32 = 1;
     const KVK_ANSI_V: u16 = 9;
     const KCG_EVENT_FLAG_MASK_COMMAND: u64 = 0x0010_0000;
 
@@ -59,7 +59,7 @@ fn paste_via_keyevent() -> Result<()> {
             bail!("CGEventCreateKeyboardEvent returned null — check Accessibility permission");
         }
         CGEventSetFlags(down, KCG_EVENT_FLAG_MASK_COMMAND);
-        CGEventPost(KCG_HID_EVENT_TAP, down);
+        CGEventPost(KCG_SESSION_EVENT_TAP, down);
         CFRelease(down);
 
         let up = CGEventCreateKeyboardEvent(ptr::null(), KVK_ANSI_V, false);
@@ -67,7 +67,7 @@ fn paste_via_keyevent() -> Result<()> {
             error!("CGEventCreateKeyboardEvent(up) returned null");
         } else {
             CGEventSetFlags(up, KCG_EVENT_FLAG_MASK_COMMAND);
-            CGEventPost(KCG_HID_EVENT_TAP, up);
+            CGEventPost(KCG_SESSION_EVENT_TAP, up);
             CFRelease(up);
         }
     }
