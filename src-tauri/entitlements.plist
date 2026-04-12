@@ -2,13 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>com.apple.security.cs.allow-jit</key>
-  <true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-  <true/>
+  <!-- Microphone access for audio recording -->
   <key>com.apple.security.device.microphone</key>
   <true/>
+  <!-- Apple Events for simulating Cmd+V paste -->
   <key>com.apple.security.automation.apple-events</key>
+  <true/>
+  <!-- Screen capture for screenshot context feature -->
+  <key>com.apple.security.device.screen-capture</key>
+  <true/>
+  <!-- Network access for API calls (Groq, Vertex AI) -->
+  <key>com.apple.security.network.client</key>
   <true/>
 </dict>
 </plist>
