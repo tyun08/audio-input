@@ -1,128 +1,110 @@
 # Audio Input
 
-Press a global hotkey, speak, and your words are transcribed into whatever is focused — any app, any input.
+A lightweight, menu-bar / system-tray voice-to-text app for macOS and Windows.
 
-Open source (MIT). No account, no telemetry, no server of ours. Your Groq API key goes directly to Groq.
-
-Free alternative to [SuperWhisper](https://superwhisper.com).
-
-[![Release](https://img.shields.io/github/v/release/tonyyun/audio-input)](https://github.com/tonyyun/audio-input/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)](#)
-
----
-
-## Install
-
-**macOS**
-```bash
-brew install --cask tonyyun/tap/audio-input
-```
-Or grab the `.dmg` from [Releases](../../releases). First launch: right-click → Open to bypass Gatekeeper.
-
-**Windows**
-
-Download `Audio.Input_x.x.x_x64-setup.exe` from [Releases](../../releases) and run it.
-
-> First launch: Windows SmartScreen may say "Windows protected your PC". Click **More info → Run anyway**.
-
----
-
-## Setup
-
-1. Get a free API key at [console.groq.com](https://console.groq.com) (no credit card required)
-2. Right-click the system tray mic icon → **Configure API Key**
-3. Press `Ctrl+Shift+Space` (Windows) or `⌘⇧Space` (macOS) anywhere and start talking
-
----
+Press a global shortcut, speak, and your words are transcribed and typed at the cursor — in any app.
 
 ## Features
 
-- **Global hotkey** — default `⌘⇧Space`, fully customizable
-- **Works everywhere** — injects text into any focused input via Accessibility API
-- **50+ languages** — Whisper large-v3-turbo auto-detects your language
-- **AI polish** — optional LLM pass to clean up filler words and punctuation (toggle from menu bar). At recording start, a screenshot is taken and sent as context to a vision LLM (llama-4-scout on Groq) to improve accuracy of technical and domain-specific terms.
-- **Tiny footprint** — ~20 MB RAM, built with Rust + Tauri
+- **Global shortcut recording** — hold Cmd+Shift+Space (macOS) or Ctrl+Shift+Space (Windows) to record, release to transcribe.
+- **AI-powered transcription** — supports Groq Whisper (free tier) and Google Vertex AI Gemini.
+- **AI Polish** — optional LLM cleanup for punctuation, spelling, and context-aware corrections.
+- **Screenshot context** — captures your screen while recording for smarter polish (off by default).
+- **Auto-inject text** — types directly at the cursor via clipboard + simulated paste (requires Accessibility permission on macOS).
+- **macOS Services integration** — right-click selected text → Services → "Polish with Audio Input".
+- **System tray** — always accessible; shows recording state, last result, and quick settings.
+- **Onboarding flow** — guides first-time users through API key setup and permissions.
+- **i18n** — English and Chinese (中文) UI.
+- **Autostart** — optional launch at login.
+- **Custom microphone** — pick which input device to use.
+- **Vocabulary injection** — custom word list for better Whisper accuracy on names/terms.
 
----
+## Quick Start
 
-## Cost
+### Prerequisites
 
-Powered by [Groq](https://groq.com)'s Whisper large-v3-turbo — the fastest Whisper inference available.
+- **macOS** 13+ (Ventura) or **Windows** 10+
+- [Rust](https://rustup.rs/) (stable)
+- [Node.js](https://nodejs.org/) 18+
+- A Groq API key (free at [console.groq.com](https://console.groq.com))
 
-**$0.04 per hour of audio** (~$0.00067/minute).
-
-For typical use — a few minutes of voice input per day — that's well under **$0.10/month**. The Groq free tier alone covers most personal use.
-
----
-
-## How It Works
-
-1. Press the global hotkey — a screenshot of the active screen is captured immediately
-2. Speak; audio is recorded locally while you hold (or toggle) the hotkey
-3. Audio is sent to Groq's Whisper large-v3-turbo for transcription
-4. If AI polish is enabled, the transcript + screenshot are sent to a vision LLM (llama-4-scout) to fix technical terms, proper nouns, and punctuation
-5. The final text is injected into whatever input is focused via the Accessibility API
-
----
-
-## Privacy
-
-Audio is sent to [Groq](https://groq.com) for transcription — Groq's data retention policy applies. Screenshots are taken locally and sent to Groq's vision API only when AI polish is enabled; neither audio nor screenshots are stored by this app. No analytics, no telemetry, no account required. See [PRIVACY.md](PRIVACY.md) for full details.
-
----
-
-## Menu bar states
-
-| Icon | State |
-|------|-------|
-| Black mic | Idle |
-| Red mic | Recording |
-| Blue mic | Transcribing |
-| Orange mic | Error |
-
----
-
-## Build from source
-
-### macOS
-
-**Prerequisites:** Node 20+, Rust stable
+### Build from Source
 
 ```bash
-# Install Rust if needed
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-git clone https://github.com/tonyyun/audio-input
+git clone https://github.com/tyun08/audio-input.git
 cd audio-input
 npm install
-npm run tauri dev    # dev mode
-npm run tauri build  # release build → produces .dmg + .app in src-tauri/target/release/bundle/
+npm run tauri dev          # development mode
+npm run tauri build        # production build
 ```
 
-### Windows
+### Configuration
 
-**Prerequisites:**
+1. Launch the app — the onboarding flow will guide you.
+2. Or click the tray icon → Settings to configure:
+   - **Voice Service**: Groq (API key) or Vertex AI (gcloud ADC)
+   - **Global Shortcut**: customizable key combo
+   - **AI Polish**: toggle on/off
+   - **Microphone**: select input device
+   - **Screenshot Context**: enable for visual context in polish
 
-1. **Node.js 20+** — https://nodejs.org (LTS)
-2. **Rust** — https://rustup.rs
-3. **Microsoft C++ Build Tools** — https://visualstudio.microsoft.com/visual-cpp-build-tools/
-   - In the installer select **"Desktop development with C++"**
-4. **WebView2 Runtime** — pre-installed on Windows 11; on Windows 10 get it from https://developer.microsoft.com/microsoft-edge/webview2/
+## Architecture
 
-```powershell
-git clone https://github.com/tonyyun/audio-input
-cd audio-input
-npm install
-npm run tauri dev
+```
+audio-input/
+├── src/                    # Svelte frontend
+│   ├── App.svelte          # Main app shell (HUD ↔ Settings ↔ Onboarding)
+│   ├── lib/
+│   │   ├── SettingsPanel.svelte    # Settings UI
+│   │   ├── RecordingIndicator.svelte # Recording HUD
+│   │   ├── OnboardingFlow.svelte   # First-run wizard
+│   │   ├── providers.ts    # Provider registry (add new providers here)
+│   │   └── i18n.ts         # Internationalization
+│   └── main.ts
+├── src-tauri/              # Rust backend
+│   ├── src/
+│   │   ├── lib.rs          # App setup, plugin registration, shortcut binding
+│   │   ├── commands.rs     # Tauri IPC command handlers
+│   │   ├── config.rs       # App configuration (persisted JSON)
+│   │   ├── state.rs        # Shared app state
+│   │   ├── audio/
+│   │   │   ├── recorder.rs # Microphone capture via cpal
+│   │   │   └── encoder.rs  # WAV encoding + resampling
+│   │   ├── transcription/
+│   │   │   ├── groq.rs     # Groq Whisper API client
+│   │   │   ├── vertex.rs   # Vertex AI Gemini client
+│   │   │   └── polish.rs   # LLM polish (Groq chat API)
+│   │   ├── input/
+│   │   │   └── injector.rs # Clipboard + simulated paste
+│   │   ├── tray.rs         # System tray + menu
+│   │   ├── shortcut.rs     # Global shortcut parsing
+│   │   ├── macos_shortcut.rs  # CGEventTap (HID-level, overrides other apps)
+│   │   ├── macos_service.rs   # macOS Services provider
+│   │   └── screenshot.rs   # Screen capture for context
+│   └── Cargo.toml
+└── Casks/                  # Homebrew Cask formula (for updates)
 ```
 
----
+### Adding a New Provider
 
-## Stack
+1. Add an entry to `src/lib/providers.ts` (frontend metadata + fields).
+2. Create `src-tauri/src/transcription/<id>.rs` (transcribe + polish).
+3. Add a match arm in `commands.rs` → `transcribe_with_provider` / `polish_with_provider`.
 
-Tauri 2 · Rust (cpal, reqwest) · Svelte · Groq API (Whisper large-v3-turbo + LLM polish)
+No new IPC commands or config schema changes needed.
+
+## Distribution
+
+### macOS (Homebrew)
+
+```bash
+brew install --cask tyun08/tap/audio-input
+```
+
+### Manual
+
+Download the `.dmg` or `.msi` from [Releases](https://github.com/tyun08/audio-input/releases).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

@@ -1,6 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
 src-tauri/target/
+
+# Environment
 .env
-.env.local
+.env.*
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Rust
+*.rs.bk
+
+# Tauri signing keys
+*.pem
+
+# Logs
+*.log
+
+# Casks build artifacts
+Casks/*.json
+.claude/

@@ -1,5 +1,5 @@
 cask "audio-input" do
-  version "0.2.0"
+  version "0.4.0"
 
   on_arm do
     url "https://github.com/tyun08/audio-input/releases/download/v#{version}/Audio.Input_#{version}_aarch64.dmg"

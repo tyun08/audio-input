@@ -6,6 +6,7 @@ use tauri::{Manager, Runtime};
 use tracing::{error, info, warn};
 
 // cpal::Stream is not Send on all platforms; we control access via Mutex
+#[allow(dead_code)]
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
 

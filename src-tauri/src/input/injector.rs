@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use std::process::Command;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 pub async fn inject_text(text: &str) -> Result<()> {
     if text.is_empty() {
@@ -129,6 +129,9 @@ pub fn check_accessibility_permission() -> bool {
     true // Windows/Linux don't require a special permission for key simulation
 }
 
+// Allow dead code — these FFI bindings are used in request_accessibility_permission()
+// which may be called in future onboarding flows.
+#[allow(dead_code)]
 #[cfg(target_os = "macos")]
 pub fn request_accessibility_permission() -> bool {
     use std::ffi::c_void;
