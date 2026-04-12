@@ -124,6 +124,15 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
+    // Early return: if the microphone captured only silence or background
+    // noise, skip encoding and the API call entirely to avoid Whisper
+    // hallucinations (e.g. "Thank you.", "You're welcome.").
+    if crate::audio::is_silent(&audio_data.samples) {
+        info!("No speech detected — skipping transcription (silence)");
+        reset_to_idle(&app, &shared_state);
+        return;
+    }
+
     {
         let mut state = shared_state.lock().unwrap();
         *state = AppState::Processing;
