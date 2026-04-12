@@ -14,6 +14,10 @@ pub async fn inject_text(text: &str) -> Result<()> {
     // Keep the clipboard handle alive until after the paste so macOS doesn't
     // reclaim ownership and clear the content when the handle is dropped.
     let mut clipboard = arboard::Clipboard::new().context("clipboard init failed")?;
+
+    // Save the current clipboard content so we can restore it after a successful paste.
+    let previous_clipboard = clipboard.get_text().ok();
+
     clipboard.set_text(text).context("clipboard write failed")?;
     info!("clipboard write OK");
 
@@ -27,7 +31,18 @@ pub async fn inject_text(text: &str) -> Result<()> {
     paste_via_keyevent()?;
 
     sleep(Duration::from_millis(200)).await;
-    // clipboard dropped here, after paste is complete
+
+    // Restore the previous clipboard content after a successful paste so the
+    // user can still access their previous clipboard item.
+    if let Some(prev) = previous_clipboard {
+        if let Err(e) = clipboard.set_text(&prev) {
+            warn!("Failed to restore previous clipboard content: {}", e);
+        } else {
+            info!("Previous clipboard content restored");
+        }
+    }
+
+    // clipboard dropped here, after paste is complete and restore is done
     Ok(())
 }
 
