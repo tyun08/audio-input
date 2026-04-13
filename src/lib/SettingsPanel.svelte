@@ -36,8 +36,17 @@
 
   async function loadProviderConfig() {
     const raw = await invoke<Record<string, string>>("get_provider_config", { provider });
-    configValues = raw ?? {};
+    const loaded = raw ?? {};
     const cp = getProvider(provider);
+    // Apply field defaults for any unset values
+    if (cp) {
+      for (const field of cp.fields) {
+        if (field.default !== undefined && !(field.key in loaded)) {
+          loaded[field.key] = field.default;
+        }
+      }
+    }
+    configValues = loaded;
     if (cp?.authCheck) {
       authStatus = await invoke<boolean>(cp.authCheck, { provider }).catch(() => false);
     } else {
