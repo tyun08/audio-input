@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "playwright test",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "@tauri-apps/plugin-notification": "^2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@sveltejs/vite-plugin-svelte": "^3",
     "@tauri-apps/cli": "^2",
     "svelte": "^4",

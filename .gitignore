@@ -4,3 +4,7 @@ src-tauri/target/
 .env
 .env.local
 .DS_Store
+
+# Playwright
+test-results/
+playwright-report/
