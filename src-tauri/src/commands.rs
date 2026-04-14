@@ -484,6 +484,27 @@ pub async fn save_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(),
     }
 }
 
+// --- Show idle HUD -----------------------------------------------------------
+
+#[tauri::command]
+pub fn get_show_idle_hud(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().show_idle_hud
+}
+
+#[tauri::command]
+pub async fn save_show_idle_hud(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.show_idle_hud = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
 // --- Screenshot context ------------------------------------------------------
 
 #[tauri::command]

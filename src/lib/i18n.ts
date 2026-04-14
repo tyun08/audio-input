@@ -54,6 +54,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot": "Screenshot Context",
     "settings.screenshot_desc":
       "Capture screen while recording for better polish",
+    "settings.show_idle_hud": "Show Idle Indicator",
+    "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.language": "Language",
 
     // Onboarding
@@ -79,6 +81,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.finish": "Start Using",
 
     // HUD (RecordingIndicator)
+    "hud.idle": "Ready",
     "hud.transcribing": "Transcribing…",
     "hud.error": "Error",
     "hud.copied": "Copied — ⌘V to paste",
@@ -115,6 +118,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.autostart_desc": "登录时自动启动",
     "settings.screenshot": "截图上下文",
     "settings.screenshot_desc": "录音时截屏，提升润色准确度",
+    "settings.show_idle_hud": "显示待机指示器",
+    "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
     "settings.language": "语言",
 
     "onboarding.start": "开始配置",
@@ -138,6 +143,7 @@ const messages: Record<Locale, Record<string, string>> = {
       "按下 {0} 开始录音，松开自动转文字并输入到光标位置。\n点击系统托盘图标可打开设置。",
     "onboarding.finish": "开始使用",
 
+    "hud.idle": "就绪",
     "hud.transcribing": "转录中…",
     "hud.error": "错误",
     "hud.copied": "已复制 — ⌘V 粘贴",

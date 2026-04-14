@@ -11,6 +11,7 @@
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
+  export let showIdleHud: boolean = false;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
@@ -94,6 +95,11 @@
   async function handleScreenshotContextToggle() {
     screenshotContextEnabled = !screenshotContextEnabled;
     await invoke("save_screenshot_context_enabled", { enabled: screenshotContextEnabled });
+  }
+
+  async function handleShowIdleHudToggle() {
+    showIdleHud = !showIdleHud;
+    await invoke("save_show_idle_hud", { enabled: showIdleHud });
   }
 
   function switchLocale(loc: Locale) {
@@ -330,6 +336,16 @@
               <span class="row-sub">{$t('settings.polish_desc')}</span>
             </div>
             <button class="toggle" class:on={polishEnabled} on:click={handlePolishToggle} aria-label="Toggle polish">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t('settings.show_idle_hud')}</span>
+              <span class="row-sub">{$t('settings.show_idle_hud_desc')}</span>
+            </div>
+            <button class="toggle" class:on={showIdleHud} on:click={handleShowIdleHudToggle} aria-label="Toggle idle HUD">
               <span class="toggle-knob"></span>
             </button>
           </div>

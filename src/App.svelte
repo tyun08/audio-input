@@ -62,6 +62,7 @@
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
+  let showIdleHud = false;
 
   const appWindow = getCurrentWindow();
   const unlisten: UnlistenFn[] = [];
@@ -95,6 +96,7 @@
     audioDevices = await invoke<string[]>("list_audio_devices").catch(() => []);
     autostartEnabled = await invoke<boolean>("get_autostart_enabled").catch(() => false);
     screenshotContextEnabled = await invoke<boolean>("get_screenshot_context_enabled").catch(() => false);
+    showIdleHud = await invoke<boolean>("get_show_idle_hud").catch(() => false);
 
     // 监听状态变化
     unlisten.push(
@@ -110,8 +112,10 @@
         } else if (e.payload === "idle" && !showSettings && !needsAccessibilityRestart) {
           if (injectionFailed || polishFailed) {
             setTimeout(() => { injectionFailed = false; appWindow.hide(); }, 1500);
-          } else {
+          } else if (!showIdleHud) {
             appWindow.hide();
+          } else {
+            resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
           }
         }
       })
@@ -207,20 +211,24 @@
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
     await invoke("set_native_opaque", { opaque: false });
-    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
+    if (appState === "idle") {
+      if (showIdleHud) { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); } else { appWindow.hide(); }
+    } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleSettingsClosed() {
     await savePos(SETTINGS_POS_KEY);
     showSettings = false;
     await invoke("set_native_opaque", { opaque: false });
-    if (appState === "idle") { appWindow.hide(); } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
+    if (appState === "idle") {
+      if (showIdleHud) { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); } else { appWindow.hide(); }
+    } else { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); }
   }
 
   async function handleOnboardingDone() {
     showOnboarding = false;
     if (appState === "idle" && !needsAccessibilityRestart) {
-      appWindow.hide();
+      if (showIdleHud) { await resizeTo(HUD_W, HUD_H); } else { appWindow.hide(); }
     } else {
       await resizeTo(HUD_W, HUD_H);
     }
@@ -254,6 +262,7 @@
       {audioDevices}
       bind:autostartEnabled
       bind:screenshotContextEnabled
+      bind:showIdleHud
       appState={appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
