@@ -228,9 +228,9 @@
   async function handleOnboardingDone() {
     showOnboarding = false;
     if (appState === "idle" && !needsAccessibilityRestart) {
-      if (showIdleHud) { await resizeTo(HUD_W, HUD_H); } else { appWindow.hide(); }
+      if (showIdleHud) { await resizeTo(HUD_W, HUD_H, HUD_POS_KEY); } else { appWindow.hide(); }
     } else {
-      await resizeTo(HUD_W, HUD_H);
+      await resizeTo(HUD_W, HUD_H, HUD_POS_KEY);
     }
   }
 </script>
