@@ -1,6 +1,6 @@
 import { applyAppStateChange, deriveUiDecision, type UiModelState } from "./ui-model.js";
 
-function assert(condition: boolean, message: string): void {
+function testAssert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
@@ -52,8 +52,8 @@ function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
 
 {
   const result = applyAppStateChange(baseState({ showSettings: true }), "recording");
-  assert(result.state.showSettings === false, "recording should close settings");
-  assert(result.state.appState === "recording", "recording should update app state");
+  testAssert(result.state.showSettings === false, "recording should close settings");
+  testAssert(result.state.appState === "recording", "recording should update app state");
 }
 
 {
@@ -91,5 +91,5 @@ function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
     { w: 200, h: 72, posKey: "hud-window-pos" },
     "injection failure should use the taller HUD size",
   );
-  assert(decision.shouldShowWindow === true, "injection failure should keep the HUD visible");
+  testAssert(decision.shouldShowWindow === true, "injection failure should keep the HUD visible");
 }

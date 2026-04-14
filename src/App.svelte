@@ -136,7 +136,6 @@
 
           if (e.payload === "idle" && injectionFailed) {
             injectionTimer = setTimeout(async () => {
-              injectionTimer = null;
               injectionFailed = false;
               await syncWindow();
             }, INJECTION_FAILURE_DISPLAY_DURATION_MS);
