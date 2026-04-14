@@ -46,14 +46,14 @@ export function createAppApi(): AppApi {
     window: inTauri ? getCurrentWindow() : fallbackWindow,
     invoke<T>(cmd: string, args?: Record<string, unknown>) {
       if (!inTauri) {
-        return Promise.reject(new Error(`Tauri runtime unavailable for invoke(${cmd})`));
+        return Promise.reject(new Error(`Failed to invoke ${cmd}: Tauri runtime unavailable`));
       }
 
       return tauriInvoke<T>(cmd, args);
     },
     listen<T>(event: string, handler: EventCallback<T>) {
       if (!inTauri) {
-        return Promise.reject(new Error(`Tauri runtime unavailable for listen(${event})`));
+        return Promise.reject(new Error(`Failed to listen to ${event}: Tauri runtime unavailable`));
       }
 
       return tauriListen<T>(event, handler);

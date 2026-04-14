@@ -6,8 +6,34 @@ function assert(condition: boolean, message: string): void {
   }
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function deepEqual(actual: unknown, expected: unknown): boolean {
+  if (Object.is(actual, expected)) {
+    return true;
+  }
+
+  if (Array.isArray(actual) && Array.isArray(expected)) {
+    return actual.length === expected.length && actual.every((value, index) => deepEqual(value, expected[index]));
+  }
+
+  if (isObject(actual) && isObject(expected)) {
+    const actualKeys = Object.keys(actual);
+    const expectedKeys = Object.keys(expected);
+
+    return (
+      actualKeys.length === expectedKeys.length &&
+      actualKeys.every((key) => key in expected && deepEqual(actual[key], expected[key]))
+    );
+  }
+
+  return false;
+}
+
 function assertEqual<T>(actual: T, expected: T, message: string): void {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+  if (!deepEqual(actual, expected)) {
     throw new Error(`${message}\nExpected: ${JSON.stringify(expected)}\nActual: ${JSON.stringify(actual)}`);
   }
 }

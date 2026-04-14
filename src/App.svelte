@@ -63,16 +63,18 @@
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
+  const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
+  const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
   const unlisten: UnlistenFn[] = [];
-  let injectionFailureTimer: ReturnType<typeof setTimeout> | null = null;
+  let injectionTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function clearInjectionFailureTimer() {
-    if (injectionFailureTimer !== null) {
-      clearTimeout(injectionFailureTimer);
-      injectionFailureTimer = null;
+  function clearInjectionTimer() {
+    if (injectionTimer !== null) {
+      clearTimeout(injectionTimer);
+      injectionTimer = null;
     }
   }
 
@@ -123,7 +125,7 @@
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
-          clearInjectionFailureTimer();
+          clearInjectionTimer();
           const closingSettings = showSettings && (e.payload === "recording" || e.payload === "processing");
           if (closingSettings) {
             await savePos(SETTINGS_POS_KEY);
@@ -133,11 +135,11 @@
           await syncWindow();
 
           if (e.payload === "idle" && injectionFailed) {
-            injectionFailureTimer = setTimeout(async () => {
-              injectionFailureTimer = null;
+            injectionTimer = setTimeout(async () => {
+              injectionTimer = null;
               injectionFailed = false;
               await syncWindow();
-            }, 1500);
+            }, INJECTION_FAILURE_DISPLAY_DURATION_MS);
           }
         })
       );
@@ -145,7 +147,7 @@
       unlisten.push(
         await appApi.listen<string>("transcription-result", (e) => {
           lastTranscription = e.payload;
-          clearInjectionFailureTimer();
+          clearInjectionTimer();
           injectionFailed = false;
         })
       );
@@ -196,7 +198,7 @@
           setTimeout(async () => {
             polishFailed = false;
             await syncWindow();
-          }, 3000);
+          }, POLISH_FAILURE_DISPLAY_DURATION_MS);
         })
       );
 
@@ -226,7 +228,7 @@
   });
 
   onDestroy(() => {
-    clearInjectionFailureTimer();
+    clearInjectionTimer();
     unlisten.forEach((fn) => fn());
   });
 
