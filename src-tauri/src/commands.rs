@@ -540,10 +540,11 @@ pub fn set_native_opaque(opaque: bool) {
             for i in 0..count {
                 let win: *mut objc::runtime::Object =
                     msg_send![windows, objectAtIndex: i];
-                let is_visible: bool = msg_send![win, isVisible];
-                if !is_visible {
-                    continue;
-                }
+                // Apply to all windows, including hidden ones, so the background
+                // state is correct the moment the window becomes visible. Skipping
+                // hidden windows caused a black-settings-window bug: the call was a
+                // no-op while the window was hidden, then show() rendered it with
+                // the old transparent/clear background still in place.
                 let _: () = msg_send![win, setOpaque: opaque];
                 let bg: *mut objc::runtime::Object = if opaque {
                     msg_send![
