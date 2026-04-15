@@ -92,13 +92,17 @@
   async function syncWindow() {
     const ui = deriveUiDecision(getUiState());
 
+    console.log(`[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`);
+
     await appApi.setNativeOpaque(ui.nativeOpaque);
 
     if (!ui.shouldShowWindow) {
+      console.log("[syncWindow] hiding window");
       await appWindow.hide();
       return;
     }
 
+    console.log(`[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`);
     await resizeTo(ui.window.w, ui.window.h, ui.window.posKey);
   }
 
