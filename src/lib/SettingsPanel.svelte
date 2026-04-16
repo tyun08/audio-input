@@ -3,7 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { providers, getProvider } from "./providers";
-  import { t, locale, type Locale } from "./i18n";
+  import { t, locale } from "./i18n";
+  import FieldSelect from "./FieldSelect.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -94,10 +95,6 @@
   async function handleScreenshotContextToggle() {
     screenshotContextEnabled = !screenshotContextEnabled;
     await invoke("save_screenshot_context_enabled", { enabled: screenshotContextEnabled });
-  }
-
-  function switchLocale(loc: Locale) {
-    $locale = loc;
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -200,11 +197,7 @@
               <div class="row">
                 <span class="row-label">{field.label[$locale]}</span>
                 {#if field.type === "select"}
-                  <select class="row-select" bind:value={configValues[field.key]}>
-                    {#each field.options ?? [] as opt}
-                      <option value={opt.value}>{opt.label}</option>
-                    {/each}
-                  </select>
+                  <FieldSelect options={field.options ?? []} bind:value={configValues[field.key]} />
                 {:else if field.type === "password"}
                   <input
                     type="password"
@@ -295,10 +288,10 @@
         <div class="group">
           <div class="row">
             <span class="row-label">{$t('settings.language')}</span>
-            <div class="lang-seg">
-              <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
-              <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
-            </div>
+            <FieldSelect
+              options={[{ value: 'en', label: 'EN' }, { value: 'zh', label: '中文' }]}
+              bind:value={$locale}
+            />
           </div>
         </div>
 
@@ -598,33 +591,6 @@
     transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
   }
   .toggle.on .toggle-knob { transform: translateX(18px); }
-
-  /* Language segmented control */
-  .lang-seg {
-    display: flex;
-    background: rgba(0,0,0,0.07);
-    border-radius: 8px;
-    padding: 2px;
-    gap: 0;
-  }
-  .lang-seg button {
-    padding: 4px 14px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: #3c3c3e;
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    transition: all 0.15s;
-    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
-  }
-  .lang-seg button.active {
-    background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
-    color: #1c1c1e;
-    font-weight: 500;
-  }
 
   /* Save / action row */
   .action-row {
