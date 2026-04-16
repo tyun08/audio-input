@@ -28,7 +28,6 @@
   }
 
   async function resizeTo(w: number, h: number, posKey?: string) {
-    await appWindow.show();
     await appWindow.setSize(new LogicalSize(w, h));
     if (posKey) {
       try {
@@ -95,11 +94,13 @@
 
     log(`[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`);
 
-    await appApi.setNativeOpaque(ui.nativeOpaque);
+    await appApi.setNativeOpaque(ui.nativeOpaque, ui.shouldShowWindow);
 
     if (!ui.shouldShowWindow) {
-      log("[syncWindow] hiding window");
-      await appWindow.hide();
+      // Window stays on-screen at alphaValue=0 (set by setNativeOpaque above).
+      // This keeps the CVDisplayLink alive so the WKWebView compositor never
+      // suspends — the root cause of the all-black settings window bug.
+      log("[syncWindow] window hidden via alphaValue=0 (compositor stays alive)");
       return;
     }
 
@@ -113,6 +114,12 @@
       document.documentElement.removeAttribute("style");
       document.body.removeAttribute("style");
       localStorage.removeItem("window-opacity");
+
+      // Show the window immediately (invisible via alphaValue=0, set by the
+      // native side at startup). Keeping it on-screen ensures the CVDisplayLink
+      // fires and the WKWebView compositor stays warm, so it never needs to
+      // "wake up" when settings opens — the root cause of the all-black window.
+      await appWindow.show();
 
       const onboardingDone = await appApi.invoke<boolean>("get_onboarding_completed").catch(() => true);
       showOnboarding = !onboardingDone;
@@ -315,7 +322,7 @@
     padding: 0;
   }
 
-  :global(html), :global(body) {
+  :global(html), :global(body), :global(#app) {
     height: 100%;
     width: 100%;
   }

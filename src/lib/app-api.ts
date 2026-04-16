@@ -11,7 +11,7 @@ export interface AppApi {
   window: AppWindow;
   invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
   listen: <T>(event: string, handler: EventCallback<T>) => Promise<UnlistenFn>;
-  setNativeOpaque: (opaque: boolean) => Promise<void>;
+  setNativeOpaque: (opaque: boolean, visible: boolean) => Promise<void>;
 }
 
 function hasTauriWindow(): boolean {
@@ -58,12 +58,12 @@ export function createAppApi(): AppApi {
 
       return tauriListen<T>(event, handler);
     },
-    setNativeOpaque(opaque: boolean) {
+    setNativeOpaque(opaque: boolean, visible: boolean) {
       if (!inTauri) {
         return Promise.resolve();
       }
 
-      return tauriInvoke("set_native_opaque", { opaque });
+      return tauriInvoke("set_native_opaque", { opaque, visible });
     },
   };
 }
