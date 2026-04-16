@@ -528,7 +528,7 @@ pub async fn save_onboarding_completed(
 /// Toggle NSWindow.isOpaque at runtime so WebKit uses the high-quality opaque
 /// text rendering path when showing panels, and transparent mode for the HUD.
 #[tauri::command]
-pub fn set_native_opaque(opaque: bool) {
+pub fn set_native_opaque(opaque: bool, visible: bool) {
     #[cfg(target_os = "macos")]
     {
         use objc::{class, msg_send, sel, sel_impl};
@@ -540,10 +540,20 @@ pub fn set_native_opaque(opaque: bool) {
             for i in 0..count {
                 let win: *mut objc::runtime::Object =
                     msg_send![windows, objectAtIndex: i];
-                let is_visible: bool = msg_send![win, isVisible];
-                if !is_visible {
-                    continue;
-                }
+
+                // Visibility via alphaValue instead of show/hide or offscreen parking.
+                // alphaValue=0 keeps the window on-screen so macOS CVDisplayLink keeps
+                // firing and the WKWebView compositor never suspends (the root cause of
+                // the all-black settings window). setIgnoresMouseEvents prevents an
+                // invisible window from eating clicks.
+                let alpha: f64 = if visible { 1.0 } else { 0.0 };
+                let _: () = msg_send![win, setAlphaValue: alpha];
+                let _: () = msg_send![win, setIgnoresMouseEvents: !visible];
+                // Apply to all windows, including hidden ones, so the background
+                // state is correct the moment the window becomes visible. Skipping
+                // hidden windows caused a black-settings-window bug: the call was a
+                // no-op while the window was hidden, then show() rendered it with
+                // the old transparent/clear background still in place.
                 let _: () = msg_send![win, setOpaque: opaque];
                 let bg: *mut objc::runtime::Object = if opaque {
                     msg_send![
@@ -558,9 +568,30 @@ pub fn set_native_opaque(opaque: bool) {
                 };
                 let _: () = msg_send![win, setBackgroundColor: bg];
 
+                // [win contentView] returns WryWebViewParent (a wry container view),
+                // not the WKWebView. The actual WKWebView is WryWebViewParent's
+                // first subview. Toggle drawsBackground on it so the compositor
+                // restarts when switching to opaque/settings mode.
+                // transparent:true sets drawsBackground=NO at startup; leaving it NO
+                // while the window is hidden suspends the compositor — which is why
+                // the window appears all-black even though JS is running fine.
+                let content: *mut objc::runtime::Object = msg_send![win, contentView];
+                if !content.is_null() {
+                    let subviews: *mut objc::runtime::Object = msg_send![content, subviews];
+                    let sub_count: usize = msg_send![subviews, count];
+                    if sub_count > 0 {
+                        let webview: *mut objc::runtime::Object =
+                            msg_send![subviews, objectAtIndex: 0usize];
+                        let sel = objc::sel!(setDrawsBackground:);
+                        let responds: bool = msg_send![webview, respondsToSelector: sel];
+                        if responds {
+                            let _: () = msg_send![webview, setDrawsBackground: opaque];
+                        }
+                    }
+                }
+
                 // Round the window frame view (superview of contentView)
                 // so the opaque background is clipped to rounded corners
-                let content: *mut objc::runtime::Object = msg_send![win, contentView];
                 let frame_view: *mut objc::runtime::Object = msg_send![content, superview];
                 if !frame_view.is_null() {
                     let _: () = msg_send![frame_view, setWantsLayer: true];
@@ -577,6 +608,20 @@ pub fn set_native_opaque(opaque: bool) {
                 }
 
                 let _: () = msg_send![win, invalidateShadow];
+            }
+
+            // Switch activation policy based on mode:
+            // - opaque (settings/onboarding): Regular so the window becomes key,
+            //   the app appears in the menu bar, and WebKit renders properly.
+            // - transparent (HUD): Accessory so the overlay floats without
+            //   stealing focus from the user's current app.
+            // NSApplicationActivationPolicyRegular  = 0
+            // NSApplicationActivationPolicyAccessory = 1
+            if opaque {
+                let _: () = msg_send![app, setActivationPolicy: 0i64];
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+            } else {
+                let _: () = msg_send![app, setActivationPolicy: 1i64];
             }
         }
     }
