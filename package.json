@@ -20,7 +20,7 @@
     "@tauri-apps/cli": "^2",
     "svelte": "^4",
     "typescript": "^5",
-    "vite": "^5",
-    "vitest": "^4.1.4"
+    "vite": "^5.4.21",
+    "vitest": "^3.2.4"
   }
 }

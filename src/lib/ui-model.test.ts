@@ -66,7 +66,7 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ showSettings: true }));
     expect(decision).toEqual({
       view: "settings",
-      window: { w: 480, h: 380, posKey: "settings-window-pos" },
+      window: { w: 620, h: 480, posKey: "settings-window-pos" },
       nativeOpaque: true,
       shouldShowWindow: true,
     });
