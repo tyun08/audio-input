@@ -41,9 +41,27 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     .join("com.audioinput.app")
                     .join("app.log");
                 #[cfg(target_os = "macos")]
-                let _ = std::process::Command::new("open").arg(&log_path).spawn();
+                {
+                    // Escape single quotes in the path for use inside a single-quoted
+                    // shell string: replace ' with '\''
+                    let escaped = log_path.to_string_lossy().replace('\'', "'\\''");
+                    let script = format!(
+                        "tell application \"Terminal\"\n  do script \"tail -f '{}'\"\n  activate\nend tell",
+                        escaped
+                    );
+                    let _ = std::process::Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .spawn();
+                }
                 #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("explorer").arg(&log_path).spawn();
+                {
+                    // Escape single quotes for PowerShell string (double them up)
+                    let escaped = log_path.to_string_lossy().replace('\'', "''");
+                    let _ = std::process::Command::new("powershell")
+                        .args(["-NoExit", "-Command", &format!("Get-Content '{}' -Wait", escaped)])
+                        .spawn();
+                }
             }
             "toggle-polish" => {
                 let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();

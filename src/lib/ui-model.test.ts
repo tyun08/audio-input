@@ -92,6 +92,14 @@ describe("deriveUiDecision", () => {
     expect(decision.nativeOpaque).toBe(false);
   });
 
+  it("idle with showIdleHud=true keeps the HUD visible", () => {
+    const decision = deriveUiDecision(baseState({ showIdleHud: true }));
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.nativeOpaque).toBe(false);
+    expect(decision.window.h).toBe(44);
+  });
+
   it("recording keeps HUD visible at standard size", () => {
     const decision = deriveUiDecision(baseState({ appState: "recording" }));
     expect(decision.view).toBe("hud");
