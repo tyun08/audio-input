@@ -48,6 +48,16 @@ export const providers: ProviderDef[] = [
         type: "password",
         placeholder: "gsk_...",
       },
+      {
+        key: "model",
+        label: l("Model", "模型"),
+        type: "select",
+        options: [
+          { value: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo" },
+          { value: "whisper-large-v3", label: "Whisper Large v3" },
+          { value: "distil-whisper-large-v3-en", label: "Distil Whisper Large v3 (EN)" },
+        ],
+      },
     ],
     hint: l(
       'Get one free at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>',

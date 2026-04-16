@@ -237,8 +237,9 @@ async fn transcribe_with_provider(
             if api_key.is_empty() {
                 anyhow::bail!("Groq API Key not configured");
             }
+            let model = config["model"].as_str().unwrap_or("whisper-large-v3-turbo");
             info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
-            GroqClient::new(api_key.to_string())
+            GroqClient::new(api_key.to_string(), model.to_string())
                 .transcribe(wav_bytes)
                 .await
         }
