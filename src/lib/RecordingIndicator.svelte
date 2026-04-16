@@ -37,7 +37,10 @@
   }
 </script>
 
+<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
 <div class="hud"
+  role="region"
+  aria-label="Recording status"
   class:recording={state === "recording"}
   class:processing={state === "processing"}
   class:error={state === "error" || injectionFailed}
