@@ -579,6 +579,20 @@ pub fn set_native_opaque(opaque: bool) {
 
                 let _: () = msg_send![win, invalidateShadow];
             }
+
+            // Switch activation policy based on mode:
+            // - opaque (settings/onboarding): Regular so the window becomes key,
+            //   the app appears in the menu bar, and WebKit renders properly.
+            // - transparent (HUD): Accessory so the overlay floats without
+            //   stealing focus from the user's current app.
+            // NSApplicationActivationPolicyRegular  = 0
+            // NSApplicationActivationPolicyAccessory = 1
+            if opaque {
+                let _: () = msg_send![app, setActivationPolicy: 0i64];
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+            } else {
+                let _: () = msg_send![app, setActivationPolicy: 1i64];
+            }
         }
     }
 }
