@@ -457,6 +457,9 @@
     cursor: pointer;
     transition: background 0.12s;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   .nav-item:hover { background: rgba(0,0,0,0.07); }
   .nav-item.active {
