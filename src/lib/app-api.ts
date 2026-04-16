@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type AppWindow = Pick<
   ReturnType<typeof getCurrentWindow>,
-  "show" | "hide" | "setSize" | "setPosition" | "center" | "outerPosition" | "scaleFactor"
+  "show" | "hide" | "setSize" | "setPosition" | "center" | "outerPosition" | "scaleFactor" | "setResizable"
 >;
 
 export interface AppApi {
@@ -39,6 +39,7 @@ export function createAppApi(): AppApi {
     center: async () => {},
     outerPosition: async () => ({ x: 0, y: 0 }),
     scaleFactor: async () => 1,
+    setResizable: async () => {},
   };
   const inTauri = hasTauriWindow();
 

@@ -1,7 +1,7 @@
 export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_H = 72;
-export const SETTINGS_W = 480;
+export const SETTINGS_W = 620; 
 export const SETTINGS_H = 480;
 export const ONBOARDING_W = 370;
 export const ONBOARDING_H = 540;

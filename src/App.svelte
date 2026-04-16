@@ -95,6 +95,7 @@
     log(`[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`);
 
     await appApi.setNativeOpaque(ui.nativeOpaque, ui.shouldShowWindow);
+    await appWindow.setResizable(ui.shouldShowWindow && ui.nativeOpaque);
 
     if (!ui.shouldShowWindow) {
       // Window stays on-screen at alphaValue=0 (set by setNativeOpaque above).
