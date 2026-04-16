@@ -12,4 +12,8 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  test: {
+    // Only run vitest unit tests inside src/; the tests/ directory is for Playwright e2e
+    include: ["src/**/*.test.ts"],
+  },
 }));

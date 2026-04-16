@@ -55,12 +55,16 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot_desc":
       "Capture screen while recording for better polish",
     "settings.language": "Language",
+
+    // Settings nav tabs
     "settings.nav.transcription": "Transcription",
     "settings.nav.general": "General",
     "settings.nav.advanced": "Advanced",
+
+    // Settings section headers
+    "settings.section.startup": "Startup",
     "settings.section.input": "Input",
     "settings.section.language": "Language",
-    "settings.section.startup": "Startup",
 
     // Onboarding
     "onboarding.start": "Get Started",
@@ -122,12 +126,16 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot": "截图上下文",
     "settings.screenshot_desc": "录音时截屏，提升润色准确度",
     "settings.language": "语言",
+
+    // Settings nav tabs
     "settings.nav.transcription": "转录",
     "settings.nav.general": "通用",
     "settings.nav.advanced": "高级",
+
+    // Settings section headers
+    "settings.section.startup": "启动",
     "settings.section.input": "输入",
     "settings.section.language": "语言",
-    "settings.section.startup": "启动",
 
     "onboarding.start": "开始配置",
     "onboarding.configure": "配置 AI 服务",
