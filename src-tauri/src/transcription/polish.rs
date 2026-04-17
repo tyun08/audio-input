@@ -224,7 +224,7 @@ async fn try_polish_text(
     max_tokens: u32,
 ) -> anyhow::Result<String> {
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(3))
         .build()?;
 
     let user_content = if with_completeness_hint {
