@@ -258,10 +258,16 @@ async fn send_gemini_request(
     access_token: &str,
     body: &serde_json::Value,
 ) -> Result<String> {
+    // Attach a billing label so every request can be aggregated in the GCP
+    // Billing console by filtering on label key "app" = "audio-input".
+    // No data beyond what is already sent to Vertex AI is transmitted.
+    let mut body = body.clone();
+    body["labels"] = serde_json::json!({ "app": "audio-input" });
+
     let resp = client
         .post(url)
         .bearer_auth(access_token)
-        .json(body)
+        .json(&body)
         .send()
         .await?;
 
