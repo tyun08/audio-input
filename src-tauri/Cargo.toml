@@ -41,10 +41,10 @@ block = "0.1"
 enigo = "0.2"
 
 [lints.rust]
-# objc 0.2 macros use the old `cfg(cargo-clippy)` pattern; declare it as an
-# expected cfg so rustc does not raise unexpected_cfgs errors when those
-# macros expand inside our crate.
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cargo-clippy)'] }
+# objc 0.2 macros use the old `cfg(cargo-clippy)` pattern (with a hyphen,
+# which is not a valid Rust identifier and cannot be added to check-cfg).
+# Allow the lint so that macro expansions inside our crate don't cause errors.
+unexpected_cfgs = "allow"
 
 [profile.release]
 panic = "abort"
