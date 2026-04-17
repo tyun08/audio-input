@@ -21,6 +21,7 @@ export interface UiModelState {
   appState: AppState;
   injectionFailed: boolean;
   polishFailed: boolean;
+  showIdleHud?: boolean;
 }
 
 export interface UiDecision {
@@ -103,6 +104,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       posKey: HUD_POS_KEY,
     },
     nativeOpaque: false,
-    shouldShowWindow: state.appState !== "idle" || state.injectionFailed || state.polishFailed,
+    shouldShowWindow:
+      state.appState !== "idle" || state.injectionFailed || state.polishFailed || Boolean(state.showIdleHud),
   };
 }

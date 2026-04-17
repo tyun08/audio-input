@@ -66,6 +66,8 @@
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
+  let showIdleHud = false;
+
   const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
 
@@ -89,6 +91,7 @@
       appState,
       injectionFailed,
       polishFailed,
+      showIdleHud,
     };
   }
 
@@ -143,9 +146,8 @@
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
       audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
       autostartEnabled = await appApi.invoke<boolean>("get_autostart_enabled").catch(() => false);
-      screenshotContextEnabled = await appApi
-        .invoke<boolean>("get_screenshot_context_enabled")
-        .catch(() => false);
+      screenshotContextEnabled = await appApi.invoke<boolean>("get_screenshot_context_enabled").catch(() => false);
+      showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -328,7 +330,8 @@
       {audioDevices}
       bind:autostartEnabled
       bind:screenshotContextEnabled
-      {appState}
+      bind:showIdleHud
+      appState={appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}

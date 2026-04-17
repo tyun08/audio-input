@@ -1,4 +1,4 @@
-mod audio;
+pub mod audio;
 mod commands;
 mod config;
 mod input;
@@ -271,6 +271,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_show_idle_hud,
+            commands::save_show_idle_hud,
             commands::set_native_opaque,
         ])
         .run(tauri::generate_context!())

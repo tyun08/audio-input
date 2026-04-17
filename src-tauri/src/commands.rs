@@ -124,6 +124,15 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
+    // Early return: if the microphone captured only silence or background
+    // noise, skip encoding and the API call entirely to avoid Whisper
+    // hallucinations (e.g. "Thank you.", "You're welcome.").
+    if crate::audio::is_silent(&audio_data.samples) {
+        info!("No speech detected — skipping transcription (silence)");
+        reset_to_idle(&app, &shared_state);
+        return;
+    }
+
     {
         let mut state = shared_state.lock().unwrap();
         *state = AppState::Processing;
@@ -237,8 +246,13 @@ async fn transcribe_with_provider(
             if api_key.is_empty() {
                 anyhow::bail!("Groq API Key not configured");
             }
+            let model = config["model"]
+                .as_str()
+                .unwrap_or("whisper-large-v3-turbo")
+                .to_string();
             info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
-            GroqClient::new(api_key.to_string())
+            info!("Groq model: {}", model);
+            GroqClient::new(api_key.to_string(), model)
                 .transcribe(wav_bytes)
                 .await
         }
@@ -482,6 +496,27 @@ pub async fn save_autostart_enabled(enabled: bool, app: AppHandle) -> Result<(),
     } else {
         app.autolaunch().disable().map_err(|e| e.to_string())
     }
+}
+
+// --- Show idle HUD -----------------------------------------------------------
+
+#[tauri::command]
+pub fn get_show_idle_hud(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().show_idle_hud
+}
+
+#[tauri::command]
+pub async fn save_show_idle_hud(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.show_idle_hud = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 // --- Screenshot context ------------------------------------------------------
