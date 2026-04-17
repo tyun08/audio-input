@@ -55,7 +55,7 @@
       <div class="ring"></div>
       <div class="dot"></div>
     </div>
-    <div class="waveform" aria-label="Audio level">
+    <div class="waveform" aria-hidden="true">
       {#each audioLevels as level}
         <div class="wave-bar" style="height: {barHeight(level)}px"></div>
       {/each}

@@ -234,6 +234,7 @@
       unlisten.push(
         await appApi.listen<number>("audio-level", (e) => {
           if (appState === "recording") {
+            // Scale up RMS values (typically 0..0.25) to fill the visible bar range
             const level = Math.min(1.0, e.payload * 4);
             audioLevels = [...audioLevels.slice(-(WAVEFORM_BAR_COUNT - 1)), level];
           }

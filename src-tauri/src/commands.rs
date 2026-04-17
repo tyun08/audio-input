@@ -105,7 +105,7 @@ async fn start_recording<R: Runtime>(
             let app_monitor = app.clone();
             let state_monitor = shared_state.clone();
             tokio::spawn(async move {
-                // Window of samples to compute RMS over (~100 ms worth)
+                // Window of samples to compute RMS over — sample_rate / 10 = ~100 ms
                 let window_size = ((sample_rate as usize) / 10).max(1);
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
@@ -127,7 +127,9 @@ async fn start_recording<R: Runtime>(
                             (sum_sq / recent.len() as f32).sqrt()
                         }
                     };
-                    let _ = app_monitor.emit("audio-level", level);
+                    if let Err(e) = app_monitor.emit("audio-level", level) {
+                        error!("Failed to emit audio-level: {}", e);
+                    }
                 }
             });
         }
