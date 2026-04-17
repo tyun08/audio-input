@@ -7,6 +7,7 @@
   export let lastTranscription = "";
   export let injectionFailed = false;
   export let polishFailed = false;
+  export let audioLevels: number[] = [];
 
   let seconds = 0;
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -32,6 +33,12 @@
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   }
 
+  function barHeight(level: number): number {
+    const MIN_H = 3;
+    const MAX_H = 20;
+    return Math.round(MIN_H + level * (MAX_H - MIN_H));
+  }
+
   async function handleMousedown() {
     await getCurrentWindow().startDragging();
   }
@@ -47,6 +54,11 @@
     <div class="dot-wrap">
       <div class="ring"></div>
       <div class="dot"></div>
+    </div>
+    <div class="waveform" aria-label="Audio level">
+      {#each audioLevels as level}
+        <div class="wave-bar" style="height: {barHeight(level)}px"></div>
+      {/each}
     </div>
     <span class="label red">{fmt(seconds)}</span>
 
@@ -131,6 +143,23 @@
   }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.65} }
   @keyframes expand { 0%{transform:scale(.4);opacity:.9} 100%{transform:scale(1.9);opacity:0} }
+
+  /* Waveform */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 22px;
+    overflow: hidden;
+  }
+  .wave-bar {
+    width: 2px;
+    border-radius: 1px;
+    background: rgba(248, 113, 113, 0.75);
+    flex-shrink: 0;
+    transition: height 0.08s ease-out;
+    min-height: 3px;
+  }
 
   /* Spinner */
   .spinner {

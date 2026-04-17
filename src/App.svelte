@@ -65,6 +65,10 @@
   let screenshotContextEnabled = false;
   let showIdleHud = false;
 
+  // Audio waveform — rolling buffer of recent RMS levels (0..1) for the HUD
+  const WAVEFORM_BAR_COUNT = 20;
+  let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
+
   const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
 
@@ -227,6 +231,15 @@
         })
       );
 
+      unlisten.push(
+        await appApi.listen<number>("audio-level", (e) => {
+          if (appState === "recording") {
+            const level = Math.min(1.0, e.payload * 4);
+            audioLevels = [...audioLevels.slice(-(WAVEFORM_BAR_COUNT - 1)), level];
+          }
+        })
+      );
+
       await syncWindow();
     } catch (err) {
       const parsed = parseAppState(`error:${err instanceof Error ? err.message : String(err)}`);
@@ -253,6 +266,9 @@
     appState = transition.state.appState;
     showSettings = transition.state.showSettings;
     errorMsg = transition.errorMsg;
+    if (appState !== "recording") {
+      audioLevels = Array(WAVEFORM_BAR_COUNT).fill(0);
+    }
   }
 
   async function handleSettingsSaved() {
@@ -317,7 +333,7 @@
       on:close={handleSettingsClosed}
     />
   {:else}
-    <RecordingIndicator state={appState} {errorMsg} {lastTranscription} {injectionFailed} {polishFailed} />
+    <RecordingIndicator state={appState} {errorMsg} {lastTranscription} {injectionFailed} {polishFailed} {audioLevels} />
   {/if}
 </div>
 

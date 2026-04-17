@@ -110,6 +110,14 @@ impl Recorder {
         Ok(())
     }
 
+    pub fn get_buffer_ref(&self) -> Arc<Mutex<Vec<f32>>> {
+        Arc::clone(&self.buffer)
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
     pub fn stop(&mut self) -> Result<AudioData> {
         // Drop the stream to stop recording
         self.stream.take();

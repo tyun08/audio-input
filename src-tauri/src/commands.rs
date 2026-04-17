@@ -94,6 +94,42 @@ async fn start_recording<R: Runtime>(
             } else {
                 *ss.lock().unwrap() = None;
             }
+
+            // Spawn a task that periodically samples the audio buffer and
+            // emits an audio-level event so the frontend can animate a live
+            // waveform while recording.
+            let (buffer_ref, sample_rate) = {
+                let recorder = recorder_state.lock().unwrap();
+                (recorder.get_buffer_ref(), recorder.sample_rate())
+            };
+            let app_monitor = app.clone();
+            let state_monitor = shared_state.clone();
+            tokio::spawn(async move {
+                // Window of samples to compute RMS over (~100 ms worth)
+                let window_size = ((sample_rate as usize) / 10).max(1);
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+                    {
+                        let state = state_monitor.lock().unwrap();
+                        if !matches!(*state, AppState::Recording) {
+                            break;
+                        }
+                    }
+                    let level: f32 = {
+                        let buf = buffer_ref.lock().unwrap();
+                        let len = buf.len();
+                        let start = len.saturating_sub(window_size);
+                        let recent = &buf[start..];
+                        if recent.is_empty() {
+                            0.0
+                        } else {
+                            let sum_sq: f32 = recent.iter().map(|&s| s * s).sum();
+                            (sum_sq / recent.len() as f32).sqrt()
+                        }
+                    };
+                    let _ = app_monitor.emit("audio-level", level);
+                }
+            });
         }
         Err(e) => {
             error!("Recording start failed: {}", e);
