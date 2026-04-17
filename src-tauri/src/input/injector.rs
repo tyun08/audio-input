@@ -148,13 +148,16 @@ pub fn request_accessibility_permission() -> bool {
     use std::ffi::c_void;
 
     #[link(name = "ApplicationServices", kind = "framework")]
-    #[link(name = "CoreFoundation", kind = "framework")]
     extern "C" {
         static kAXTrustedCheckOptionPrompt: *const c_void;
         static kCFBooleanTrue: *const c_void;
         static kCFTypeDictionaryKeyCallBacks: *const c_void;
         static kCFTypeDictionaryValueCallBacks: *const c_void;
         fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
         fn CFDictionaryCreate(
             allocator: *const c_void,
             keys: *const *const c_void,

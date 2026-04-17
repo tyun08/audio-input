@@ -20,10 +20,13 @@
     try {
       const phys = await appWindow.outerPosition();
       const factor = await appWindow.scaleFactor();
-      localStorage.setItem(key, JSON.stringify({
-        x: phys.x / factor,
-        y: phys.y / factor,
-      }));
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          x: phys.x / factor,
+          y: phys.y / factor,
+        })
+      );
     } catch {}
   }
 
@@ -95,7 +98,9 @@
   async function syncWindow() {
     const ui = deriveUiDecision(getUiState());
 
-    log(`[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`);
+    log(
+      `[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`
+    );
 
     await appApi.setNativeOpaque(ui.nativeOpaque, ui.shouldShowWindow);
     await appWindow.setResizable(ui.shouldShowWindow && ui.nativeOpaque);
@@ -108,7 +113,9 @@
       return;
     }
 
-    log(`[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`);
+    log(
+      `[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`
+    );
     await resizeTo(ui.window.w, ui.window.h, ui.window.posKey);
   }
 
@@ -125,7 +132,9 @@
       // "wake up" when settings opens — the root cause of the all-black window.
       await appWindow.show();
 
-      const onboardingDone = await appApi.invoke<boolean>("get_onboarding_completed").catch(() => true);
+      const onboardingDone = await appApi
+        .invoke<boolean>("get_onboarding_completed")
+        .catch(() => true);
       showOnboarding = !onboardingDone;
 
       const state = await appApi.invoke<string>("get_app_state").catch(() => "idle");
@@ -137,13 +146,16 @@
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
       audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
       autostartEnabled = await appApi.invoke<boolean>("get_autostart_enabled").catch(() => false);
-      screenshotContextEnabled = await appApi.invoke<boolean>("get_screenshot_context_enabled").catch(() => false);
+      screenshotContextEnabled = await appApi
+        .invoke<boolean>("get_screenshot_context_enabled")
+        .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
           clearInjectionTimer();
-          const closingSettings = showSettings && (e.payload === "recording" || e.payload === "processing");
+          const closingSettings =
+            showSettings && (e.payload === "recording" || e.payload === "processing");
           if (closingSettings) {
             await savePos(SETTINGS_POS_KEY);
           }
@@ -281,7 +293,7 @@
 <div class="container">
   {#if initializationError}
     <div class="fallback-banner" role="alert">
-      <p class="title">{$t('hud.error')}</p>
+      <p class="title">{$t("hud.error")}</p>
       <p>{initializationError}</p>
     </div>
   {:else if showOnboarding}
@@ -290,18 +302,28 @@
     <div class="ax-banner">
       <div class="ax-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(251,191,36,0.85)" stroke-width="2"/>
-          <line x1="12" y1="7" x2="12" y2="13" stroke="rgba(251,191,36,0.85)" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="12" cy="17" r="1.2" fill="rgba(251,191,36,0.85)"/>
+          <circle cx="12" cy="12" r="10" stroke="rgba(251,191,36,0.85)" stroke-width="2" />
+          <line
+            x1="12"
+            y1="7"
+            x2="12"
+            y2="13"
+            stroke="rgba(251,191,36,0.85)"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <circle cx="12" cy="17" r="1.2" fill="rgba(251,191,36,0.85)" />
         </svg>
       </div>
       <div class="ax-text">
-        <p>{$t('ax.need')}</p>
-        <p class="hint">{$t('ax.restart')}</p>
+        <p>{$t("ax.need")}</p>
+        <p class="hint">{$t("ax.restart")}</p>
       </div>
       <div class="ax-buttons">
-        <button class="primary" on:click={() => appApi.invoke("open_accessibility_prefs")}>{$t('ax.open')}</button>
-        <button on:click={handleAccessibilityDismiss}>{$t('ax.dismiss')}</button>
+        <button class="primary" on:click={() => appApi.invoke("open_accessibility_prefs")}
+          >{$t("ax.open")}</button
+        >
+        <button on:click={handleAccessibilityDismiss}>{$t("ax.dismiss")}</button>
       </div>
     </div>
   {:else if showSettings}
@@ -311,13 +333,19 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       bind:showIdleHud
-      appState={appState}
+      {appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
     />
   {:else}
-    <RecordingIndicator state={appState} {errorMsg} {lastTranscription} {injectionFailed} {polishFailed} />
+    <RecordingIndicator
+      state={appState}
+      {errorMsg}
+      {lastTranscription}
+      {injectionFailed}
+      {polishFailed}
+    />
   {/if}
 </div>
 
@@ -328,7 +356,9 @@
     padding: 0;
   }
 
-  :global(html), :global(body), :global(#app) {
+  :global(html),
+  :global(body),
+  :global(#app) {
     height: 100%;
     width: 100%;
   }
@@ -365,8 +395,8 @@
     flex-direction: column;
     gap: 6px;
     max-width: 320px;
-    color: rgba(255,255,255,0.9);
-    box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+    color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
     text-align: center;
   }
 
@@ -386,7 +416,7 @@
     flex-direction: column;
     gap: 10px;
     max-width: 300px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
   }
 
   .ax-icon {
@@ -396,7 +426,7 @@
 
   .ax-text {
     text-align: center;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     font-size: 13px;
     line-height: 1.6;
     display: flex;
@@ -418,9 +448,9 @@
   .ax-buttons button {
     padding: 6px 14px;
     border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.75);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.75);
     font-size: 12px;
     cursor: pointer;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
@@ -428,7 +458,7 @@
   }
 
   .ax-buttons button:hover {
-    background: rgba(255,255,255,0.14);
+    background: rgba(255, 255, 255, 0.14);
   }
 
   .ax-buttons button.primary {
