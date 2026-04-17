@@ -3,7 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { providers, getProvider } from "./providers";
-  import { t, locale, type Locale } from "./i18n";
+  import { t, locale } from "./i18n";
+  import FieldSelect from "./FieldSelect.svelte";
 
   const dispatch = createEventDispatcher();
 
@@ -111,10 +112,6 @@
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
   }
 
-  function switchLocale(loc: Locale) {
-    $locale = loc;
-  }
-
   function handleProviderSelectChange(e: Event) {
     handleProviderSwitch((e.target as HTMLSelectElement).value);
   }
@@ -215,11 +212,7 @@
               <div class="row">
                 <span class="row-label">{field.label[$locale]}</span>
                 {#if field.type === "select"}
-                  <select class="row-select" bind:value={configValues[field.key]}>
-                    {#each field.options ?? [] as opt}
-                      <option value={opt.value}>{opt.label}</option>
-                    {/each}
-                  </select>
+                  <FieldSelect options={field.options ?? []} bind:value={configValues[field.key]} />
                 {:else if field.type === "password"}
                   <input
                     type="password"
@@ -310,10 +303,10 @@
         <div class="group">
           <div class="row">
             <span class="row-label">{$t('settings.language')}</span>
-            <div class="lang-seg">
-              <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
-              <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
-            </div>
+            <FieldSelect
+              options={[{ value: 'en', label: 'EN' }, { value: 'zh', label: '中文' }]}
+              bind:value={$locale}
+            />
           </div>
         </div>
 
@@ -626,32 +619,6 @@
   }
   .toggle.on .toggle-knob { transform: translateX(18px); }
 
-  /* Language segmented control */
-  .lang-seg {
-    display: flex;
-    background: rgba(255,255,255,0.06);
-    border-radius: 8px;
-    padding: 2px;
-    gap: 0;
-  }
-  .lang-seg button {
-    padding: 4px 14px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: rgba(255,255,255,0.5);
-    font-size: 13px;
-    font-weight: 400;
-    cursor: pointer;
-    transition: all 0.15s;
-    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
-  }
-  .lang-seg button.active {
-    background: rgba(99,102,241,0.75);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    color: white;
-    font-weight: 500;
-  }
 
   /* Save / action row */
   .action-row {
