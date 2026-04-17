@@ -144,6 +144,51 @@ pub fn check_accessibility_permission() -> bool {
 }
 
 #[cfg(target_os = "macos")]
+pub fn request_accessibility_permission() -> bool {
+    use std::ffi::c_void;
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        static kAXTrustedCheckOptionPrompt: *const c_void;
+        static kCFBooleanTrue: *const c_void;
+        static kCFTypeDictionaryKeyCallBacks: *const c_void;
+        static kCFTypeDictionaryValueCallBacks: *const c_void;
+        fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
+        fn CFDictionaryCreate(
+            allocator: *const c_void,
+            keys: *const *const c_void,
+            values: *const *const c_void,
+            num: isize,
+            key_cbs: *const c_void,
+            val_cbs: *const c_void,
+        ) -> *mut c_void;
+        fn CFRelease(cf: *const c_void);
+    }
+
+    unsafe {
+        let keys = [kAXTrustedCheckOptionPrompt];
+        let values = [kCFBooleanTrue];
+        let dict = CFDictionaryCreate(
+            std::ptr::null(),
+            keys.as_ptr(),
+            values.as_ptr(),
+            1,
+            kCFTypeDictionaryKeyCallBacks,
+            kCFTypeDictionaryValueCallBacks,
+        );
+        let trusted = AXIsProcessTrustedWithOptions(dict as *const c_void);
+        CFRelease(dict as *const c_void);
+        trusted
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_accessibility_permission() -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
 pub fn open_accessibility_settings() {
     let _ = Command::new("open")
         .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
