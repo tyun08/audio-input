@@ -36,7 +36,10 @@
     await loadProviderConfig();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
-    const stats = await invoke<{ total_recording_secs: number; recording_count: number }>("get_usage_stats").catch(() => null);
+    const stats = await invoke<{ total_recording_secs: number; recording_count: number }>("get_usage_stats").catch((e) => {
+      console.warn("[SettingsPanel] get_usage_stats failed:", e);
+      return null;
+    });
     if (stats) {
       usageTotalSecs = stats.total_recording_secs;
       usageCount = stats.recording_count;
@@ -124,9 +127,11 @@
   }
 
   function fmtDuration(totalSecs: number): string {
-    const h = Math.floor(totalSecs / 3600);
-    const m = Math.floor((totalSecs % 3600) / 60);
-    const s = totalSecs % 60;
+    const SECS_PER_HOUR = 3600;
+    const SECS_PER_MIN = 60;
+    const h = Math.floor(totalSecs / SECS_PER_HOUR);
+    const m = Math.floor((totalSecs % SECS_PER_HOUR) / SECS_PER_MIN);
+    const s = totalSecs % SECS_PER_MIN;
     if (h > 0) return `${h}${$t('settings.usage.hours')} ${m}${$t('settings.usage.minutes')} ${s}${$t('settings.usage.seconds')}`;
     if (m > 0) return `${m}${$t('settings.usage.minutes')} ${s}${$t('settings.usage.seconds')}`;
     return `${s}${$t('settings.usage.seconds')}`;
