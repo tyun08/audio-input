@@ -4,7 +4,6 @@ use tracing::{info, warn};
 
 const VISION_MODEL: &str = "meta-llama/llama-4-scout-17b-16e-instruct";
 const PRIMARY_MODEL: &str = "openai/gpt-oss-20b";
-const FALLBACK_MODEL: &str = "mistral-saba-24b";
 
 // --- Request structs ---
 
@@ -145,14 +144,14 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
             }
         }
         Err(e) => {
-            warn!("Primary model polish failed: {}, trying fallback model {}", e, FALLBACK_MODEL);
-            match try_polish_text(text, api_key, FALLBACK_MODEL, 0.1, false, max_tokens).await {
+            warn!("Primary model polish failed: {}, retrying with higher temperature", e);
+            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
                 Ok(p) if p.chars().count() >= threshold => {
-                    info!("Fallback model polish succeeded");
+                    info!("Polish retry succeeded");
                     (p, false)
                 }
                 Ok(_) | Err(_) => {
-                    warn!("Fallback model polish failed, returning original text");
+                    warn!("Polish retry failed, returning original text");
                     (text.to_string(), true)
                 }
             }
@@ -275,7 +274,14 @@ async fn send_request(
         anyhow::bail!("Groq polish API error: HTTP {} {}", status, body);
     }
 
-    let response: ChatResponse = serde_json::from_str(&body)?;
+    parse_polish_response(&body)
+}
+
+/// Parses a Groq-compatible chat-completion JSON response and returns the trimmed content of the
+/// first choice. Returns an error if the JSON is malformed, the choices array is empty, or the
+/// extracted content is blank after trimming.
+pub(crate) fn parse_polish_response(body: &str) -> anyhow::Result<String> {
+    let response: ChatResponse = serde_json::from_str(body)?;
     let polished = response
         .choices
         .into_iter()
@@ -288,4 +294,104 @@ async fn send_request(
     }
 
     Ok(polished)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- compute_max_tokens ---
+
+    #[test]
+    fn test_compute_max_tokens_minimum() {
+        // Very short input should clamp to minimum of 512
+        assert_eq!(compute_max_tokens(0), 512);
+        assert_eq!(compute_max_tokens(1), 512);
+    }
+
+    #[test]
+    fn test_compute_max_tokens_scales_with_input() {
+        // 1000-char input: (1000 * 3) / 2 + 256 = 1500 + 256 = 1756
+        assert_eq!(compute_max_tokens(1000), 1756);
+    }
+
+    #[test]
+    fn test_compute_max_tokens_maximum() {
+        // Very large input should clamp to maximum of 65536
+        assert_eq!(compute_max_tokens(100_000), 65_536);
+    }
+
+    // --- parse_polish_response ---
+
+    #[test]
+    fn test_parse_polish_response_valid() {
+        let body = r#"{
+            "choices": [{"message": {"content": "  polished text  "}}]
+        }"#;
+        let result = parse_polish_response(body).unwrap();
+        assert_eq!(result, "polished text");
+    }
+
+    #[test]
+    fn test_parse_polish_response_trims_whitespace() {
+        let body = r#"{"choices": [{"message": {"content": "\n  hello world\n  "}}]}"#;
+        let result = parse_polish_response(body).unwrap();
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_parse_polish_response_empty_content_returns_error() {
+        let body = r#"{"choices": [{"message": {"content": ""}}]}"#;
+        let err = parse_polish_response(body).unwrap_err();
+        assert!(
+            err.to_string().contains("empty content"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_polish_response_whitespace_only_returns_error() {
+        let body = r#"{"choices": [{"message": {"content": "   "}}]}"#;
+        let err = parse_polish_response(body).unwrap_err();
+        assert!(err.to_string().contains("empty content"));
+    }
+
+    #[test]
+    fn test_parse_polish_response_empty_choices_returns_error() {
+        let body = r#"{"choices": []}"#;
+        let err = parse_polish_response(body).unwrap_err();
+        assert!(err.to_string().contains("empty content"));
+    }
+
+    #[test]
+    fn test_parse_polish_response_invalid_json_returns_error() {
+        let err = parse_polish_response("not json").unwrap_err();
+        // Should be a serde_json parse error
+        assert!(!err.to_string().is_empty());
+    }
+
+    // --- system prompt constants ---
+
+    #[test]
+    fn test_system_prompt_text_not_empty() {
+        assert!(!SYSTEM_PROMPT_TEXT.is_empty());
+        assert!(SYSTEM_PROMPT_TEXT.contains("transcription"));
+    }
+
+    #[test]
+    fn test_system_prompt_vision_not_empty() {
+        assert!(!SYSTEM_PROMPT_VISION.is_empty());
+        assert!(SYSTEM_PROMPT_VISION.contains("screenshot"));
+    }
+
+    #[test]
+    fn test_system_prompt_text_instructs_same_language() {
+        assert!(SYSTEM_PROMPT_TEXT.contains("same language"));
+    }
+
+    #[test]
+    fn test_system_prompt_vision_instructs_same_language() {
+        assert!(SYSTEM_PROMPT_VISION.contains("same language"));
+    }
 }

@@ -49,8 +49,8 @@ test.describe("Settings Panel", () => {
     await loadApp(page);
     await openSettings(page);
 
-    // Provider selector shows Groq
-    const providerSelect = page.locator(".row-select");
+    // Provider selector shows Groq (first .row-select; Groq also has a model select)
+    const providerSelect = page.locator(".row-select").first();
     await expect(providerSelect).toHaveValue("groq");
   });
 
@@ -58,7 +58,7 @@ test.describe("Settings Panel", () => {
     await loadApp(page);
     await openSettings(page);
 
-    const providerSelect = page.locator(".row-select");
+    const providerSelect = page.locator(".row-select").first();
     await providerSelect.selectOption("vertex_ai");
 
     // Vertex AI config fields should appear (project ID)

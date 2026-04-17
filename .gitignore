@@ -4,6 +4,7 @@ src-tauri/target/
 .env
 .env.local
 .DS_Store
+src-tauri/gen/
 
 # Playwright
 test-results/
