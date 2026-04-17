@@ -108,7 +108,7 @@ pub fn run() {
                     // AVMediaTypeAudio = @"soun"
                     let media_type: *mut objc::runtime::Object = msg_send![
                         class!(NSString),
-                        stringWithUTF8String: b"soun\0".as_ptr() as *const std::os::raw::c_char
+                        stringWithUTF8String: c"soun".as_ptr()
                     ];
                     let block = ConcreteBlock::new(|granted: bool| {
                         if granted {

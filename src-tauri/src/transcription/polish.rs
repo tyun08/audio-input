@@ -62,7 +62,7 @@ struct ChatMessageResponse {
 // --- Helpers ---
 
 fn compute_max_tokens(char_count: usize) -> u32 {
-    ((char_count as u32 * 3 / 2) + 256).max(512).min(65_536)
+    ((char_count as u32 * 3 / 2) + 256).clamp(512, 65_536)
 }
 
 pub(crate) const SYSTEM_PROMPT_TEXT: &str = "You are a transcription cleanup assistant. \

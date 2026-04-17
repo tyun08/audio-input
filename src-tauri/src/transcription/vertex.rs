@@ -109,7 +109,7 @@ pub async fn polish_text_vertex(
 
     let original_len = text.chars().count();
     let threshold = (original_len as f64 * 0.8) as usize;
-    let max_tokens = ((original_len as u32 * 3 / 2) + 256).max(512).min(65_536);
+    let max_tokens = ((original_len as u32 * 3 / 2) + 256).clamp(512, 65_536);
 
     let url = format!(
         "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
@@ -177,6 +177,7 @@ pub async fn polish_text_vertex(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn try_vision(
     client: &Client,
     url: &str,
