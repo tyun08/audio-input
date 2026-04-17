@@ -26,6 +26,9 @@
   let saved = false;
   let error = "";
 
+  let usageTotalSecs = 0;
+  let usageCount = 0;
+
   $: currentProvider = getProvider(provider);
 
   onMount(async () => {
@@ -33,6 +36,11 @@
     await loadProviderConfig();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
+    const stats = await invoke<{ total_recording_secs: number; recording_count: number }>("get_usage_stats").catch(() => null);
+    if (stats) {
+      usageTotalSecs = stats.total_recording_secs;
+      usageCount = stats.recording_count;
+    }
   });
 
   async function loadProviderConfig() {
@@ -113,6 +121,15 @@
 
   function switchLocale(loc: Locale) {
     $locale = loc;
+  }
+
+  function fmtDuration(totalSecs: number): string {
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    if (h > 0) return `${h}${$t('settings.usage.hours')} ${m}${$t('settings.usage.minutes')} ${s}${$t('settings.usage.seconds')}`;
+    if (m > 0) return `${m}${$t('settings.usage.minutes')} ${s}${$t('settings.usage.seconds')}`;
+    return `${s}${$t('settings.usage.seconds')}`;
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -314,6 +331,19 @@
               <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
               <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
             </div>
+          </div>
+        </div>
+
+        <h3>{$t('settings.section.usage')}</h3>
+        <div class="group">
+          <div class="row">
+            <span class="row-label">{$t('settings.usage.total_time')}</span>
+            <span class="usage-value">{fmtDuration(usageTotalSecs)}</span>
+          </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <span class="row-label">{$t('settings.usage.sessions')}</span>
+            <span class="usage-value">{usageCount}</span>
           </div>
         </div>
 
@@ -532,6 +562,12 @@
     font-size: 14px;
     color: #1c1c1e;
     flex-shrink: 0;
+  }
+
+  .usage-value {
+    font-size: 13px;
+    color: #3c3c3e;
+    font-variant-numeric: tabular-nums;
   }
 
   .row-label-stack {
