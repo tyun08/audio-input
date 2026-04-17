@@ -52,8 +52,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.autostart": "Launch at Login",
     "settings.autostart_desc": "Auto-start when you log in",
     "settings.screenshot": "Screenshot Context",
-    "settings.screenshot_desc":
-      "Capture screen while recording for better polish",
+    "settings.screenshot_desc": "Capture screen while recording for better polish",
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.language": "Language",

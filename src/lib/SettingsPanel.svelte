@@ -348,9 +348,12 @@
         <h3>{$t("settings.section.language")}</h3>
         <div class="group">
           <div class="row">
-            <span class="row-label">{$t('settings.language')}</span>
+            <span class="row-label">{$t("settings.language")}</span>
             <FieldSelect
-              options={[{ value: 'en', label: 'EN' }, { value: 'zh', label: '中文' }]}
+              options={[
+                { value: "en", label: "EN" },
+                { value: "zh", label: "中文" },
+              ]}
               bind:value={$locale}
             />
           </div>
@@ -400,10 +403,15 @@
           <div class="row-sep"></div>
           <div class="row">
             <div class="row-label-stack">
-              <span class="row-label">{$t('settings.show_idle_hud')}</span>
-              <span class="row-sub">{$t('settings.show_idle_hud_desc')}</span>
+              <span class="row-label">{$t("settings.show_idle_hud")}</span>
+              <span class="row-sub">{$t("settings.show_idle_hud_desc")}</span>
             </div>
-            <button class="toggle" class:on={showIdleHud} on:click={handleShowIdleHudToggle} aria-label="Toggle idle HUD">
+            <button
+              class="toggle"
+              class:on={showIdleHud}
+              on:click={handleShowIdleHudToggle}
+              aria-label="Toggle idle HUD"
+            >
               <span class="toggle-knob"></span>
             </button>
           </div>
@@ -424,7 +432,7 @@
     overflow: hidden;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
-    color: rgba(255,255,255,0.88);
+    color: rgba(255, 255, 255, 0.88);
   }
 
   /* ── Title bar ── */
@@ -435,7 +443,7 @@
     height: 44px;
     padding: 0 14px;
     background: #1e1e20;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     cursor: grab;
     flex-shrink: 0;
   }
@@ -445,7 +453,7 @@
   .titlebar-label {
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     flex: 1;
     text-align: center;
     /* offset to visually center given close button on left */
@@ -484,8 +492,14 @@
     border-radius: 999px;
     flex-shrink: 0;
   }
-  .status-pill.recording { background: rgba(239,68,68,0.15); color: #f87171; }
-  .status-pill.processing { background: rgba(99,130,246,0.12); color: #818cf8; }
+  .status-pill.recording {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+  }
+  .status-pill.processing {
+    background: rgba(99, 130, 246, 0.12);
+    color: #818cf8;
+  }
 
   /* ── Layout ── */
   .layout {
@@ -499,7 +513,7 @@
     width: 168px;
     flex-shrink: 0;
     background: #141416;
-    border-right: 1px solid rgba(255,255,255,0.06);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
     padding: 10px 8px;
     display: flex;
     flex-direction: column;
@@ -516,21 +530,26 @@
     border: none;
     border-radius: 7px;
     background: transparent;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255, 255, 255, 0.5);
     font-size: 13.5px;
     font-weight: 400;
     text-align: left;
     cursor: pointer;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .nav-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75); }
+  .nav-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.75);
+  }
   .nav-item.active {
-    background: rgba(99,102,241,0.18);
-    color: rgba(165,163,255,0.95);
+    background: rgba(99, 102, 241, 0.18);
+    color: rgba(165, 163, 255, 0.95);
     font-weight: 500;
   }
 
@@ -549,7 +568,7 @@
   .content h2 {
     font-size: 20px;
     font-weight: 700;
-    color: rgba(255,255,255,0.92);
+    color: rgba(255, 255, 255, 0.92);
     margin: 0 0 10px;
     letter-spacing: -0.02em;
   }
@@ -557,7 +576,7 @@
   .content h3 {
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255,255,255,0.45);
+    color: rgba(255, 255, 255, 0.45);
     margin: 10px 0 4px;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -566,9 +585,9 @@
 
   /* ── Groups (card with rows) ── */
   .group {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     overflow: hidden;
   }
 
@@ -583,13 +602,13 @@
 
   .row-sep {
     height: 1px;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255, 255, 255, 0.06);
     margin: 0 16px;
   }
 
   .row-label {
     font-size: 14px;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255, 255, 255, 0.85);
     flex-shrink: 0;
   }
 
@@ -600,15 +619,15 @@
   }
   .row-sub {
     font-size: 12px;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255, 255, 255, 0.35);
   }
 
   /* ── Controls ── */
   .row-select {
     font-size: 13px;
-    color: rgba(255,255,255,0.85);
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 7px;
     padding: 5px 7px;
     outline: none;
@@ -619,9 +638,9 @@
 
   .row-input {
     font-size: 13px;
-    color: rgba(255,255,255,0.88);
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 7px;
     padding: 6px 9px;
     outline: none;
@@ -643,9 +662,17 @@
     font-family: "SF Mono", "Fira Code", monospace;
     font-size: 12px;
   }
-  .row-input:focus { border-color: rgba(129,140,248,0.5); background: rgba(255,255,255,0.1); }
-  .row-input::placeholder { color: rgba(255,255,255,0.2); }
-  .row-input.mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+  .row-input:focus {
+    border-color: rgba(129, 140, 248, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .row-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+  }
+  .row-input.mono {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+  }
 
   .row-input-group {
     display: flex;
@@ -659,7 +686,7 @@
     padding: 5px 10px;
     border-radius: 6px;
     border: none;
-    background: rgba(99,102,241,0.75);
+    background: rgba(99, 102, 241, 0.75);
     color: white;
     cursor: pointer;
     white-space: nowrap;
@@ -667,7 +694,9 @@
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     transition: background 0.1s;
   }
-  .apply-btn:hover { background: rgba(99,102,241,0.9); }
+  .apply-btn:hover {
+    background: rgba(99, 102, 241, 0.9);
+  }
 
   /* macOS-style toggle */
   .toggle {
@@ -676,13 +705,15 @@
     height: 26px;
     border-radius: 13px;
     border: none;
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     cursor: pointer;
     flex-shrink: 0;
     padding: 0;
     transition: background 0.2s;
   }
-  .toggle.on { background: rgba(99,102,241,0.85); }
+  .toggle.on {
+    background: rgba(99, 102, 241, 0.85);
+  }
   .toggle-knob {
     position: absolute;
     top: 3px;
@@ -691,11 +722,9 @@
     height: 20px;
     border-radius: 50%;
     background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
-
-
 
   /* Save / action row */
   .action-row {
@@ -708,7 +737,7 @@
     padding: 8px 20px;
     border-radius: 8px;
     border: none;
-    background: rgba(99,102,241,0.85);
+    background: rgba(99, 102, 241, 0.85);
     color: white;
     font-size: 13.5px;
     font-weight: 600;
@@ -717,8 +746,13 @@
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.01em;
   }
-  .save-btn:hover:not(:disabled) { background: rgba(99,102,241,1); }
-  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .save-btn:hover:not(:disabled) {
+    background: rgba(99, 102, 241, 1);
+  }
+  .save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
   /* Auth badge */
   .auth-badge {
@@ -729,10 +763,14 @@
     color: #f87171;
     padding: 6px 10px;
     border-radius: 7px;
-    background: rgba(248,113,113,0.1);
-    border: 1px solid rgba(248,113,113,0.2);
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.2);
   }
-  .auth-badge.ok { color: rgba(134,239,172,0.9); background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.2); }
+  .auth-badge.ok {
+    color: rgba(134, 239, 172, 0.9);
+    background: rgba(74, 222, 128, 0.08);
+    border-color: rgba(74, 222, 128, 0.2);
+  }
   .auth-dot {
     width: 6px;
     height: 6px;
@@ -740,31 +778,36 @@
     background: #f87171;
     flex-shrink: 0;
   }
-  .auth-badge.ok .auth-dot { background: rgba(134,239,172,0.9); }
+  .auth-badge.ok .auth-dot {
+    background: rgba(134, 239, 172, 0.9);
+  }
 
   /* Misc text */
   .hint {
     font-size: 12px;
-    color: rgba(255,255,255,0.35);
+    color: rgba(255, 255, 255, 0.35);
     line-height: 1.5;
     margin: 0;
   }
-  .hint :global(a) { color: rgba(129,140,248,0.85); text-decoration: none; }
+  .hint :global(a) {
+    color: rgba(129, 140, 248, 0.85);
+    text-decoration: none;
+  }
   .hint :global(code) {
     font-family: "SF Mono", "Fira Code", monospace;
     font-size: 10px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255, 255, 255, 0.08);
     padding: 1px 4px;
     border-radius: 3px;
   }
 
   .warn {
     font-size: 12px;
-    color: rgba(251,191,36,0.9);
+    color: rgba(251, 191, 36, 0.9);
     padding: 6px 10px;
     border-radius: 7px;
-    background: rgba(251,191,36,0.08);
-    border: 1px solid rgba(251,191,36,0.2);
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.2);
     margin: 0;
   }
 
@@ -775,7 +818,7 @@
 
   .saved-note {
     font-size: 12px;
-    color: rgba(134,239,172,0.9);
+    color: rgba(134, 239, 172, 0.9);
     margin: 0;
   }
 </style>

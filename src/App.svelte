@@ -146,7 +146,9 @@
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
       audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
       autostartEnabled = await appApi.invoke<boolean>("get_autostart_enabled").catch(() => false);
-      screenshotContextEnabled = await appApi.invoke<boolean>("get_screenshot_context_enabled").catch(() => false);
+      screenshotContextEnabled = await appApi
+        .invoke<boolean>("get_screenshot_context_enabled")
+        .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
 
       unlisten.push(
@@ -331,7 +333,7 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       bind:showIdleHud
-      appState={appState}
+      {appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}

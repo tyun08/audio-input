@@ -10,11 +10,9 @@
 {#if options.length === 2}
   <div class="seg">
     {#each options as opt}
-      <button
-        class:active={value === opt.value}
-        on:click={() => (value = opt.value)}
-        type="button"
-      >{opt.label}</button>
+      <button class:active={value === opt.value} on:click={() => (value = opt.value)} type="button"
+        >{opt.label}</button
+      >
     {/each}
   </div>
 {:else}

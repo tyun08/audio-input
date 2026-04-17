@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use std::process::Command;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 pub async fn inject_text(text: &str) -> Result<()> {
     if text.is_empty() {

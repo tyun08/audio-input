@@ -105,6 +105,9 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
     },
     nativeOpaque: false,
     shouldShowWindow:
-      state.appState !== "idle" || state.injectionFailed || state.polishFailed || Boolean(state.showIdleHud),
+      state.appState !== "idle" ||
+      state.injectionFailed ||
+      state.polishFailed ||
+      Boolean(state.showIdleHud),
   };
 }
