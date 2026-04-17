@@ -37,6 +37,8 @@ pub struct AppConfig {
     pub onboarding_completed: bool,
     #[serde(default)]
     pub screenshot_context_enabled: bool,
+    #[serde(default)]
+    pub show_idle_hud: bool,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -59,6 +61,7 @@ impl Default for AppConfig {
             shortcut: default_shortcut(),
             onboarding_completed: false,
             screenshot_context_enabled: false,
+            show_idle_hud: false,
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),

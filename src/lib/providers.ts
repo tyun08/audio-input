@@ -16,6 +16,7 @@ export interface ProviderField {
   type: "text" | "password" | "select";
   placeholder?: string;
   options?: { value: string; label: string }[];
+  default?: string;
   mono?: boolean;
   /** If true, this field and the next `half` field share one row. */
   half?: boolean;
@@ -52,10 +53,10 @@ export const providers: ProviderDef[] = [
         key: "model",
         label: l("Model", "模型"),
         type: "select",
+        default: "whisper-large-v3-turbo",
         options: [
-          { value: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo" },
-          { value: "whisper-large-v3", label: "Whisper Large v3" },
-          { value: "distil-whisper-large-v3-en", label: "Distil Whisper Large v3 (EN)" },
+          { value: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo (fast · cheap)" },
+          { value: "whisper-large-v3", label: "Whisper Large v3 (accurate · 3× cost)" },
         ],
       },
     ],
