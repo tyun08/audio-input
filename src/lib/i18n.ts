@@ -47,13 +47,12 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.shortcut": "Global Shortcut",
     "settings.shortcut_apply": "Apply",
     "settings.shortcut_hint": "Meta = ⌘, Ctrl, Alt, Shift",
-"settings.shortcut_conflict":
-                  "Shortcut {0} may be occupied by another app. Try a different one.",
+    "settings.shortcut_conflict":
+      "Shortcut {0} may be occupied by another app. Try a different one.",
     "settings.autostart": "Launch at Login",
     "settings.autostart_desc": "Auto-start when you log in",
     "settings.screenshot": "Screenshot Context",
-    "settings.screenshot_desc":
-      "Capture screen while recording for better polish",
+    "settings.screenshot_desc": "Capture screen while recording for better polish",
     "settings.language": "Language",
 
     // Settings nav tabs
@@ -119,8 +118,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.shortcut": "全局快捷键",
     "settings.shortcut_apply": "应用",
     "settings.shortcut_hint": "Meta = ⌘，Ctrl，Alt，Shift",
-"settings.shortcut_conflict":
-                  "快捷键 {0} 可能已被其他应用占用，请尝试更换",
+    "settings.shortcut_conflict": "快捷键 {0} 可能已被其他应用占用，请尝试更换",
     "settings.autostart": "开机自启",
     "settings.autostart_desc": "登录时自动启动",
     "settings.screenshot": "截图上下文",
@@ -143,8 +141,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.skip": "跳过",
     "onboarding.saved": "已保存",
     "onboarding.ax_title": "授权辅助功能",
-    "onboarding.ax_desc":
-      "Audio Input 需要辅助功能权限才能将文字注入到其他应用。",
+    "onboarding.ax_desc": "Audio Input 需要辅助功能权限才能将文字注入到其他应用。",
     "onboarding.ax_path1": "系统设置",
     "onboarding.ax_path2": "隐私与安全性",
     "onboarding.ax_path3": "辅助功能",

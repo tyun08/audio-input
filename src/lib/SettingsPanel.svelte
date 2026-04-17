@@ -106,7 +106,9 @@
 
   function showSaved() {
     saved = true;
-    setTimeout(() => { saved = false; }, 1800);
+    setTimeout(() => {
+      saved = false;
+    }, 1800);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -126,13 +128,20 @@
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <div class="titlebar" role="toolbar" tabindex="0" on:mousedown={handleTitlebarMousedown}>
     <button class="close-btn" on:click={() => dispatch("close")} aria-label="Close">
-      <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1 1l6 6M7 1L1 7" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <svg width="8" height="8" viewBox="0 0 8 8"
+        ><path
+          d="M1 1l6 6M7 1L1 7"
+          stroke="rgba(0,0,0,0.5)"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        /></svg
+      >
     </button>
-    <span class="titlebar-label">{$t('settings.title')}</span>
+    <span class="titlebar-label">{$t("settings.title")}</span>
     {#if appState === "recording"}
-      <span class="status-pill recording">{$t('settings.recording')}</span>
+      <span class="status-pill recording">{$t("settings.recording")}</span>
     {:else if appState === "processing"}
-      <span class="status-pill processing">{$t('settings.transcribing')}</span>
+      <span class="status-pill processing">{$t("settings.transcribing")}</span>
     {/if}
   </div>
 
@@ -142,52 +151,71 @@
       <button
         class="nav-item"
         class:active={activeSection === "transcription"}
-        on:click={() => activeSection = "transcription"}
+        on:click={() => (activeSection = "transcription")}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M8 12h8M8 8h5M8 16h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <rect
+            x="3"
+            y="3"
+            width="18"
+            height="18"
+            rx="3"
+            stroke="currentColor"
+            stroke-width="1.8"
+          />
+          <path
+            d="M8 12h8M8 8h5M8 16h6"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
         </svg>
-        {$t('settings.nav.transcription')}
+        {$t("settings.nav.transcription")}
       </button>
       <button
         class="nav-item"
         class:active={activeSection === "general"}
-        on:click={() => activeSection = "general"}
+        on:click={() => (activeSection = "general")}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
-          <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" />
+          <path
+            d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
         </svg>
-        {$t('settings.nav.general')}
+        {$t("settings.nav.general")}
       </button>
       <button
         class="nav-item"
         class:active={activeSection === "advanced"}
-        on:click={() => activeSection = "advanced"}
+        on:click={() => (activeSection = "advanced")}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path
+            d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
-        {$t('settings.nav.advanced')}
+        {$t("settings.nav.advanced")}
       </button>
     </nav>
 
     <!-- Content -->
     <main class="content">
-
       <!-- ── Transcription ── -->
       {#if activeSection === "transcription"}
-        <h2>{$t('settings.nav.transcription')}</h2>
+        <h2>{$t("settings.nav.transcription")}</h2>
 
         <div class="group">
           <div class="row">
-            <span class="row-label">{$t('settings.voice_service')}</span>
-            <select
-              class="row-select"
-              value={provider}
-              on:change={handleProviderSelectChange}
-            >
+            <span class="row-label">{$t("settings.voice_service")}</span>
+            <select class="row-select" value={provider} on:change={handleProviderSelectChange}>
               {#each providers as p}
                 <option value={p.id}>{p.name}</option>
               {/each}
@@ -234,7 +262,7 @@
 
         <div class="action-row">
           <button class="save-btn" on:click={handleSaveConfig} disabled={saving}>
-            {saving ? $t('settings.saving') : saved ? $t('settings.saved') : $t('settings.save')}
+            {saving ? $t("settings.saving") : saved ? $t("settings.saved") : $t("settings.save")}
           </button>
           {#if error}
             <span class="inline-error">{error}</span>
@@ -244,7 +272,9 @@
         {#if authStatus !== null && currentProvider?.authOkText}
           <div class="auth-badge" class:ok={authStatus}>
             <span class="auth-dot"></span>
-            {authStatus ? currentProvider.authOkText[$locale] : (currentProvider.authFailText ?? currentProvider.authOkText)[$locale]}
+            {authStatus
+              ? currentProvider.authOkText[$locale]
+              : (currentProvider.authFailText ?? currentProvider.authOkText)[$locale]}
           </div>
         {/if}
 
@@ -252,26 +282,35 @@
           <p class="hint">{@html currentProvider.hint[$locale]}</p>
         {/if}
 
-      <!-- ── General ── -->
+        <!-- ── General ── -->
       {:else if activeSection === "general"}
-        <h2>{$t('settings.nav.general')}</h2>
+        <h2>{$t("settings.nav.general")}</h2>
 
-        <h3>{$t('settings.section.startup')}</h3>
+        <h3>{$t("settings.section.startup")}</h3>
         <div class="group">
           <div class="row">
-            <span class="row-label">{$t('settings.autostart')}</span>
-            <button class="toggle" class:on={autostartEnabled} on:click={handleAutostartToggle} aria-label="Toggle autostart">
+            <span class="row-label">{$t("settings.autostart")}</span>
+            <button
+              class="toggle"
+              class:on={autostartEnabled}
+              on:click={handleAutostartToggle}
+              aria-label="Toggle autostart"
+            >
               <span class="toggle-knob"></span>
             </button>
           </div>
         </div>
 
-        <h3>{$t('settings.section.input')}</h3>
+        <h3>{$t("settings.section.input")}</h3>
         <div class="group">
           <div class="row">
-            <span class="row-label">{$t('settings.mic')}</span>
-            <select class="row-select" on:change={handleDeviceChange} value={preferredDevice ?? "__default__"}>
-              <option value="__default__">{$t('settings.mic_default')}</option>
+            <span class="row-label">{$t("settings.mic")}</span>
+            <select
+              class="row-select"
+              on:change={handleDeviceChange}
+              value={preferredDevice ?? "__default__"}
+            >
+              <option value="__default__">{$t("settings.mic_default")}</option>
               {#each audioDevices as device}
                 <option value={device}>{device}</option>
               {/each}
@@ -279,63 +318,82 @@
           </div>
           <div class="row-sep"></div>
           <div class="row">
-            <span class="row-label">{$t('settings.shortcut')}</span>
+            <span class="row-label">{$t("settings.shortcut")}</span>
             <div class="row-input-group">
-              <input type="text" bind:value={shortcut} class="row-input mono" placeholder="Meta+Shift+Space" />
-              <button class="apply-btn" on:click={handleShortcutChange}>{$t('settings.shortcut_apply')}</button>
+              <input
+                type="text"
+                bind:value={shortcut}
+                class="row-input mono"
+                placeholder="Meta+Shift+Space"
+              />
+              <button class="apply-btn" on:click={handleShortcutChange}
+                >{$t("settings.shortcut_apply")}</button
+              >
             </div>
           </div>
         </div>
         {#if shortcutConflict}
-          <p class="warn">{$t('settings.shortcut_conflict', shortcutConflict)}</p>
+          <p class="warn">{$t("settings.shortcut_conflict", shortcutConflict)}</p>
         {/if}
-        <p class="hint">{$t('settings.shortcut_hint')}</p>
+        <p class="hint">{$t("settings.shortcut_hint")}</p>
 
-        <h3>{$t('settings.section.language')}</h3>
+        <h3>{$t("settings.section.language")}</h3>
         <div class="group">
           <div class="row">
-            <span class="row-label">{$t('settings.language')}</span>
+            <span class="row-label">{$t("settings.language")}</span>
             <div class="lang-seg">
-              <button class:active={$locale === 'en'} on:click={() => switchLocale('en')}>EN</button>
-              <button class:active={$locale === 'zh'} on:click={() => switchLocale('zh')}>中文</button>
+              <button class:active={$locale === "en"} on:click={() => switchLocale("en")}>EN</button
+              >
+              <button class:active={$locale === "zh"} on:click={() => switchLocale("zh")}
+                >中文</button
+              >
             </div>
           </div>
         </div>
 
         {#if saved}
-          <p class="saved-note">{$t('settings.saved')}</p>
+          <p class="saved-note">{$t("settings.saved")}</p>
         {/if}
         {#if error}
           <p class="inline-error">{error}</p>
         {/if}
 
-      <!-- ── Advanced ── -->
+        <!-- ── Advanced ── -->
       {:else if activeSection === "advanced"}
-        <h2>{$t('settings.nav.advanced')}</h2>
+        <h2>{$t("settings.nav.advanced")}</h2>
 
         <div class="group">
           <div class="row">
             <div class="row-label-stack">
-              <span class="row-label">{$t('settings.screenshot')}</span>
-              <span class="row-sub">{$t('settings.screenshot_desc')}</span>
+              <span class="row-label">{$t("settings.screenshot")}</span>
+              <span class="row-sub">{$t("settings.screenshot_desc")}</span>
             </div>
-            <button class="toggle" class:on={screenshotContextEnabled} on:click={handleScreenshotContextToggle} aria-label="Toggle screenshot context">
+            <button
+              class="toggle"
+              class:on={screenshotContextEnabled}
+              on:click={handleScreenshotContextToggle}
+              aria-label="Toggle screenshot context"
+            >
               <span class="toggle-knob"></span>
             </button>
           </div>
           <div class="row-sep"></div>
           <div class="row">
             <div class="row-label-stack">
-              <span class="row-label">{$t('settings.polish')}</span>
-              <span class="row-sub">{$t('settings.polish_desc')}</span>
+              <span class="row-label">{$t("settings.polish")}</span>
+              <span class="row-sub">{$t("settings.polish_desc")}</span>
             </div>
-            <button class="toggle" class:on={polishEnabled} on:click={handlePolishToggle} aria-label="Toggle polish">
+            <button
+              class="toggle"
+              class:on={polishEnabled}
+              on:click={handlePolishToggle}
+              aria-label="Toggle polish"
+            >
               <span class="toggle-knob"></span>
             </button>
           </div>
         </div>
       {/if}
-
     </main>
   </div>
 </div>
@@ -362,11 +420,13 @@
     height: 44px;
     padding: 0 14px;
     background: #e8e9eb;
-    border-bottom: 1px solid rgba(0,0,0,0.12);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
     cursor: grab;
     flex-shrink: 0;
   }
-  .titlebar:active { cursor: grabbing; }
+  .titlebar:active {
+    cursor: grabbing;
+  }
   .titlebar-label {
     font-size: 13px;
     font-weight: 600;
@@ -391,9 +451,16 @@
     padding: 0;
     transition: filter 0.1s;
   }
-  .close-btn:hover { filter: brightness(0.88); }
-  .close-btn svg { opacity: 0; transition: opacity 0.1s; }
-  .close-btn:hover svg { opacity: 1; }
+  .close-btn:hover {
+    filter: brightness(0.88);
+  }
+  .close-btn svg {
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .close-btn:hover svg {
+    opacity: 1;
+  }
 
   .status-pill {
     font-size: 10px;
@@ -402,8 +469,14 @@
     border-radius: 999px;
     flex-shrink: 0;
   }
-  .status-pill.recording { background: rgba(255,59,48,0.12); color: #ff3b30; }
-  .status-pill.processing { background: rgba(0,122,255,0.12); color: #007aff; }
+  .status-pill.recording {
+    background: rgba(255, 59, 48, 0.12);
+    color: #ff3b30;
+  }
+  .status-pill.processing {
+    background: rgba(0, 122, 255, 0.12);
+    color: #007aff;
+  }
 
   /* ── Layout ── */
   .layout {
@@ -417,7 +490,7 @@
     width: 168px;
     flex-shrink: 0;
     background: #e4e5e7;
-    border-right: 1px solid rgba(0,0,0,0.1);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
     padding: 10px 8px;
     display: flex;
     flex-direction: column;
@@ -445,9 +518,11 @@
     white-space: nowrap;
     text-overflow: ellipsis;
   }
-  .nav-item:hover { background: rgba(0,0,0,0.07); }
+  .nav-item:hover {
+    background: rgba(0, 0, 0, 0.07);
+  }
   .nav-item.active {
-    background: rgba(0,0,0,0.14);
+    background: rgba(0, 0, 0, 0.14);
     color: #1c1c1e;
     font-weight: 500;
   }
@@ -484,7 +559,7 @@
   .group {
     background: white;
     border-radius: 10px;
-    border: 1px solid rgba(0,0,0,0.09);
+    border: 1px solid rgba(0, 0, 0, 0.09);
     overflow: hidden;
   }
 
@@ -499,7 +574,7 @@
 
   .row-sep {
     height: 1px;
-    background: rgba(0,0,0,0.07);
+    background: rgba(0, 0, 0, 0.07);
     margin: 0 16px;
   }
 
@@ -524,7 +599,7 @@
     font-size: 13px;
     color: #1c1c1e;
     background: #f2f2f2;
-    border: 1px solid rgba(0,0,0,0.12);
+    border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 7px;
     padding: 5px 7px;
     outline: none;
@@ -537,18 +612,28 @@
     font-size: 13px;
     color: #1c1c1e;
     background: #f2f2f2;
-    border: 1px solid rgba(0,0,0,0.12);
+    border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 7px;
     padding: 6px 9px;
     outline: none;
     width: 100%;
     max-width: 200px;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
-    transition: border-color 0.15s, background 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
   }
-  .row-input:focus { border-color: #007aff; background: white; }
-  .row-input::placeholder { color: #aeaeb2; }
-  .row-input.mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+  .row-input:focus {
+    border-color: #007aff;
+    background: white;
+  }
+  .row-input::placeholder {
+    color: #aeaeb2;
+  }
+  .row-input.mono {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+  }
 
   .row-input-group {
     display: flex;
@@ -561,7 +646,7 @@
     font-weight: 500;
     padding: 5px 10px;
     border-radius: 6px;
-    border: 1px solid rgba(0,0,0,0.15);
+    border: 1px solid rgba(0, 0, 0, 0.15);
     background: #f0f0f0;
     color: #1c1c1e;
     cursor: pointer;
@@ -570,7 +655,9 @@
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     transition: background 0.1s;
   }
-  .apply-btn:hover { background: #e0e0e0; }
+  .apply-btn:hover {
+    background: #e0e0e0;
+  }
 
   /* macOS-style toggle */
   .toggle {
@@ -579,13 +666,15 @@
     height: 26px;
     border-radius: 13px;
     border: none;
-    background: rgba(0,0,0,0.15);
+    background: rgba(0, 0, 0, 0.15);
     cursor: pointer;
     flex-shrink: 0;
     padding: 0;
     transition: background 0.2s;
   }
-  .toggle.on { background: #007aff; }
+  .toggle.on {
+    background: #007aff;
+  }
   .toggle-knob {
     position: absolute;
     top: 3px;
@@ -594,15 +683,17 @@
     height: 20px;
     border-radius: 50%;
     background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .toggle.on .toggle-knob { transform: translateX(18px); }
+  .toggle.on .toggle-knob {
+    transform: translateX(18px);
+  }
 
   /* Language segmented control */
   .lang-seg {
     display: flex;
-    background: rgba(0,0,0,0.07);
+    background: rgba(0, 0, 0, 0.07);
     border-radius: 8px;
     padding: 2px;
     gap: 0;
@@ -621,7 +712,7 @@
   }
   .lang-seg button.active {
     background: white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
     color: #1c1c1e;
     font-weight: 500;
   }
@@ -646,8 +737,13 @@
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.01em;
   }
-  .save-btn:hover:not(:disabled) { filter: brightness(0.92); }
-  .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .save-btn:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+  .save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
   /* Auth badge */
   .auth-badge {
@@ -658,10 +754,14 @@
     color: #ff3b30;
     padding: 6px 10px;
     border-radius: 7px;
-    background: rgba(255,59,48,0.06);
-    border: 1px solid rgba(255,59,48,0.15);
+    background: rgba(255, 59, 48, 0.06);
+    border: 1px solid rgba(255, 59, 48, 0.15);
   }
-  .auth-badge.ok { color: #34c759; background: rgba(52,199,89,0.06); border-color: rgba(52,199,89,0.2); }
+  .auth-badge.ok {
+    color: #34c759;
+    background: rgba(52, 199, 89, 0.06);
+    border-color: rgba(52, 199, 89, 0.2);
+  }
   .auth-dot {
     width: 6px;
     height: 6px;
@@ -669,7 +769,9 @@
     background: #ff3b30;
     flex-shrink: 0;
   }
-  .auth-badge.ok .auth-dot { background: #34c759; }
+  .auth-badge.ok .auth-dot {
+    background: #34c759;
+  }
 
   /* Misc text */
   .hint {
@@ -678,11 +780,14 @@
     line-height: 1.5;
     margin: 0;
   }
-  .hint :global(a) { color: #007aff; text-decoration: none; }
+  .hint :global(a) {
+    color: #007aff;
+    text-decoration: none;
+  }
   .hint :global(code) {
     font-family: "SF Mono", "Fira Code", monospace;
     font-size: 10px;
-    background: rgba(0,0,0,0.06);
+    background: rgba(0, 0, 0, 0.06);
     padding: 1px 4px;
     border-radius: 3px;
   }
@@ -692,8 +797,8 @@
     color: #ff9500;
     padding: 6px 10px;
     border-radius: 7px;
-    background: rgba(255,149,0,0.08);
-    border: 1px solid rgba(255,149,0,0.2);
+    background: rgba(255, 149, 0, 0.08);
+    border: 1px solid rgba(255, 149, 0, 0.2);
     margin: 0;
   }
 

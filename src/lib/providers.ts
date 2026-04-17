@@ -51,7 +51,7 @@ export const providers: ProviderDef[] = [
     ],
     hint: l(
       'Get one free at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>',
-      '在 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费获取',
+      '在 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费获取'
     ),
   },
   {
@@ -88,13 +88,10 @@ export const providers: ProviderDef[] = [
     ],
     authCheck: "check_provider_status",
     authOkText: l("gcloud credentials ready", "gcloud 凭证已就绪"),
-    authFailText: l(
-      "gcloud credentials not found",
-      "未检测到 gcloud 凭证",
-    ),
+    authFailText: l("gcloud credentials not found", "未检测到 gcloud 凭证"),
     hint: l(
-      'Run <code>gcloud auth application-default login</code>',
-      '请运行 <code>gcloud auth application-default login</code>',
+      "Run <code>gcloud auth application-default login</code>",
+      "请运行 <code>gcloud auth application-default login</code>"
     ),
   },
 ];
