@@ -37,6 +37,12 @@ pub fn list_input_devices() -> Vec<String> {
     }
 }
 
+impl Default for Recorder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Recorder {
     pub fn new() -> Self {
         Recorder {
