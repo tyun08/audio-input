@@ -68,6 +68,14 @@
   {:else if polishFailed}
     <div class="err-dot"></div>
     <span class="label amber">{$t('hud.polish_failed')}</span>
+  {:else}
+    <svg class="mic-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-label="Ready">
+      <rect x="9" y="2" width="6" height="11" rx="3" stroke="rgba(255,255,255,0.55)" stroke-width="1.8"/>
+      <path d="M5 11a7 7 0 0 0 14 0" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="12" y1="18" x2="12" y2="22" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="9" y1="22" x2="15" y2="22" stroke="rgba(255,255,255,0.55)" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    <span class="label muted">{$t('hud.idle')}</span>
   {/if}
 
 </div>
@@ -92,7 +100,6 @@
     cursor: grabbing;
   }
 
-  .hud.recording { border-color: rgba(239, 68, 68, 0.3); }
   .hud.processing { border-color: rgba(99, 130, 246, 0.25); }
   .hud.error { border-color: rgba(239, 68, 68, 0.25); }
 
@@ -149,6 +156,9 @@
   /* Clipboard icon */
   .clip-icon { flex-shrink: 0; }
 
+  /* Idle mic icon */
+  .mic-idle { flex-shrink: 0; }
+
   /* Labels */
   .label {
     font-size: 13px;
@@ -160,4 +170,5 @@
   .label.red   { color: #f87171; }
   .label.blue  { color: #818cf8; }
   .label.amber { color: rgba(255, 200, 80, 0.9); }
+  .label.muted { color: rgba(255, 255, 255, 0.4); }
 </style>

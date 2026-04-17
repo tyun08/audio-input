@@ -30,15 +30,39 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             "settings" => {
                 show_settings_window(app);
             }
+            #[cfg(debug_assertions)]
+            "devtools" => {
+                if let Some(win) = app.get_webview_window("main") {
+                    win.open_devtools();
+                }
+            }
             "open-log" => {
                 let log_path = dirs::cache_dir()
                     .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
                     .join("com.audioinput.app")
                     .join("app.log");
                 #[cfg(target_os = "macos")]
-                let _ = std::process::Command::new("open").arg(&log_path).spawn();
+                {
+                    // Escape single quotes in the path for use inside a single-quoted
+                    // shell string: replace ' with '\''
+                    let escaped = log_path.to_string_lossy().replace('\'', "'\\''");
+                    let script = format!(
+                        "tell application \"Terminal\"\n  do script \"tail -f '{}'\"\n  activate\nend tell",
+                        escaped
+                    );
+                    let _ = std::process::Command::new("osascript")
+                        .arg("-e")
+                        .arg(&script)
+                        .spawn();
+                }
                 #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("explorer").arg(&log_path).spawn();
+                {
+                    // Escape single quotes for PowerShell string (double them up)
+                    let escaped = log_path.to_string_lossy().replace('\'', "''");
+                    let _ = std::process::Command::new("powershell")
+                        .args(["-NoExit", "-Command", &format!("Get-Content '{}' -Wait", escaped)])
+                        .spawn();
+                }
             }
             "toggle-polish" => {
                 let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
@@ -83,12 +107,23 @@ pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> 
     let sep1     = PredefinedMenuItem::separator(app)?;
     let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI Polish", true, polish_enabled, None::<&str>)?;
     let sep2     = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
-    let sep3     = PredefinedMenuItem::separator(app)?;
-    let quit     = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let settings  = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+    let open_log  = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
+    let sep3      = PredefinedMenuItem::separator(app)?;
+    let quit      = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    Menu::with_items(app, &[&last, &sep1, &polish, &sep2, &settings, &open_log, &sep3, &quit])
+    #[cfg(debug_assertions)]
+    let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
+
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> = vec![
+        &last, &sep1, &polish, &sep2, &settings, &open_log,
+    ];
+    #[cfg(debug_assertions)]
+    items.push(&devtools);
+    items.push(&sep3);
+    items.push(&quit);
+
+    Menu::with_items(app, &items)
 }
 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
@@ -116,14 +151,46 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
 }
 
 fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
+    // Do all native setup synchronously before the window is shown.
+    // WebKit may have JS throttled while the window is hidden, so we cannot
+    // rely on the TS syncWindow() path to call set_native_opaque first.
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let ns_app: *mut objc::runtime::Object =
+                msg_send![class!(NSApplication), sharedApplication];
+
+            // Switch to Regular so the window can become key and WebKit renders.
+            // NSApplicationActivationPolicyRegular = 0
+            let _: () = msg_send![ns_app, setActivationPolicy: 0i64];
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+
+            // Set every window opaque with the settings background colour
+            // so the backing store is correct the moment the window appears.
+            let windows: *mut objc::runtime::Object = msg_send![ns_app, windows];
+            let count: usize = msg_send![windows, count];
+            for i in 0..count {
+                let win: *mut objc::runtime::Object =
+                    msg_send![windows, objectAtIndex: i];
+                let _: () = msg_send![win, setOpaque: true];
+                let bg: *mut objc::runtime::Object = msg_send![
+                    class!(NSColor),
+                    colorWithRed: 0.118f64
+                    green: 0.118f64
+                    blue: 0.125f64
+                    alpha: 1.0f64
+                ];
+                let _: () = msg_send![win, setBackgroundColor: bg];
+                let _: () = msg_send![win, invalidateShadow];
+            }
+        }
+    }
+
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();
-        let win2 = win.clone();
-        tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(60)).await;
-            let _ = win2.emit("show-settings", ());
-        });
+        let _ = win.emit("show-settings", ());
     }
 }
 

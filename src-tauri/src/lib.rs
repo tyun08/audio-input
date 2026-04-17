@@ -1,4 +1,4 @@
-mod audio;
+pub mod audio;
 mod commands;
 mod config;
 mod input;
@@ -79,6 +79,21 @@ pub fn run() {
                         msg_send![class!(NSApplication), sharedApplication];
                     // NSApplicationActivationPolicyAccessory = 1
                     let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
+
+                    // Start the window fully transparent and input-passthrough.
+                    // The TS side calls show() right away, which puts the window
+                    // on-screen and starts the CVDisplayLink — keeping the WKWebView
+                    // compositor warm even while the HUD is "hidden". When the user
+                    // opens settings, setNativeOpaque(opaque=true, visible=true) will
+                    // restore alphaValue=1 and disable ignoresMouseEvents.
+                    let windows: *mut objc::runtime::Object = msg_send![ns_app, windows];
+                    let count: usize = msg_send![windows, count];
+                    for i in 0..count {
+                        let win: *mut objc::runtime::Object =
+                            msg_send![windows, objectAtIndex: i];
+                        let _: () = msg_send![win, setAlphaValue: 0.0f64];
+                        let _: () = msg_send![win, setIgnoresMouseEvents: true];
+                    }
                 }
             }
 
@@ -256,6 +271,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_show_idle_hud,
+            commands::save_show_idle_hud,
             commands::set_native_opaque,
         ])
         .run(tauri::generate_context!())
