@@ -58,6 +58,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.language": "Language",
 
+    // Usage stats
+    "settings.section.usage": "Usage",
+    "settings.usage.total_time": "Total Recording Time",
+    "settings.usage.sessions": "Recording Sessions",
+    "settings.usage.hours": "h",
+    "settings.usage.minutes": "m",
+    "settings.usage.seconds": "s",
+
     // Settings nav tabs
     "settings.nav.transcription": "Transcription",
     "settings.nav.general": "General",
@@ -131,6 +139,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "显示待机指示器",
     "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
     "settings.language": "语言",
+
+    // Usage stats
+    "settings.section.usage": "用量统计",
+    "settings.usage.total_time": "累计录音时长",
+    "settings.usage.sessions": "录音次数",
+    "settings.usage.hours": "时",
+    "settings.usage.minutes": "分",
+    "settings.usage.seconds": "秒",
 
     // Settings nav tabs
     "settings.nav.transcription": "转录",

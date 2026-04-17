@@ -31,3 +31,10 @@ pub type ScreenshotState = Arc<Mutex<Option<String>>>;
 pub fn new_screenshot_state() -> ScreenshotState {
     Arc::new(Mutex::new(None))
 }
+
+/// Tracks the wall-clock instant when the current recording session started.
+pub type RecordingStartTime = Arc<Mutex<Option<std::time::Instant>>>;
+
+pub fn new_recording_start_time() -> RecordingStartTime {
+    Arc::new(Mutex::new(None))
+}

@@ -3,9 +3,10 @@ use crate::{
     config::AppConfig,
     input::inject_text,
     screenshot::capture_primary_screen,
-    state::{AppState, ScreenshotState, SharedState},
+    state::{AppState, RecordingStartTime, ScreenshotState, SharedState},
     transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
+    usage::{SharedUsage, UsageStats},
 };
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
@@ -72,6 +73,12 @@ async fn start_recording<R: Runtime>(
             let _ = app.emit("state-change", "recording");
             info!("State → Recording");
 
+            // Mark recording start time for usage tracking.
+            {
+                let start_state = app.state::<RecordingStartTime>();
+                *start_state.lock().unwrap() = Some(std::time::Instant::now());
+            }
+
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
                 let enabled = config.lock().unwrap().screenshot_context_enabled;
@@ -123,6 +130,26 @@ async fn stop_and_transcribe<R: Runtime>(
             }
         }
     };
+
+    // Compute elapsed recording time and persist to usage stats.
+    let duration_secs = {
+        let start_state = app.state::<RecordingStartTime>();
+        let mut start_guard = start_state.lock().unwrap();
+        start_guard
+            .take()
+            .map(|t| t.elapsed().as_secs())
+            .unwrap_or(0)
+    };
+    {
+        let usage = app.state::<SharedUsage>();
+        let mut stats = usage.lock().unwrap();
+        stats.add_session(duration_secs);
+        let snapshot = stats.clone();
+        drop(stats);
+        if let Err(e) = snapshot.save(&app) {
+            error!("Failed to save usage stats: {}", e);
+        }
+    }
 
     // Early return: if the microphone captured only silence or background
     // noise, skip encoding and the API call entirely to avoid Whisper
@@ -660,4 +687,11 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
             }
         }
     }
+}
+
+// --- Usage statistics --------------------------------------------------------
+
+#[tauri::command]
+pub fn get_usage_stats(usage: tauri::State<'_, SharedUsage>) -> UsageStats {
+    usage.lock().unwrap().clone()
 }

@@ -9,11 +9,13 @@ mod shortcut;
 mod state;
 mod transcription;
 mod tray;
+mod usage;
 
 use audio::Recorder;
 use commands::RecorderState;
 use config::AppConfig;
-use state::{new_screenshot_state, new_shared_state};
+use state::{new_recording_start_time, new_screenshot_state, new_shared_state};
+use usage::SharedUsage;
 
 use std::sync::{Arc, Mutex};
 use tauri::{Listener as _, Manager};
@@ -137,6 +139,14 @@ pub fn run() {
 
             // Init screenshot context state
             app.manage(new_screenshot_state());
+
+            // Init recording start-time tracker
+            app.manage(new_recording_start_time());
+
+            // Init usage stats (loaded from disk)
+            let usage_stats = usage::UsageStats::load(&handle);
+            let shared_usage: SharedUsage = Arc::new(Mutex::new(usage_stats));
+            app.manage(shared_usage);
 
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
@@ -274,6 +284,7 @@ pub fn run() {
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
+            commands::get_usage_stats,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");
