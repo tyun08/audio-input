@@ -30,6 +30,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             "settings" => {
                 show_settings_window(app);
             }
+            #[cfg(debug_assertions)]
             "devtools" => {
                 if let Some(win) = app.get_webview_window("main") {
                     win.open_devtools();
@@ -108,11 +109,21 @@ pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> 
     let sep2     = PredefinedMenuItem::separator(app)?;
     let settings  = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let open_log  = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
-    let devtools  = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
     let sep3      = PredefinedMenuItem::separator(app)?;
     let quit      = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    Menu::with_items(app, &[&last, &sep1, &polish, &sep2, &settings, &open_log, &devtools, &sep3, &quit])
+    #[cfg(debug_assertions)]
+    let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
+
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> = vec![
+        &last, &sep1, &polish, &sep2, &settings, &open_log,
+    ];
+    #[cfg(debug_assertions)]
+    items.push(&devtools);
+    items.push(&sep3);
+    items.push(&quit);
+
+    Menu::with_items(app, &items)
 }
 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
