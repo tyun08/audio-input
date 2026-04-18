@@ -42,7 +42,7 @@ describe("applyAppStateChange", () => {
 describe("deriveUiDecision", () => {
   it("onboarding takes priority over all other views", () => {
     const decision = deriveUiDecision(
-      baseState({ onboardingDone: false, showSettings: true, appState: "processing" }),
+      baseState({ onboardingDone: false, showSettings: true, appState: "processing" })
     );
     expect(decision).toEqual({
       view: "onboarding",

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "lint": "eslint src",
+    "format:check": "prettier --check src"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -20,6 +22,13 @@
     "@playwright/test": "^1.59.1",
     "@sveltejs/vite-plugin-svelte": "^3",
     "@tauri-apps/cli": "^2",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.17.0",
+    "prettier": "^3.8.3",
+    "prettier-plugin-svelte": "^3.5.1",
     "svelte": "^4",
     "typescript": "^5",
     "vite": "^5.4.21",

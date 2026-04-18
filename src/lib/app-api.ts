@@ -4,7 +4,14 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type AppWindow = Pick<
   ReturnType<typeof getCurrentWindow>,
-  "show" | "hide" | "setSize" | "setPosition" | "center" | "outerPosition" | "scaleFactor" | "setResizable"
+  | "show"
+  | "hide"
+  | "setSize"
+  | "setPosition"
+  | "center"
+  | "outerPosition"
+  | "scaleFactor"
+  | "setResizable"
 >;
 
 export interface AppApi {

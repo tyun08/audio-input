@@ -6,6 +6,8 @@ use tauri::{Manager, Runtime};
 use tracing::{error, info, warn};
 
 // cpal::Stream is not Send on all platforms; we control access via Mutex
+// The inner Stream is held purely for its RAII drop (stops recording).
+#[allow(dead_code)]
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
 
@@ -32,6 +34,12 @@ pub fn list_input_devices() -> Vec<String> {
             warn!("Failed to list input devices: {}", e);
             Vec::new()
         }
+    }
+}
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -108,6 +116,14 @@ impl Recorder {
         self.stream = Some(SendStream(stream));
         info!("Recording started");
         Ok(())
+    }
+
+    pub fn get_buffer_ref(&self) -> Arc<Mutex<Vec<f32>>> {
+        Arc::clone(&self.buffer)
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
