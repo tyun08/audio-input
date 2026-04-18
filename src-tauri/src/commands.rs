@@ -346,6 +346,9 @@ async fn polish_with_provider(
         }
         "litellm" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                return (text.to_string(), true);
+            }
             let api_base = config["api_base"]
                 .as_str()
                 .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
