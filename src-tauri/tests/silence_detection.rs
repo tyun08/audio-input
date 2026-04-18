@@ -77,8 +77,8 @@ fn brief_loud_burst_is_not_silent() {
     // Even with only ~10 % of the clip having energy, total RMS
     // should be above threshold.
     let mut samples = vec![0.0f32; 16_000];
-    for i in 0..1_600 {
-        samples[i] = 0.3 * (2.0 * PI * 440.0 * i as f32 / 16_000.0).sin();
+    for (i, sample) in samples.iter_mut().take(1_600).enumerate() {
+        *sample = 0.3 * (2.0 * PI * 440.0 * i as f32 / 16_000.0).sin();
     }
     // RMS ≈ sqrt(1600 * (0.3/sqrt(2))^2 / 16000) = 0.3/sqrt(2) * sqrt(0.1) ≈ 0.03
     assert!(!is_silent(&samples));
