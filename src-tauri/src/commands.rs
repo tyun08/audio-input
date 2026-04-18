@@ -554,7 +554,9 @@ pub async fn save_show_idle_hud(
         cfg.show_idle_hud = enabled;
         cfg.clone()
     };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    let _ = app.emit("show-idle-hud-changed", enabled);
+    Ok(())
 }
 
 // --- Screenshot context ------------------------------------------------------

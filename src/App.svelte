@@ -224,6 +224,13 @@
       );
 
       unlisten.push(
+        await appApi.listen<boolean>("show-idle-hud-changed", async (e) => {
+          showIdleHud = e.payload;
+          await syncWindow();
+        })
+      );
+
+      unlisten.push(
         await appApi.listen("polish-failed", async () => {
           polishFailed = true;
           await syncWindow();
