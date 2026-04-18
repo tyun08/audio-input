@@ -105,6 +105,39 @@ export const providers: ProviderDef[] = [
       "请运行 <code>gcloud auth application-default login</code>"
     ),
   },
+  {
+    id: "litellm",
+    name: "LiteLLM",
+    tagline: l("OpenAI, Gemini, Groq & more", "OpenAI、Gemini、Groq 等"),
+    icon: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    fields: [
+      {
+        key: "api_base",
+        label: l("API Base URL", "API 基础 URL"),
+        type: "text",
+        placeholder: "https://api.openai.com/v1",
+        mono: true,
+      },
+      {
+        key: "api_key",
+        label: l("API Key", "API Key"),
+        type: "password",
+        placeholder: "sk-...",
+      },
+      {
+        key: "model",
+        label: l("Model", "模型"),
+        type: "text",
+        placeholder: "whisper-1",
+        default: "whisper-1",
+        mono: true,
+      },
+    ],
+    hint: l(
+      'Use any OpenAI-compatible endpoint. Examples: <code>whisper-1</code> (OpenAI), <code>groq/whisper-large-v3-turbo</code> (Groq via LiteLLM). See <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener">LiteLLM docs</a>.',
+      '支持任何 OpenAI 兼容端点。示例：<code>whisper-1</code>（OpenAI），<code>groq/whisper-large-v3-turbo</code>（通过 LiteLLM 使用 Groq）。详见 <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener">LiteLLM 文档</a>。'
+    ),
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {
