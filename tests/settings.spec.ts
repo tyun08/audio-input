@@ -162,4 +162,53 @@ test.describe("Settings Panel", () => {
     await polishToggle.click();
     await expect(polishToggle).toHaveClass(/on/);
   });
+
+  test("toggle knob moves when toggled", async ({ page }) => {
+    await loadApp(page);
+    await openSettings(page);
+
+    await page.getByRole("button", { name: /Advanced/i }).click();
+
+    const idleHudToggle = page.getByRole("button", {
+      name: "Toggle idle HUD",
+    });
+    await expect(idleHudToggle).toBeVisible();
+
+    // Initially off — knob should not be translated
+    const knobOff = await idleHudToggle.locator(".toggle-knob").evaluate(
+      (el) => getComputedStyle(el).transform
+    );
+    expect(knobOff).toBe("none");
+
+    // Click to enable — knob should be translated to the right
+    await idleHudToggle.click();
+    await expect(idleHudToggle).toHaveClass(/on/);
+    const knobOn = await idleHudToggle.locator(".toggle-knob").evaluate(
+      (el) => getComputedStyle(el).transform
+    );
+    expect(knobOn).not.toBe("none");
+  });
+
+  test("idle HUD appears after toggling on and closing settings", async ({
+    page,
+  }) => {
+    await loadApp(page);
+    await openSettings(page);
+
+    await page.getByRole("button", { name: /Advanced/i }).click();
+
+    const idleHudToggle = page.getByRole("button", {
+      name: "Toggle idle HUD",
+    });
+
+    // Toggle idle HUD on
+    await idleHudToggle.click();
+    await expect(idleHudToggle).toHaveClass(/on/);
+
+    // Close settings
+    await page.getByRole("button", { name: "Close" }).click();
+
+    // HUD should be visible now that showIdleHud is true
+    await expect(page.locator(".hud")).toBeVisible();
+  });
 });
