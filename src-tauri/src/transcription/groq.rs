@@ -22,17 +22,18 @@ struct GroqErrorDetail {
 pub struct GroqClient {
     api_key: String,
     model: String,
+    vocabulary: Vec<String>,
     client: reqwest::Client,
 }
 
 impl GroqClient {
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: String, model: String, vocabulary: Vec<String>) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client");
 
-        GroqClient { api_key, model, client }
+        GroqClient { api_key, model, vocabulary, client }
     }
 
     pub async fn transcribe(&self, wav_bytes: Vec<u8>) -> Result<String> {
@@ -49,11 +50,17 @@ impl GroqClient {
             .mime_str("audio/wav")
             .context("Failed to set MIME type")?;
 
-        let form = multipart::Form::new()
+        let mut form = multipart::Form::new()
             .part("file", file_part)
             .text("model", self.model.clone())
             .text("temperature", "0")
             .text("response_format", "verbose_json");
+
+        if !self.vocabulary.is_empty() {
+            let prompt = self.vocabulary.join(", ");
+            info!("Whisper prompt (vocabulary hint): {}", prompt);
+            form = form.text("prompt", prompt);
+        }
 
         let resp = self
             .client

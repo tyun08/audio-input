@@ -193,7 +193,7 @@ async fn stop_and_transcribe<R: Runtime>(
     };
 
     // Read provider + config
-    let (provider, pcfg, polish_enabled) = {
+    let (provider, pcfg, polish_enabled, vocabulary) = {
         let config = app.state::<Arc<Mutex<AppConfig>>>();
         let cfg = config.lock().unwrap();
         let p = cfg.provider.clone();
@@ -206,13 +206,13 @@ async fn stop_and_transcribe<R: Runtime>(
                 }
             }
         }
-        (p, pc, cfg.polish_enabled)
+        (p, pc, cfg.polish_enabled, cfg.custom_vocabulary.clone())
     };
 
     info!("Using provider: {}", provider);
 
     // Transcribe
-    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
+    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes, &vocabulary).await {
         Ok(t) => t,
         Err(e) => {
             error!("Transcription failed: {}", e);
@@ -240,7 +240,7 @@ async fn stop_and_transcribe<R: Runtime>(
             if screenshot.is_some() { "yes" } else { "no" }
         );
         let (polished, failed) =
-            polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+            polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref(), &vocabulary).await;
         if failed {
             let _ = app.emit("polish-failed", ());
         }
@@ -277,6 +277,7 @@ async fn transcribe_with_provider(
     provider: &str,
     config: &serde_json::Value,
     wav_bytes: Vec<u8>,
+    vocabulary: &[String],
 ) -> anyhow::Result<String> {
     match provider {
         "groq" => {
@@ -290,7 +291,7 @@ async fn transcribe_with_provider(
                 .to_string();
             info!("Groq Key prefix: {}...", &api_key[..api_key.len().min(8)]);
             info!("Groq model: {}", model);
-            GroqClient::new(api_key.to_string(), model)
+            GroqClient::new(api_key.to_string(), model, vocabulary.to_vec())
                 .transcribe(wav_bytes)
                 .await
         }
@@ -306,7 +307,7 @@ async fn transcribe_with_provider(
                 project_id, location, model
             );
             let client =
-                VertexClient::new(project_id.into(), location.into(), model.into()).await?;
+                VertexClient::new(project_id.into(), location.into(), model.into(), vocabulary.to_vec()).await?;
             client.transcribe(wav_bytes).await
         }
         other => anyhow::bail!("Unsupported provider: {}", other),
@@ -318,17 +319,18 @@ async fn polish_with_provider(
     config: &serde_json::Value,
     text: &str,
     screenshot: Option<&str>,
+    vocabulary: &[String],
 ) -> (String, bool) {
     match provider {
         "groq" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
-            polish::polish_text(text, api_key, screenshot).await
+            polish::polish_text(text, api_key, screenshot, vocabulary).await
         }
         "vertex_ai" => {
             let project_id = config["project_id"].as_str().unwrap_or("");
             let location = config["location"].as_str().unwrap_or("us-central1");
             let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            vertex::polish_text_vertex(text, project_id, location, model, screenshot).await
+            vertex::polish_text_vertex(text, project_id, location, model, screenshot, vocabulary).await
         }
         _ => (text.to_string(), true),
     }
@@ -698,4 +700,27 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
             }
         }
     }
+}
+
+// --- Custom vocabulary -------------------------------------------------------
+
+#[tauri::command]
+pub fn get_custom_vocabulary(
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Vec<String> {
+    config.lock().unwrap().custom_vocabulary.clone()
+}
+
+#[tauri::command]
+pub async fn save_custom_vocabulary(
+    vocabulary: Vec<String>,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.custom_vocabulary = vocabulary;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }

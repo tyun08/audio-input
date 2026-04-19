@@ -39,6 +39,9 @@ pub struct AppConfig {
     pub screenshot_context_enabled: bool,
     #[serde(default)]
     pub show_idle_hud: bool,
+    /// User-supplied vocabulary words passed to the transcription API as context hints.
+    #[serde(default)]
+    pub custom_vocabulary: Vec<String>,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -62,6 +65,7 @@ impl Default for AppConfig {
             onboarding_completed: false,
             screenshot_context_enabled: false,
             show_idle_hud: false,
+            custom_vocabulary: Vec::new(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),

@@ -27,6 +27,10 @@
   let saved = false;
   let error = "";
 
+  let vocabularyText = "";
+  let vocabularySaving = false;
+  let vocabularySaved = false;
+
   $: currentProvider = getProvider(provider);
 
   onMount(async () => {
@@ -34,6 +38,8 @@
     await loadProviderConfig();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
+    const vocab = await invoke<string[]>("get_custom_vocabulary").catch(() => [] as string[]);
+    vocabularyText = vocab.join("\n");
   });
 
   async function loadProviderConfig() {
@@ -110,6 +116,23 @@
   async function handleShowIdleHudToggle() {
     showIdleHud = !showIdleHud;
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
+  }
+
+  async function handleVocabularySave() {
+    vocabularySaving = true;
+    try {
+      const words = vocabularyText
+        .split("\n")
+        .map((w) => w.trim())
+        .filter((w) => w.length > 0);
+      await invoke("save_custom_vocabulary", { vocabulary: words });
+      vocabularySaved = true;
+      setTimeout(() => {
+        vocabularySaved = false;
+      }, 1800);
+    } finally {
+      vocabularySaving = false;
+    }
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -415,6 +438,29 @@
               <span class="toggle-knob"></span>
             </button>
           </div>
+        </div>
+
+        <h3>{$t("settings.vocabulary")}</h3>
+        <div class="group">
+          <div class="vocab-row">
+            <span class="row-sub">{$t("settings.vocabulary_desc")}</span>
+            <textarea
+              class="vocab-input"
+              bind:value={vocabularyText}
+              placeholder={$t("settings.vocabulary_placeholder")}
+              rows={5}
+              spellcheck={false}
+            ></textarea>
+          </div>
+        </div>
+        <div class="action-row">
+          <button class="save-btn" on:click={handleVocabularySave} disabled={vocabularySaving}>
+            {vocabularySaving
+              ? $t("settings.saving")
+              : vocabularySaved
+                ? $t("settings.saved")
+                : $t("settings.vocabulary_save")}
+          </button>
         </div>
       {/if}
     </main>
@@ -820,5 +866,34 @@
     font-size: 12px;
     color: rgba(134, 239, 172, 0.9);
     margin: 0;
+  }
+
+  /* Vocabulary textarea */
+  .vocab-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 14px;
+  }
+  .vocab-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 7px;
+    color: rgba(255, 255, 255, 0.88);
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .vocab-input:focus {
+    border-color: rgba(99, 102, 241, 0.6);
+  }
+  .vocab-input::placeholder {
+    color: rgba(255, 255, 255, 0.2);
   }
 </style>

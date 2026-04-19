@@ -82,18 +82,50 @@ pub(crate) const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup a
     3) Preserve the original meaning without rewriting. \
     Output only the cleaned text, no explanations. Respond in the same language as the input.";
 
+/// Build the text-only system prompt, optionally injecting known vocabulary words.
+pub(crate) fn build_system_prompt_text(vocabulary: &[String]) -> String {
+    if vocabulary.is_empty() {
+        SYSTEM_PROMPT_TEXT.to_string()
+    } else {
+        format!(
+            "{} Known words/terms that may appear: {}.",
+            SYSTEM_PROMPT_TEXT,
+            vocabulary.join(", ")
+        )
+    }
+}
+
+/// Build the vision system prompt, optionally injecting known vocabulary words.
+pub(crate) fn build_system_prompt_vision(vocabulary: &[String]) -> String {
+    if vocabulary.is_empty() {
+        SYSTEM_PROMPT_VISION.to_string()
+    } else {
+        format!(
+            "{} Known words/terms that may appear: {}.",
+            SYSTEM_PROMPT_VISION,
+            vocabulary.join(", ")
+        )
+    }
+}
+
 // --- Public API ---
 
 /// Returns `(text, polish_failed)`.
 /// If `screenshot` is Some, tries the vision model first for better context accuracy.
-pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) -> (String, bool) {
+/// `vocabulary` words are appended to the system prompt to improve technical-term accuracy.
+pub async fn polish_text(
+    text: &str,
+    api_key: &str,
+    screenshot: Option<&str>,
+    vocabulary: &[String],
+) -> (String, bool) {
     let original_len = text.chars().count();
     let threshold = (original_len as f64 * 0.8) as usize;
     let max_tokens = compute_max_tokens(original_len);
 
     if let Some(img_data) = screenshot {
         info!("Using vision model for polish (screenshot context attached)");
-        match try_polish_vision(text, api_key, img_data, 0.1, false, max_tokens).await {
+        match try_polish_vision(text, api_key, img_data, 0.1, false, max_tokens, vocabulary).await {
             Ok(polished) if polished.chars().count() >= threshold => {
                 info!("Vision model polish complete");
                 return (polished, false);
@@ -105,7 +137,7 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
                     threshold
                 );
                 if let Ok(p) =
-                    try_polish_vision(text, api_key, img_data, 0.3, true, max_tokens).await
+                    try_polish_vision(text, api_key, img_data, 0.3, true, max_tokens, vocabulary).await
                 {
                     if p.chars().count() >= threshold {
                         info!("Vision model retry succeeded");
@@ -121,7 +153,7 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
     }
 
     // Text-only path (either no screenshot or vision failed)
-    match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens).await {
+    match try_polish_text(text, api_key, PRIMARY_MODEL, 0.1, false, max_tokens, vocabulary).await {
         Ok(polished) if polished.chars().count() >= threshold => {
             info!("Polish complete");
             (polished, false)
@@ -132,7 +164,7 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
                 short.chars().count(),
                 threshold
             );
-            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
+            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens, vocabulary).await {
                 Ok(p) if p.chars().count() >= threshold => {
                     info!("Polish retry succeeded");
                     (p, false)
@@ -145,7 +177,7 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
         }
         Err(e) => {
             warn!("Primary model polish failed: {}, retrying with higher temperature", e);
-            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
+            match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens, vocabulary).await {
                 Ok(p) if p.chars().count() >= threshold => {
                     info!("Polish retry succeeded");
                     (p, false)
@@ -168,6 +200,7 @@ async fn try_polish_vision(
     temperature: f32,
     with_completeness_hint: bool,
     max_tokens: u32,
+    vocabulary: &[String],
 ) -> anyhow::Result<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
@@ -201,7 +234,7 @@ async fn try_polish_vision(
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: MessageContent::Text(SYSTEM_PROMPT_VISION.to_string()),
+                content: MessageContent::Text(build_system_prompt_vision(vocabulary)),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -222,6 +255,7 @@ async fn try_polish_text(
     temperature: f32,
     with_completeness_hint: bool,
     max_tokens: u32,
+    vocabulary: &[String],
 ) -> anyhow::Result<String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
@@ -241,7 +275,7 @@ async fn try_polish_text(
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: MessageContent::Text(SYSTEM_PROMPT_TEXT.to_string()),
+                content: MessageContent::Text(build_system_prompt_text(vocabulary)),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -393,5 +427,49 @@ mod tests {
     #[test]
     fn test_system_prompt_vision_instructs_same_language() {
         assert!(SYSTEM_PROMPT_VISION.contains("same language"));
+    }
+
+    // --- build_system_prompt_text ---
+
+    #[test]
+    fn test_build_system_prompt_text_empty_vocabulary() {
+        let prompt = build_system_prompt_text(&[]);
+        assert_eq!(prompt, SYSTEM_PROMPT_TEXT);
+    }
+
+    #[test]
+    fn test_build_system_prompt_text_with_vocabulary() {
+        let vocab = vec!["Kubernetes".to_string(), "TypeScript".to_string()];
+        let prompt = build_system_prompt_text(&vocab);
+        assert!(prompt.starts_with(SYSTEM_PROMPT_TEXT));
+        assert!(prompt.contains("Kubernetes"));
+        assert!(prompt.contains("TypeScript"));
+        assert!(prompt.contains("Known words/terms"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_text_single_word() {
+        let vocab = vec!["Redis".to_string()];
+        let prompt = build_system_prompt_text(&vocab);
+        assert!(prompt.contains("Redis"));
+        assert!(prompt.contains("Known words/terms"));
+    }
+
+    // --- build_system_prompt_vision ---
+
+    #[test]
+    fn test_build_system_prompt_vision_empty_vocabulary() {
+        let prompt = build_system_prompt_vision(&[]);
+        assert_eq!(prompt, SYSTEM_PROMPT_VISION);
+    }
+
+    #[test]
+    fn test_build_system_prompt_vision_with_vocabulary() {
+        let vocab = vec!["Svelte".to_string(), "Tauri".to_string()];
+        let prompt = build_system_prompt_vision(&vocab);
+        assert!(prompt.starts_with(SYSTEM_PROMPT_VISION));
+        assert!(prompt.contains("Svelte"));
+        assert!(prompt.contains("Tauri"));
+        assert!(prompt.contains("Known words/terms"));
     }
 }

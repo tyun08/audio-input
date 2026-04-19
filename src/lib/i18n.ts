@@ -56,6 +56,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.language": "Language",
+    "settings.vocabulary": "Custom Vocabulary",
+    "settings.vocabulary_desc": "Words to boost transcription accuracy (one per line)",
+    "settings.vocabulary_placeholder": "Kubernetes\nTypeScript\nYour Name",
+    "settings.vocabulary_save": "Save Vocabulary",
 
     // Settings nav tabs
     "settings.nav.transcription": "Transcription",
@@ -129,6 +133,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "显示待机指示器",
     "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
     "settings.language": "语言",
+    "settings.vocabulary": "自定义词汇",
+    "settings.vocabulary_desc": "提升转录准确度的词语（每行一个）",
+    "settings.vocabulary_placeholder": "Kubernetes\nTypeScript\n您的名字",
+    "settings.vocabulary_save": "保存词汇",
 
     // Settings nav tabs
     "settings.nav.transcription": "转录",
