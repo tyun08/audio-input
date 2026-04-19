@@ -5,8 +5,6 @@ use serde::Deserialize;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
-
 #[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
@@ -16,12 +14,18 @@ pub struct VertexClient {
     project_id: String,
     location: String,
     model: String,
+    vocabulary: Vec<String>,
     access_token: String,
     client: Client,
 }
 
 impl VertexClient {
-    pub async fn new(project_id: String, location: String, model: String) -> Result<Self> {
+    pub async fn new(
+        project_id: String,
+        location: String,
+        model: String,
+        vocabulary: Vec<String>,
+    ) -> Result<Self> {
         let access_token = get_access_token().await?;
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
@@ -32,6 +36,7 @@ impl VertexClient {
             project_id,
             location,
             model,
+            vocabulary,
             access_token,
             client,
         })
@@ -59,6 +64,15 @@ impl VertexClient {
 
         let audio_base64 = BASE64.encode(&wav_bytes);
 
+        let transcription_prompt = if self.vocabulary.is_empty() {
+            "Transcribe this audio exactly as spoken. Output only the transcribed text, nothing else. Respond in the same language as the audio.".to_string()
+        } else {
+            format!(
+                "Transcribe this audio exactly as spoken. Output only the transcribed text, nothing else. Respond in the same language as the audio. Known words/terms that may appear: {}.",
+                self.vocabulary.join(", ")
+            )
+        };
+
         let body = serde_json::json!({
             "contents": [{
                 "role": "user",
@@ -70,7 +84,7 @@ impl VertexClient {
                         }
                     },
                     {
-                        "text": "Transcribe this audio exactly as spoken. Output only the transcribed text, nothing else. Respond in the same language as the audio."
+                        "text": transcription_prompt
                     }
                 ]
             }],
@@ -98,6 +112,7 @@ pub async fn polish_text_vertex(
     location: &str,
     model: &str,
     screenshot: Option<&str>,
+    vocabulary: &[String],
 ) -> (String, bool) {
     let access_token = match get_access_token().await {
         Ok(t) => t,
@@ -123,7 +138,7 @@ pub async fn polish_text_vertex(
 
     if let Some(img_data) = screenshot {
         info!("Using Vertex AI vision model for polish (screenshot attached)");
-        match try_vision(&client, &url, &access_token, text, img_data, 0.1, false, max_tokens)
+        match try_vision(&client, &url, &access_token, text, img_data, 0.1, false, max_tokens, vocabulary)
             .await
         {
             Ok(p) if p.chars().count() >= threshold => {
@@ -137,7 +152,7 @@ pub async fn polish_text_vertex(
                     threshold
                 );
                 if let Ok(p) =
-                    try_vision(&client, &url, &access_token, text, img_data, 0.3, true, max_tokens)
+                    try_vision(&client, &url, &access_token, text, img_data, 0.3, true, max_tokens, vocabulary)
                         .await
                 {
                     if p.chars().count() >= threshold {
@@ -152,13 +167,13 @@ pub async fn polish_text_vertex(
         }
     }
 
-    match try_text(&client, &url, &access_token, text, 0.1, false, max_tokens).await {
+    match try_text(&client, &url, &access_token, text, 0.1, false, max_tokens, vocabulary).await {
         Ok(p) if p.chars().count() >= threshold => {
             info!("Vertex AI polish complete");
             (p, false)
         }
         Ok(_) => {
-            match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens).await {
+            match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens, vocabulary).await {
                 Ok(p) if p.chars().count() >= threshold => (p, false),
                 _ => {
                     warn!("Vertex AI polish retry failed, returning original text");
@@ -187,6 +202,7 @@ async fn try_vision(
     temperature: f32,
     with_hint: bool,
     max_tokens: u32,
+    vocabulary: &[String],
 ) -> Result<String> {
     let user_text = if with_hint {
         format!(
@@ -211,7 +227,7 @@ async fn try_vision(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": parts }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_VISION }] },
+        "systemInstruction": { "parts": [{ "text": super::polish::build_system_prompt_vision(vocabulary) }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 
@@ -226,6 +242,7 @@ async fn try_text(
     temperature: f32,
     with_hint: bool,
     max_tokens: u32,
+    vocabulary: &[String],
 ) -> Result<String> {
     let user_text = if with_hint {
         format!(
@@ -238,7 +255,7 @@ async fn try_text(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": [{ "text": user_text }] }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_TEXT }] },
+        "systemInstruction": { "parts": [{ "text": super::polish::build_system_prompt_text(vocabulary) }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 

@@ -274,6 +274,8 @@ pub fn run() {
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
+            commands::get_custom_vocabulary,
+            commands::save_custom_vocabulary,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");
