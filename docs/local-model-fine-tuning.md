@@ -17,7 +17,7 @@ Two levels of adaptation exist:
 | Level | What changes | Data needed | Compute |
 |-------|-------------|-------------|---------|
 | **Prompt / vocabulary hint** | Nothing — model weights unchanged | None | None |
-| **LoRA / adapter fine-tuning** | Small adapter layers added; base weights frozen | 10–100 labelled clips | CPU feasible; GPU faster |
+| **LoRA / adapter fine-tuning** | Small adapter layers added; base weights frozen | 10–100 labeled clips | CPU feasible; GPU faster |
 | **Full fine-tuning** | All weights updated | 1 000+ clips | GPU required |
 
 For a single-user desktop app, **LoRA adapter fine-tuning** is the only practical approach.
@@ -57,7 +57,7 @@ Input ─────────► │  W_base │ ─────────
 | Domain vocabulary (< 200 words) | 30–80 clips | 8–20 min total | High |
 | Combined accent + vocabulary | 50–150 clips | 15–40 min total | High |
 
-In practice **50 labelled clips (≈ 10 minutes of audio)** is the minimum for measurable
+In practice **50 labeled clips (≈ 10 minutes of audio)** is the minimum for measurable
 improvement.  Below this threshold the model may overfit, losing general accuracy.
 
 ### 3.2 Collecting training data in-app
@@ -76,7 +76,7 @@ The app already captures every recording as a WAV buffer.  Two data collection p
 **Path B — passive collection (future)**
 
 - Use a high-confidence threshold on the existing Groq/cloud transcript.
-- Clips where Whisper's word-level confidence is > 0.97 across all tokens are auto-labelled.
+- Auto-label high-confidence clips as silver training data (auto-labeled).
 - These serve as "silver" training data — lower quality, but requires zero user effort.
 
 ### 3.3 Audio quality requirements
@@ -277,8 +277,9 @@ The fine-tuning job runs only when the app is idle.  During normal transcription
 the total RAM overhead of local inference is ~1.2 GB — well within the 8 GB baseline Mac.
 
 If the user chooses to store raw WAV corrections, consider converting them to **FLAC** (lossless,
-~3× compression) or **Opus at 24 kbps** (lossy, ~60× compression, imperceptible quality loss for
-speech).
+~2–3× compression for 16 kHz mono speech) or **Opus at 24 kbps** (lossy, ~30–60× compression
+for speech; ratios are lower than for music because speech has narrower bandwidth and longer
+silences). Both preserve enough fidelity for Whisper fine-tuning.
 
 ---
 
@@ -286,7 +287,7 @@ speech).
 
 | Question | Risk level | Notes |
 |----------|-----------|-------|
-| Does `whisper-rs` support loading LoRA adapters? | Medium | whisper.cpp LoRA support is experimental; may need to use a separate Python fine-tuning path and re-merge weights into a new GGML file |
+| Does `whisper-rs` support loading LoRA adapters? | Medium | whisper.cpp LoRA support is experimental; may need to use a separate Python fine-tuning path and re-merge weights into a new GGML file. **Action item before Phase 3:** prototype loading a merged LoRA+base GGML with `whisper-rs` and confirm the API surface; if unsupported, the Python sidecar path in section 5.2 is the fallback |
 | How many corrections until improvement is user-visible? | Medium | Depends strongly on accent diversity in pre-training data; 50 clips is a reasonable lower bound |
 | Will LoRA adapter transfer across base model versions? | High | Adapters are tightly coupled to model architecture; a model update invalidates existing adapters |
 | Is Python sidecar acceptable for distribution? | Medium | Homebrew / direct DMG: yes (ship a bundled Python). App Store: complicated — may need Candle |
