@@ -42,25 +42,25 @@ Minimal backend (serverless + DB + auth) estimated at **$20–40/month flat** re
 
 ### Profitability Estimate by Price Point
 
-Assumptions: Regular user profile (300 min/month), 3× markup on Groq cost.
+Assumptions: Regular user profile (300 min/month), 3× markup on Groq cost. LemonSqueezy fees: 5% + $0.50/transaction.
 
-| Subscription Price | Groq Cost (3× coverage) | Infrastructure Share | Net Margin |
-|--------------------|-------------------------|----------------------|------------|
-| **$1/mo** | $0.60 | ~$0.04 | **~$0.36** ✅ (casual) |
-| **$3/mo** | $0.60 | ~$0.04 | **~$2.36** ✅ (most users) |
-| **$5/mo** | $0.60 | ~$0.04 | **~$4.36** ✅ |
+| Subscription Price | LemonSqueezy Fees | Groq Cost | Infra Share | Net Margin |
+|--------------------|-------------------|-----------|-------------|------------|
+| **$1/mo** | $0.55 | $0.60 | ~$0.04 | **−$0.19** ❌ (regular; only viable for casual < 150 min/mo) |
+| **$3/mo** | $0.65 | $0.60 | ~$0.04 | **~$1.71** ✅ (most users) |
+| **$5/mo** | $0.75 | $0.60 | ~$0.04 | **~$3.61** ✅ |
 
-**Conclusion:** $3/month is comfortably profitable for the vast majority of users. $1/month works only for casual users (< ~150 min/month). A flat $3–5/month tier covers essentially all real-world usage patterns with healthy margin.
+**Conclusion:** $3/month is solidly profitable for the vast majority of users once payment fees are accounted for. $1/month does not cover costs for a regular user profile — only works if the subscriber is a very casual user (< ~150 min/month). A $3/month floor is the right minimum.
 
 ---
 
 ### Usage Caps & Overage
 
 At $3/month (3× markup):
-- Included allowance: ~**1,500 min/month** (25 hrs) — more than any realistic user would consume
+- Included allowance: ~**1,200 min/month** (20 hrs) — more than any realistic user would consume
 - Overage beyond cap: $0.003/min (3× Groq's $0.00067/min)
 
-**Recommendation:** Set a generous included cap (~20 hrs/month) and charge per-minute overage. Most users will never hit the cap, which simplifies billing and reduces support load.
+**Recommendation:** Set a generous included cap (20 hrs/month) and charge per-minute overage. Most users will never hit the cap, which simplifies billing and reduces support load.
 
 ---
 
@@ -152,7 +152,7 @@ Data we **must** store:
 
 Data we **do not** store:
 - Audio recordings — never hit our servers
-- Screenshots — processed by Groq directly from client
+- Screenshots — captured locally; forwarded to Groq's vision LLM only when AI polish is enabled (not stored by our service)
 - Transcription text — never logged
 - IP addresses beyond rate-limiting window
 
@@ -226,7 +226,7 @@ app sends audio
 | Launch price | $2 / $3 / $5 | **$3/mo** — low friction, sustainable margin |
 | Annual plan | Yes / No | **Yes** at $27/year (~$2.25/mo) |
 | Credit packs | Launch / Later | **Later (P2)** — complexity not needed at launch |
-| Free trial | 14 days / 1 month / None | **1 month free trial** for Pro (low risk given cost structure) |
+| Free trial | 7 days / usage-capped / None | **7-day trial** for Pro (1-month trial is trivially farmable with throwaway emails under magic-link auth) |
 | One-time option | Yes / No | **Revisit after local inference ships** (zero marginal cost changes the calculus) |
 
 ### Key Risk: Groq Price Changes
