@@ -106,12 +106,12 @@
         width="6"
         height="11"
         rx="3"
-        stroke="rgba(255,255,255,0.55)"
+        stroke="rgba(255,255,255,0.75)"
         stroke-width="1.8"
       />
       <path
         d="M5 11a7 7 0 0 0 14 0"
-        stroke="rgba(255,255,255,0.55)"
+        stroke="rgba(255,255,255,0.75)"
         stroke-width="1.8"
         stroke-linecap="round"
       />
@@ -120,7 +120,7 @@
         y1="18"
         x2="12"
         y2="22"
-        stroke="rgba(255,255,255,0.55)"
+        stroke="rgba(255,255,255,0.75)"
         stroke-width="1.8"
         stroke-linecap="round"
       />
@@ -129,7 +129,7 @@
         y1="22"
         x2="15"
         y2="22"
-        stroke="rgba(255,255,255,0.55)"
+        stroke="rgba(255,255,255,0.75)"
         stroke-width="1.8"
         stroke-linecap="round"
       />
@@ -146,23 +146,46 @@
     padding: 0 14px;
     height: 40px;
     border-radius: 999px;
-    background: rgba(36, 36, 38, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    background: rgba(26, 26, 28, 0.97);
+    /* 双环：内圈浅色边框 + 外圈深色描边 → 深浅背景都可见 */
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 4px 20px rgba(0, 0, 0, 0.55),
+      0 1px 0 rgba(255, 255, 255, 0.08) inset;
     white-space: nowrap;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
     cursor: grab;
+  }
+
+  .hud.recording {
+    transform: scale(1.1);
   }
 
   .hud:active {
     cursor: grabbing;
   }
 
+  .hud.recording {
+    border-color: rgba(239, 68, 68, 0.55);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 4px 20px rgba(0, 0, 0, 0.55),
+      0 0 14px rgba(239, 68, 68, 0.25);
+  }
   .hud.processing {
-    border-color: rgba(99, 130, 246, 0.25);
+    border-color: rgba(99, 130, 246, 0.5);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 4px 20px rgba(0, 0, 0, 0.55),
+      0 0 12px rgba(99, 130, 246, 0.2);
   }
   .hud.error {
-    border-color: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.5);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.6),
+      0 4px 20px rgba(0, 0, 0, 0.55),
+      0 0 12px rgba(239, 68, 68, 0.2);
   }
 
   /* Red dot + pulse */
@@ -281,6 +304,6 @@
     color: rgba(255, 200, 80, 0.9);
   }
   .label.muted {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.65);
   }
 </style>
