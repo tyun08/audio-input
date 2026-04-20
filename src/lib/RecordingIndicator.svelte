@@ -197,22 +197,25 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    overflow: visible;
   }
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    background: #ef4444;
+    background: #ff2d20;
     position: relative;
     z-index: 2;
-    animation: blink 1.4s ease-in-out infinite;
+    box-shadow: 0 0 8px 4px rgba(255, 45, 32, 0.8);
+    animation: blink 1.6s ease-in-out infinite;
   }
   .ring {
     position: absolute;
-    inset: 0;
+    /* 超出容器 30px 四周，全尺寸 16+60=76px，远超 HUD 高度 40px */
+    inset: -30px;
     border-radius: 50%;
-    background: rgba(239, 68, 68, 0.3);
-    animation: expand 1.4s ease-out infinite;
+    background: rgba(255, 45, 32, 0.45);
+    animation: expand 1.6s ease-out infinite;
   }
   @keyframes blink {
     0%,
@@ -220,16 +223,16 @@
       opacity: 1;
     }
     50% {
-      opacity: 0.65;
+      opacity: 0.7;
     }
   }
   @keyframes expand {
     0% {
-      transform: scale(0.4);
-      opacity: 0.9;
+      transform: scale(0.12);
+      opacity: 0.85;
     }
     100% {
-      transform: scale(1.9);
+      transform: scale(1);
       opacity: 0;
     }
   }

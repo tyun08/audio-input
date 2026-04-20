@@ -74,7 +74,7 @@ describe("deriveUiDecision", () => {
 
   it("injection failure uses taller HUD and stays visible", () => {
     const decision = deriveUiDecision(baseState({ injectionFailed: true }));
-    expect(decision.window).toEqual({ w: 200, h: 72, posKey: "hud-window-pos" });
+    expect(decision.window).toEqual({ w: 264, h: 136, posKey: "hud-window-pos" });
     expect(decision.shouldShowWindow).toBe(true);
     expect(decision.nativeOpaque).toBe(false);
   });
@@ -97,13 +97,13 @@ describe("deriveUiDecision", () => {
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
     expect(decision.nativeOpaque).toBe(false);
-    expect(decision.window.h).toBe(44);
+    expect(decision.window.h).toBe(108);
   });
 
   it("recording keeps HUD visible at standard size", () => {
     const decision = deriveUiDecision(baseState({ appState: "recording" }));
     expect(decision.view).toBe("hud");
-    expect(decision.window.h).toBe(44);
+    expect(decision.window.h).toBe(108);
     expect(decision.shouldShowWindow).toBe(true);
   });
 });

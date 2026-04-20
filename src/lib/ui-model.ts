@@ -1,6 +1,8 @@
 export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_H = 72;
+// Transparent padding around the HUD pill so the recording glow can bleed out
+export const GLOW_PAD = 32;
 export const SETTINGS_W = 620;
 export const SETTINGS_H = 480;
 export const ONBOARDING_W = 370;
@@ -99,8 +101,8 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   return {
     view: "hud",
     window: {
-      w: HUD_W,
-      h: state.injectionFailed ? HUD_ALERT_H : HUD_H,
+      w: HUD_W + GLOW_PAD * 2,
+      h: (state.injectionFailed ? HUD_ALERT_H : HUD_H) + GLOW_PAD * 2,
       posKey: HUD_POS_KEY,
     },
     nativeOpaque: false,
