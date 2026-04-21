@@ -13,7 +13,7 @@ mod tray;
 use audio::Recorder;
 use commands::RecorderState;
 use config::AppConfig;
-use state::{new_screenshot_state, new_shared_state};
+use state::{new_previous_app_state, new_screenshot_state, new_shared_state};
 
 use std::sync::{Arc, Mutex};
 use tauri::{Listener as _, Manager};
@@ -137,6 +137,9 @@ pub fn run() {
 
             // Init screenshot context state
             app.manage(new_screenshot_state());
+
+            // Init previous-app state (for main-window Release)
+            app.manage(new_previous_app_state());
 
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
@@ -274,6 +277,10 @@ pub fn run() {
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
+            commands::get_main_window_mode,
+            commands::save_main_window_mode,
+            commands::release_text,
+            commands::copy_to_clipboard,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");

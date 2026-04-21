@@ -10,11 +10,16 @@ export const ONBOARDING_H = 540;
 export const AX_W = 320;
 export const AX_H = 160;
 
+// Main window (new proper UI)
+export const MAIN_W = 580;
+export const MAIN_H = 200;
+
 export const HUD_POS_KEY = "hud-window-pos";
 export const SETTINGS_POS_KEY = "settings-window-pos";
+export const MAIN_POS_KEY = "main-window-pos";
 
 export type AppState = "idle" | "recording" | "processing" | "error";
-export type UiView = "onboarding" | "ax" | "settings" | "hud";
+export type UiView = "onboarding" | "ax" | "settings" | "hud" | "main-window";
 
 export interface UiModelState {
   onboardingDone: boolean;
@@ -24,6 +29,7 @@ export interface UiModelState {
   injectionFailed: boolean;
   polishFailed: boolean;
   showIdleHud?: boolean;
+  mainWindowMode?: boolean;
 }
 
 export interface UiDecision {
@@ -34,6 +40,7 @@ export interface UiDecision {
     posKey?: string;
   };
   nativeOpaque: boolean;
+  nativeDecorations: boolean;
   shouldShowWindow: boolean;
 }
 
@@ -76,6 +83,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       view: "onboarding",
       window: { w: ONBOARDING_W, h: ONBOARDING_H },
       nativeOpaque: true,
+      nativeDecorations: false,
       shouldShowWindow: true,
     };
   }
@@ -85,6 +93,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       view: "ax",
       window: { w: AX_W, h: AX_H },
       nativeOpaque: true,
+      nativeDecorations: false,
       shouldShowWindow: true,
     };
   }
@@ -94,6 +103,17 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       view: "settings",
       window: { w: SETTINGS_W, h: SETTINGS_H, posKey: SETTINGS_POS_KEY },
       nativeOpaque: true,
+      nativeDecorations: false,
+      shouldShowWindow: true,
+    };
+  }
+
+  if (state.mainWindowMode) {
+    return {
+      view: "main-window",
+      window: { w: MAIN_W, h: MAIN_H, posKey: MAIN_POS_KEY },
+      nativeOpaque: true,
+      nativeDecorations: true,
       shouldShowWindow: true,
     };
   }
@@ -106,6 +126,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       posKey: HUD_POS_KEY,
     },
     nativeOpaque: false,
+    nativeDecorations: false,
     shouldShowWindow:
       state.appState !== "idle" ||
       state.injectionFailed ||

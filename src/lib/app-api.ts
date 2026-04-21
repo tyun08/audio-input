@@ -12,6 +12,8 @@ type AppWindow = Pick<
   | "outerPosition"
   | "scaleFactor"
   | "setResizable"
+  | "setDecorations"
+  | "setAlwaysOnTop"
 >;
 
 export interface AppApi {
@@ -47,6 +49,8 @@ export function createAppApi(): AppApi {
     outerPosition: async () => ({ x: 0, y: 0 }),
     scaleFactor: async () => 1,
     setResizable: async () => {},
+    setDecorations: async () => {},
+    setAlwaysOnTop: async () => {},
   };
   const inTauri = hasTauriWindow();
 

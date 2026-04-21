@@ -3,7 +3,7 @@ use crate::{
     config::AppConfig,
     input::inject_text,
     screenshot::capture_primary_screen,
-    state::{AppState, ScreenshotState, SharedState},
+    state::{AppState, PreviousAppState, ScreenshotState, SharedState},
     transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
 };
@@ -52,6 +52,20 @@ async fn start_recording<R: Runtime>(
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
     info!("Recording started...");
+
+    // Capture the frontmost app before we potentially steal focus.
+    // This is used by `release_text` to re-activate the target app.
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(prev_app) = app.try_state::<PreviousAppState>() {
+            if let Some(bid) = get_frontmost_bundle_id() {
+                if bid != "com.audioinput.app" {
+                    *prev_app.inner().lock().unwrap() = Some(bid.clone());
+                    info!("Previous app saved: {}", bid);
+                }
+            }
+        }
+    }
 
     let result = {
         match recorder_state.lock() {
@@ -256,6 +270,20 @@ async fn stop_and_transcribe<R: Runtime>(
     crate::tray::set_tray_last_result(&app, &text);
 
     let _ = app.emit("transcription-result", &text);
+
+    let main_window_mode = {
+        let config = app.state::<Arc<Mutex<AppConfig>>>();
+        let val = config.lock().unwrap().main_window_mode;
+        val
+    };
+
+    if main_window_mode {
+        // In main window mode, don't auto-inject — the user clicks Release.
+        reset_to_idle(&app, &shared_state);
+        info!("State → Idle (main-window mode, awaiting user Release)");
+        return;
+    }
+
     if let Err(e) = inject_text(&text).await {
         error!("Text injection failed: {}", e);
         if let Some(win) = app.get_webview_window("main") {
@@ -596,6 +624,112 @@ pub async fn save_onboarding_completed(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Main window mode --------------------------------------------------------
+
+#[tauri::command]
+pub fn get_main_window_mode(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().main_window_mode
+}
+
+#[tauri::command]
+pub async fn save_main_window_mode(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.main_window_mode = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Release text ------------------------------------------------------------
+
+/// Activate the previously-recorded frontmost app, then inject text.
+#[tauri::command]
+pub async fn release_text(
+    text: String,
+    previous_app: tauri::State<'_, PreviousAppState>,
+) -> Result<(), String> {
+    let bundle_id = previous_app.lock().unwrap().clone();
+
+    #[cfg(target_os = "macos")]
+    if let Some(bid) = bundle_id {
+        info!("Activating previous app for Release: {}", bid);
+        activate_app_by_bundle_id(&bid);
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+
+    inject_text(&text).await.map_err(|e| e.to_string())
+}
+
+/// Copy text to the system clipboard.
+#[tauri::command]
+pub async fn copy_to_clipboard(text: String) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(&text).map_err(|e| e.to_string())
+}
+
+// --- macOS: frontmost app helpers --------------------------------------------
+
+#[cfg(target_os = "macos")]
+fn get_frontmost_bundle_id() -> Option<String> {
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let workspace: *mut objc::runtime::Object =
+            msg_send![class!(NSWorkspace), sharedWorkspace];
+        let front_app: *mut objc::runtime::Object =
+            msg_send![workspace, frontmostApplication];
+        if front_app.is_null() {
+            return None;
+        }
+        let bundle_id: *mut objc::runtime::Object = msg_send![front_app, bundleIdentifier];
+        if bundle_id.is_null() {
+            return None;
+        }
+        let bytes: *const std::os::raw::c_char = msg_send![bundle_id, UTF8String];
+        if bytes.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(bytes)
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn activate_app_by_bundle_id(bundle_id: &str) {
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::CString;
+    unsafe {
+        let workspace: *mut objc::runtime::Object =
+            msg_send![class!(NSWorkspace), sharedWorkspace];
+        let apps: *mut objc::runtime::Object = msg_send![workspace, runningApplications];
+        let count: usize = msg_send![apps, count];
+
+        let c_str = CString::new(bundle_id).unwrap_or_default();
+        let bundle_id_ns: *mut objc::runtime::Object =
+            msg_send![class!(NSString), stringWithUTF8String: c_str.as_ptr()];
+
+        for i in 0..count {
+            let app_obj: *mut objc::runtime::Object = msg_send![apps, objectAtIndex: i];
+            let bid: *mut objc::runtime::Object = msg_send![app_obj, bundleIdentifier];
+            if !bid.is_null() {
+                let equal: bool = msg_send![bid, isEqualToString: bundle_id_ns];
+                if equal {
+                    // NSApplicationActivateIgnoringOtherApps = 2
+                    let _: () = msg_send![app_obj, activateWithOptions: 2u64];
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// Toggle NSWindow.isOpaque at runtime so WebKit uses the high-quality opaque

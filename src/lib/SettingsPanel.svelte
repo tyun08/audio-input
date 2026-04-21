@@ -13,6 +13,7 @@
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
   export let showIdleHud: boolean = false;
+  export let mainWindowMode: boolean = false;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
@@ -110,6 +111,11 @@
   async function handleShowIdleHudToggle() {
     showIdleHud = !showIdleHud;
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
+  }
+
+  async function handleMainWindowModeToggle() {
+    mainWindowMode = !mainWindowMode;
+    await invoke("save_main_window_mode", { enabled: mainWindowMode });
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -411,6 +417,21 @@
               class:on={showIdleHud}
               on:click={handleShowIdleHudToggle}
               aria-label="Toggle idle HUD"
+            >
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">Main Window</span>
+              <span class="row-sub">Show a full window instead of the HUD pill</span>
+            </div>
+            <button
+              class="toggle"
+              class:on={mainWindowMode}
+              on:click={handleMainWindowModeToggle}
+              aria-label="Toggle main window mode"
             >
               <span class="toggle-knob"></span>
             </button>

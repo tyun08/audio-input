@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub screenshot_context_enabled: bool,
     #[serde(default)]
     pub show_idle_hud: bool,
+    #[serde(default)]
+    pub main_window_mode: bool,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -62,6 +64,7 @@ impl Default for AppConfig {
             onboarding_completed: false,
             screenshot_context_enabled: false,
             show_idle_hud: false,
+            main_window_mode: false,
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),

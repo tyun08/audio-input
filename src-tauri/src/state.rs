@@ -31,3 +31,11 @@ pub type ScreenshotState = Arc<Mutex<Option<String>>>;
 pub fn new_screenshot_state() -> ScreenshotState {
     Arc::new(Mutex::new(None))
 }
+
+/// Holds the bundle ID of the app that was frontmost when recording started.
+/// Used by `release_text` to re-activate the target app before injecting.
+pub type PreviousAppState = Arc<Mutex<Option<String>>>;
+
+pub fn new_previous_app_state() -> PreviousAppState {
+    Arc::new(Mutex::new(None))
+}

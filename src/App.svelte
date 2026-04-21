@@ -48,6 +48,7 @@
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
+  import MainWindow from "./lib/MainWindow.svelte";
   import { t } from "./lib/i18n";
 
   let appState: AppState = "idle";
@@ -67,6 +68,8 @@
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
   let showIdleHud = false;
+  let mainWindowMode = false;
+  let currentShortcut = "Meta+Shift+Space";
 
   // Audio waveform — rolling buffer of recent RMS levels (0..1) for the HUD
   const WAVEFORM_BAR_COUNT = 20;
@@ -96,6 +99,7 @@
       injectionFailed,
       polishFailed,
       showIdleHud,
+      mainWindowMode,
     };
   }
 
@@ -103,9 +107,10 @@
     const ui = deriveUiDecision(getUiState());
 
     log(
-      `[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`
+      `[syncWindow] view=${ui.view} opaque=${ui.nativeOpaque} decorations=${ui.nativeDecorations} show=${ui.shouldShowWindow} size=${ui.window.w}x${ui.window.h}`
     );
 
+    await appWindow.setDecorations(ui.nativeDecorations).catch(() => {});
     await appApi.setNativeOpaque(ui.nativeOpaque, ui.shouldShowWindow);
     await appWindow.setResizable(ui.shouldShowWindow && ui.nativeOpaque);
 
@@ -154,6 +159,8 @@
         .invoke<boolean>("get_screenshot_context_enabled")
         .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
+      mainWindowMode = await appApi.invoke<boolean>("get_main_window_mode").catch(() => false);
+      currentShortcut = await appApi.invoke<string>("get_shortcut").catch(() => "Meta+Shift+Space");
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -350,10 +357,19 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       bind:showIdleHud
+      bind:mainWindowMode
       {appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
+    />
+  {:else if mainWindowMode}
+    <MainWindow
+      state={appState}
+      {errorMsg}
+      {lastTranscription}
+      {audioLevels}
+      shortcut={currentShortcut}
     />
   {:else}
     <RecordingIndicator
