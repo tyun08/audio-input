@@ -158,6 +158,9 @@
     cursor: grabbing;
   }
 
+  .hud.recording {
+    border-color: rgba(239, 68, 68, 0.35);
+  }
   .hud.processing {
     border-color: rgba(99, 130, 246, 0.25);
   }

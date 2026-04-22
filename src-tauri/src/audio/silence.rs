@@ -1,11 +1,10 @@
 use tracing::debug;
 
 /// RMS energy threshold below which audio is considered silent.
-/// 0.01 ≈ -40 dBFS — comfortably above the typical microphone floor
-/// (~0.001–0.003 RMS) and well below the quietest real speech
-/// (~0.02–0.05 RMS), so it reliably skips silence without
-/// ever discarding genuine utterances.
-pub const SILENCE_RMS_THRESHOLD: f32 = 0.01;
+/// 0.005 ≈ -46 dBFS — above the typical microphone floor
+/// (~0.001–0.003 RMS) while catching quieter speech that the
+/// previous 0.01 threshold was incorrectly rejecting.
+pub const SILENCE_RMS_THRESHOLD: f32 = 0.005;
 
 /// Returns `true` when `samples` contain only silence or near-silence
 /// (microphone floor noise, room tone) and no meaningful speech energy.
