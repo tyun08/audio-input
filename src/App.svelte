@@ -60,6 +60,8 @@
   let showOnboarding = false;
   let polishFailed = false;
   let shortcutConflict = "";
+  let retryableSessionId: string | null = null;
+  let retrying = false;
 
   // Settings data
   let polishEnabled = true;
@@ -96,6 +98,7 @@
       injectionFailed,
       polishFailed,
       showIdleHud,
+      retryableSessionId,
     };
   }
 
@@ -165,6 +168,16 @@
           }
 
           handleStateChange(e.payload);
+
+          if (e.payload !== "error" && !e.payload.startsWith("error:")) {
+            // Anytime we leave the error state (idle, recording, processing),
+            // the retry affordance is no longer meaningful.
+            retryableSessionId = null;
+          }
+          if (e.payload === "processing" || e.payload === "recording") {
+            retrying = false;
+          }
+
           await syncWindow();
 
           if (e.payload === "idle" && injectionFailed) {
@@ -253,6 +266,18 @@
         })
       );
 
+      unlisten.push(
+        await appApi.listen<{ sessionId: string; message: string }>(
+          "transcription-error",
+          async (e) => {
+            retryableSessionId = e.payload.sessionId || null;
+            errorMsg = e.payload.message;
+            retrying = false;
+            await syncWindow();
+          }
+        )
+      );
+
       await syncWindow();
     } catch (err) {
       const parsed = parseAppState(`error:${err instanceof Error ? err.message : String(err)}`);
@@ -303,6 +328,30 @@
 
   async function handleAccessibilityDismiss() {
     needsAccessibilityRestart = false;
+    await syncWindow();
+  }
+
+  async function handleRetry() {
+    if (!retryableSessionId || retrying) return;
+    retrying = true;
+    try {
+      await appApi.invoke("retry_transcription", { sessionId: retryableSessionId });
+    } catch (err) {
+      retrying = false;
+      errorMsg = err instanceof Error ? err.message : String(err);
+      await syncWindow();
+    }
+  }
+
+  async function handleDismiss() {
+    retryableSessionId = null;
+    retrying = false;
+    try {
+      await appApi.invoke("dismiss_error");
+    } catch {
+      appState = "idle";
+      errorMsg = "";
+    }
     await syncWindow();
   }
 </script>
@@ -363,6 +412,10 @@
       {injectionFailed}
       {polishFailed}
       {audioLevels}
+      {retryableSessionId}
+      {retrying}
+      on:retry={handleRetry}
+      on:dismiss={handleDismiss}
     />
   {/if}
 </div>

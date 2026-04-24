@@ -1,12 +1,14 @@
 use crate::{
     audio::{encode_wav, Recorder},
     config::AppConfig,
+    history::{HistoryEntry, HistoryState},
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, ScreenshotState, SharedState},
     transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
 };
+use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tracing::{error, info, warn};
@@ -179,6 +181,15 @@ async fn stop_and_transcribe<R: Runtime>(
     let _ = app.emit("state-change", "processing");
     info!("State → Processing");
 
+    let sample_rate = audio_data.sample_rate;
+    let total_samples = audio_data.samples.len();
+    let channels = audio_data.channels.max(1);
+    let duration_s = if sample_rate > 0 {
+        (total_samples as f32 / channels as f32) / sample_rate as f32
+    } else {
+        0.0
+    };
+
     let wav_bytes = match encode_wav(
         &audio_data.samples,
         audio_data.sample_rate,
@@ -192,22 +203,42 @@ async fn stop_and_transcribe<R: Runtime>(
         }
     };
 
-    // Read provider + config
-    let (provider, pcfg, polish_enabled) = {
+    let provider_name = {
         let config = app.state::<Arc<Mutex<AppConfig>>>();
         let cfg = config.lock().unwrap();
-        let p = cfg.provider.clone();
-        let mut pc = cfg.get_pcfg(&p);
-        // Groq: env var override
-        if p == "groq" {
-            if let Ok(key) = std::env::var("GROQ_API_KEY") {
-                if !key.is_empty() {
-                    pc["api_key"] = serde_json::Value::String(key);
-                }
-            }
-        }
-        (p, pc, cfg.polish_enabled)
+        cfg.provider.clone()
     };
+
+    // Persist audio + pending metadata BEFORE the API call so a crash or
+    // failure never loses the user's speech.
+    let history_state = app.state::<HistoryState>().inner().clone();
+    let session_id = match history_state
+        .lock()
+        .unwrap()
+        .insert_pending(provider_name.clone(), duration_s, &wav_bytes)
+    {
+        Ok(id) => id,
+        Err(e) => {
+            warn!("Failed to persist recording to history: {}", e);
+            // We still continue — in-memory retry is lost, but the transcription
+            // pipeline works. Fall back to a sentinel id.
+            String::new()
+        }
+    };
+
+    run_transcription_pipeline(&app, &shared_state, &history_state, wav_bytes, session_id).await;
+}
+
+/// Shared transcription pipeline: provider call → polish → inject.
+/// Used by the live stop flow AND the retry flow.
+async fn run_transcription_pipeline<R: Runtime>(
+    app: &AppHandle<R>,
+    shared_state: &SharedState,
+    history_state: &HistoryState,
+    wav_bytes: Vec<u8>,
+    session_id: String,
+) {
+    let (provider, pcfg, polish_enabled) = read_provider_config(app);
 
     info!("Using provider: {}", provider);
 
@@ -215,20 +246,36 @@ async fn stop_and_transcribe<R: Runtime>(
     let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
         Ok(t) => t,
         Err(e) => {
-            error!("Transcription failed: {}", e);
-            let _ = app.emit("show-settings", ());
-            set_error(&app, &shared_state, &e.to_string());
+            let msg = e.to_string();
+            error!("Transcription failed: {}", msg);
+            if !session_id.is_empty() {
+                if let Err(err) = history_state
+                    .lock()
+                    .unwrap()
+                    .mark_failed(&session_id, msg.clone())
+                {
+                    warn!("Failed to update history entry {}: {}", session_id, err);
+                }
+            }
+            set_transcription_error(app, shared_state, &session_id, &msg);
             return;
         }
     };
 
     if raw_text.is_empty() {
         warn!("Transcription empty — possibly silence, mic unauthorized, or recording too short");
-        reset_to_idle(&app, &shared_state);
+        if !session_id.is_empty() {
+            let _ = history_state
+                .lock()
+                .unwrap()
+                .mark_completed(&session_id, String::new(), String::new(), false);
+        }
+        reset_to_idle(app, shared_state);
         return;
     }
 
     // Polish
+    let mut polish_failed = false;
     let text = if polish_enabled {
         let screenshot = {
             let screenshot_state = app.state::<ScreenshotState>();
@@ -241,6 +288,7 @@ async fn stop_and_transcribe<R: Runtime>(
         );
         let (polished, failed) =
             polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+        polish_failed = failed;
         if failed {
             let _ = app.emit("polish-failed", ());
         }
@@ -250,10 +298,21 @@ async fn stop_and_transcribe<R: Runtime>(
             let screenshot_state = app.state::<ScreenshotState>();
             screenshot_state.lock().unwrap().take();
         }
-        raw_text
+        raw_text.clone()
     };
 
-    crate::tray::set_tray_last_result(&app, &text);
+    if !session_id.is_empty() {
+        if let Err(err) = history_state.lock().unwrap().mark_completed(
+            &session_id,
+            raw_text.clone(),
+            text.clone(),
+            polish_failed,
+        ) {
+            warn!("Failed to update history entry {}: {}", session_id, err);
+        }
+    }
+
+    crate::tray::set_tray_last_result(app, &text);
 
     let _ = app.emit("transcription-result", &text);
     if let Err(e) = inject_text(&text).await {
@@ -265,8 +324,25 @@ async fn stop_and_transcribe<R: Runtime>(
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
     }
 
-    reset_to_idle(&app, &shared_state);
+    reset_to_idle(app, shared_state);
     info!("State → Idle");
+}
+
+fn read_provider_config<R: Runtime>(
+    app: &AppHandle<R>,
+) -> (String, serde_json::Value, bool) {
+    let config = app.state::<Arc<Mutex<AppConfig>>>();
+    let cfg = config.lock().unwrap();
+    let p = cfg.provider.clone();
+    let mut pc = cfg.get_pcfg(&p);
+    if p == "groq" {
+        if let Ok(key) = std::env::var("GROQ_API_KEY") {
+            if !key.is_empty() {
+                pc["api_key"] = serde_json::Value::String(key);
+            }
+        }
+    }
+    (p, pc, cfg.polish_enabled)
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +422,41 @@ fn set_error<R: Runtime>(app: &AppHandle<R>, shared_state: &SharedState, msg: &s
     set_tray_icon(app, "error");
     let _ = app.emit("state-change", format!("error:{}", msg));
     schedule_error_recovery(app.clone(), shared_state.clone());
+}
+
+#[derive(Serialize, Clone)]
+struct TranscriptionError<'a> {
+    #[serde(rename = "sessionId")]
+    session_id: &'a str,
+    message: &'a str,
+}
+
+/// Transcription failure: keep the HUD pinned in the error state, emit a
+/// retryable event carrying the history session id, and skip auto-recovery.
+/// The user reclaims control via the retry button, dismiss button, or the
+/// global shortcut.
+fn set_transcription_error<R: Runtime>(
+    app: &AppHandle<R>,
+    shared_state: &SharedState,
+    session_id: &str,
+    msg: &str,
+) {
+    {
+        let mut state = shared_state.lock().unwrap();
+        *state = AppState::Error(msg.to_string());
+    }
+    set_tray_icon(app, "error");
+    // Emit the retryable payload first so the UI sees the session id before
+    // reacting to the state-change — otherwise the HUD briefly renders as the
+    // small error pill and then resizes into the retry panel.
+    let _ = app.emit(
+        "transcription-error",
+        TranscriptionError {
+            session_id,
+            message: msg,
+        },
+    );
+    let _ = app.emit("state-change", format!("error:{}", msg));
 }
 
 fn reset_to_idle<R: Runtime>(app: &AppHandle<R>, shared_state: &SharedState) {
@@ -699,3 +810,154 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
         }
     }
 }
+
+// ===========================================================================
+// History / Retry
+// ===========================================================================
+
+#[tauri::command]
+pub async fn retry_transcription(
+    session_id: String,
+    app: AppHandle,
+    shared_state: tauri::State<'_, SharedState>,
+    history: tauri::State<'_, HistoryState>,
+) -> Result<(), String> {
+    let shared_state: SharedState = shared_state.inner().clone();
+    let history_state: HistoryState = history.inner().clone();
+
+    // Block concurrent retries while recording or already processing.
+    {
+        let state = shared_state.lock().unwrap();
+        if matches!(*state, AppState::Recording | AppState::Processing) {
+            return Err("Busy — finish current action before retrying".into());
+        }
+    }
+
+    let wav_bytes = {
+        let store = history_state.lock().unwrap();
+        if store.get(&session_id).is_none() {
+            return Err(format!("History entry {} not found", session_id));
+        }
+        store
+            .load_wav(&session_id)
+            .map_err(|e| format!("Cannot load recording: {}", e))?
+    };
+
+    if let Err(e) = history_state.lock().unwrap().mark_pending(&session_id) {
+        warn!("Failed to mark history entry pending: {}", e);
+    }
+
+    {
+        let mut state = shared_state.lock().unwrap();
+        *state = AppState::Processing;
+    }
+    set_tray_icon(&app, "processing");
+    let _ = app.emit("state-change", "processing");
+    info!("Retrying transcription for session {}", session_id);
+
+    tauri::async_runtime::spawn(async move {
+        run_transcription_pipeline(&app, &shared_state, &history_state, wav_bytes, session_id)
+            .await;
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn dismiss_error(
+    app: AppHandle,
+    shared_state: tauri::State<'_, SharedState>,
+) -> Result<(), String> {
+    reset_to_idle(&app, shared_state.inner());
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct HistoryEntryDto {
+    pub id: String,
+    #[serde(rename = "createdAtMs")]
+    pub created_at_ms: u64,
+    #[serde(rename = "durationS")]
+    pub duration_s: f32,
+    pub provider: String,
+    #[serde(rename = "rawText")]
+    pub raw_text: String,
+    #[serde(rename = "polishedText")]
+    pub polished_text: String,
+    pub status: String,
+    pub error: Option<String>,
+    #[serde(rename = "polishFailed")]
+    pub polish_failed: bool,
+}
+
+impl From<&HistoryEntry> for HistoryEntryDto {
+    fn from(e: &HistoryEntry) -> Self {
+        HistoryEntryDto {
+            id: e.id.clone(),
+            created_at_ms: e.created_at_ms,
+            duration_s: e.duration_s,
+            provider: e.provider.clone(),
+            raw_text: e.raw_text.clone(),
+            polished_text: e.polished_text.clone(),
+            status: match e.status {
+                crate::history::HistoryStatus::Pending => "pending",
+                crate::history::HistoryStatus::Completed => "completed",
+                crate::history::HistoryStatus::Failed => "failed",
+            }
+            .to_string(),
+            error: e.error.clone(),
+            polish_failed: e.polish_failed,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn list_history(history: tauri::State<'_, HistoryState>) -> Vec<HistoryEntryDto> {
+    let store = history.lock().unwrap();
+    // Most recent first for UI convenience.
+    store
+        .entries()
+        .iter()
+        .rev()
+        .map(HistoryEntryDto::from)
+        .collect()
+}
+
+#[tauri::command]
+pub fn delete_history_entry(
+    session_id: String,
+    history: tauri::State<'_, HistoryState>,
+) -> Result<(), String> {
+    history
+        .lock()
+        .unwrap()
+        .delete(&session_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_max_history(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> usize {
+    config.lock().unwrap().max_history
+}
+
+#[tauri::command]
+pub async fn save_max_history(
+    max: usize,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+    history: tauri::State<'_, HistoryState>,
+) -> Result<(), String> {
+    let max = max.max(1);
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.max_history = max;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    history
+        .lock()
+        .unwrap()
+        .set_max_entries(max)
+        .map_err(|e| e.to_string())
+}
+

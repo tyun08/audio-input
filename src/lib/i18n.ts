@@ -61,6 +61,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.nav.transcription": "Transcription",
     "settings.nav.general": "General",
     "settings.nav.advanced": "Advanced",
+    "settings.nav.history": "History",
 
     // Settings section headers
     "settings.section.startup": "Startup",
@@ -95,6 +96,23 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.error": "Error",
     "hud.copied": "Copied — ⌘V to paste",
     "hud.polish_failed": "Polish failed — original used",
+    "hud.retry_title": "Transcription failed",
+    "hud.retry": "Retry",
+    "hud.retrying": "Retrying…",
+    "hud.dismiss": "Dismiss",
+
+    // History tab
+    "history.title": "History",
+    "history.empty": "No recordings yet",
+    "history.empty_hint": "Your recent recordings will appear here so you can retry or reuse them.",
+    "history.status.completed": "Done",
+    "history.status.failed": "Failed",
+    "history.status.pending": "Processing…",
+    "history.retry": "Retry",
+    "history.delete": "Delete",
+    "history.duration": "{0}s",
+    "history.max_label": "Keep recent recordings",
+    "history.max_desc": "Audio for the last N attempts is saved locally for retry.",
   },
 
   zh: {
@@ -134,6 +152,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.nav.transcription": "转录",
     "settings.nav.general": "通用",
     "settings.nav.advanced": "高级",
+    "settings.nav.history": "历史",
 
     // Settings section headers
     "settings.section.startup": "启动",
@@ -165,6 +184,22 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.error": "错误",
     "hud.copied": "已复制 — ⌘V 粘贴",
     "hud.polish_failed": "润色失败 — 使用原文",
+    "hud.retry_title": "转录失败",
+    "hud.retry": "重试",
+    "hud.retrying": "重试中…",
+    "hud.dismiss": "忽略",
+
+    "history.title": "历史记录",
+    "history.empty": "暂无录音",
+    "history.empty_hint": "最近的录音会保存在这里，可随时重试或复用。",
+    "history.status.completed": "完成",
+    "history.status.failed": "失败",
+    "history.status.pending": "处理中…",
+    "history.retry": "重试",
+    "history.delete": "删除",
+    "history.duration": "{0} 秒",
+    "history.max_label": "保留最近录音",
+    "history.max_desc": "最近 N 次的音频会保存在本地以供重试。",
   },
 };
 
