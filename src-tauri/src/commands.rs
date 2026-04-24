@@ -246,7 +246,7 @@ async fn run_transcription_pipeline<R: Runtime>(
     let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
         Ok(t) => t,
         Err(e) => {
-            let msg = e.to_string();
+            let mut msg = e.to_string();
             error!("Transcription failed: {}", msg);
             if !session_id.is_empty() {
                 if let Err(err) = history_state
@@ -256,6 +256,10 @@ async fn run_transcription_pipeline<R: Runtime>(
                 {
                     warn!("Failed to update history entry {}: {}", session_id, err);
                 }
+            } else {
+                msg.push_str(
+                    "\n\nRecording was not saved for retry (history write failed). Check disk permissions.",
+                );
             }
             set_transcription_error(app, shared_state, &session_id, &msg);
             return;
@@ -315,13 +319,18 @@ async fn run_transcription_pipeline<R: Runtime>(
     crate::tray::set_tray_last_result(app, &text);
 
     let _ = app.emit("transcription-result", &text);
-    if let Err(e) = inject_text(&text).await {
-        error!("Text injection failed: {}", e);
-        if let Some(win) = app.get_webview_window("main") {
-            let _ = win.show();
+    match inject_text(&text).await {
+        Ok(()) => {
+            let _ = app.emit("transcription-success", ());
         }
-        let _ = app.emit("injection-failed", &text);
-        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        Err(e) => {
+            error!("Text injection failed: {}", e);
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+            }
+            let _ = app.emit("injection-failed", &text);
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        }
     }
 
     reset_to_idle(app, shared_state);

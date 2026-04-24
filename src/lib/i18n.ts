@@ -100,6 +100,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.retry": "Retry",
     "hud.retrying": "Retrying…",
     "hud.dismiss": "Dismiss",
+    "hud.success": "Sent ✓",
+    "hud.success_detail": "Typed at cursor",
 
     // History tab
     "history.title": "History",
@@ -113,6 +115,9 @@ const messages: Record<Locale, Record<string, string>> = {
     "history.duration": "{0}s",
     "history.max_label": "Keep recent recordings",
     "history.max_desc": "Audio for the last N attempts is saved locally for retry.",
+    "history.failed_unknown": "(Transcription failed — no error text)",
+    "history.failed_hint":
+      "Failed attempts are kept here with the error message so you can retry from Settings → History.",
   },
 
   zh: {
@@ -188,6 +193,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.retry": "重试",
     "hud.retrying": "重试中…",
     "hud.dismiss": "忽略",
+    "hud.success": "已写入 ✓",
+    "hud.success_detail": "已键入到光标处",
 
     "history.title": "历史记录",
     "history.empty": "暂无录音",
@@ -200,6 +207,9 @@ const messages: Record<Locale, Record<string, string>> = {
     "history.duration": "{0} 秒",
     "history.max_label": "保留最近录音",
     "history.max_desc": "最近 N 次的音频会保存在本地以供重试。",
+    "history.failed_unknown": "（转录失败 — 无错误详情）",
+    "history.failed_hint":
+      "失败记录会保留在此并显示错误信息，可在 设置 → 历史 中重试。",
   },
 };
 

@@ -458,6 +458,7 @@
         <!-- ── History ── -->
       {:else if activeSection === "history"}
         <h2>{$t("history.title")}</h2>
+        <p class="history-section-hint">{$t("history.failed_hint")}</p>
 
         <div class="group">
           <div class="row">
@@ -501,7 +502,13 @@
                     {/if}
                   </span>
                 </div>
-                {#if entryText(entry)}
+                {#if entry.status === "failed"}
+                  <p class="history-text history-failed-preview" title={entry.error ?? ""}>
+                    {entry.error?.trim()
+                      ? entry.error
+                      : $t("history.failed_unknown")}
+                  </p>
+                {:else if entryText(entry)}
                   <p class="history-text">{entryText(entry)}</p>
                 {:else if entry.error}
                   <p class="history-error" title={entry.error}>{entry.error}</p>
@@ -980,6 +987,19 @@
   }
 
   /* ── History ── */
+  .history-section-hint {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.45);
+    line-height: 1.45;
+    margin: -4px 0 12px;
+    max-width: 520px;
+  }
+  .history-failed-preview {
+    color: rgba(254, 202, 202, 0.92);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    word-break: break-word;
+  }
   .history-empty {
     display: flex;
     flex-direction: column;

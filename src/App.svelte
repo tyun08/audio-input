@@ -76,6 +76,17 @@
 
   const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
+  const TRANSCRIPTION_SUCCESS_FLASH_MS = 2200;
+
+  let transcriptionSuccessFlash = false;
+  let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearSuccessFlashTimer() {
+    if (successFlashTimer !== null) {
+      clearTimeout(successFlashTimer);
+      successFlashTimer = null;
+    }
+  }
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
@@ -98,6 +109,7 @@
       injectionFailed,
       polishFailed,
       showIdleHud,
+      transcriptionSuccessFlash,
       retryableSessionId,
     };
   }
@@ -176,6 +188,8 @@
           }
           if (e.payload === "processing" || e.payload === "recording") {
             retrying = false;
+            clearSuccessFlashTimer();
+            transcriptionSuccessFlash = false;
           }
 
           await syncWindow();
@@ -202,6 +216,19 @@
           lastTranscription = e.payload;
           injectionFailed = true;
           await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("transcription-success", async () => {
+          clearSuccessFlashTimer();
+          transcriptionSuccessFlash = true;
+          await syncWindow();
+          successFlashTimer = setTimeout(async () => {
+            transcriptionSuccessFlash = false;
+            successFlashTimer = null;
+            await syncWindow();
+          }, TRANSCRIPTION_SUCCESS_FLASH_MS);
         })
       );
 
@@ -259,8 +286,12 @@
       unlisten.push(
         await appApi.listen<number>("audio-level", (e) => {
           if (appState === "recording") {
-            // Scale up RMS values (typically 0..0.25) to fill the visible bar range
-            const level = Math.min(1.0, e.payload * 4);
+            // Typical speech RMS sits around 0.03..0.20, so linear scaling
+            // looks flat. A power curve (~pow 0.6) lifts quiet speech while
+            // letting loud peaks still hit the ceiling, giving visible motion
+            // without requiring the user to shout.
+            const raw = Math.max(0, e.payload);
+            const level = Math.min(1.0, Math.pow(raw, 0.6) * 2.8);
             audioLevels = [...audioLevels.slice(-(WAVEFORM_BAR_COUNT - 1)), level];
           }
         })
@@ -270,6 +301,8 @@
         await appApi.listen<{ sessionId: string; message: string }>(
           "transcription-error",
           async (e) => {
+            clearSuccessFlashTimer();
+            transcriptionSuccessFlash = false;
             retryableSessionId = e.payload.sessionId || null;
             errorMsg = e.payload.message;
             retrying = false;
@@ -296,6 +329,7 @@
 
   onDestroy(() => {
     clearInjectionTimer();
+    clearSuccessFlashTimer();
     unlisten.forEach((fn) => fn());
   });
 
@@ -414,6 +448,7 @@
       {audioLevels}
       {retryableSessionId}
       {retrying}
+      {transcriptionSuccessFlash}
       on:retry={handleRetry}
       on:dismiss={handleDismiss}
     />

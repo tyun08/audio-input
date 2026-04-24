@@ -11,6 +11,8 @@
   export let audioLevels: number[] = [];
   export let retryableSessionId: string | null = null;
   export let retrying = false;
+  /** After inject succeeds: brief green check (idle + flash). */
+  export let transcriptionSuccessFlash = false;
 
   const dispatch = createEventDispatcher<{ retry: void; dismiss: void }>();
 
@@ -56,8 +58,8 @@
   }
 
   function barHeight(level: number): number {
-    const MIN_H = 3;
-    const MAX_H = 20;
+    const MIN_H = 2;
+    const MAX_H = 26;
     return Math.round(MIN_H + level * (MAX_H - MIN_H));
   }
 
@@ -76,6 +78,7 @@
   class:processing={state === "processing"}
   class:error={state === "error" || injectionFailed}
   class:retry={showRetry}
+  class:success={transcriptionSuccessFlash}
   on:mousedown={handleMousedown}
 >
   {#if showRetry}
@@ -150,6 +153,28 @@
   {:else if polishFailed}
     <div class="err-dot"></div>
     <span class="label amber">{$t("hud.polish_failed")}</span>
+  {:else if transcriptionSuccessFlash}
+    <svg
+      class="check-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" stroke="rgba(62,207,142,0.95)" stroke-width="1.8" />
+      <path
+        d="M7.5 12.5l2.8 2.8L16.2 8.4"
+        stroke="rgba(62,207,142,0.95)"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
+    </svg>
+    <div class="success-col">
+      <span class="label ok">{$t("hud.success")}</span>
+      <span class="success-sub">{$t("hud.success_detail")}</span>
+    </div>
   {:else}
     <svg class="mic-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-label="Ready">
       <rect
@@ -218,6 +243,34 @@
   }
   .hud.error {
     border-color: rgba(239, 68, 68, 0.25);
+  }
+
+  .hud.success {
+    border-color: rgba(62, 207, 142, 0.45);
+    background: rgba(28, 40, 34, 0.96);
+  }
+
+  .check-icon {
+    flex-shrink: 0;
+  }
+
+  .success-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    line-height: 1.15;
+    min-width: 0;
+  }
+
+  .success-sub {
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.45);
+    font-weight: 500;
+  }
+
+  .label.ok {
+    color: rgba(190, 242, 210, 0.98);
+    font-weight: 600;
   }
 
   /* Retry panel */
@@ -372,7 +425,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    height: 22px;
+    height: 28px;
     overflow: hidden;
   }
   .wave-bar {
@@ -381,7 +434,7 @@
     background: rgba(248, 113, 113, 0.75);
     flex-shrink: 0;
     transition: height 0.08s ease-out;
-    min-height: 3px;
+    min-height: 2px;
   }
 
   /* Spinner */

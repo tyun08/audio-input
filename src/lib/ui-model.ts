@@ -24,6 +24,8 @@ export interface UiModelState {
   injectionFailed: boolean;
   polishFailed: boolean;
   showIdleHud?: boolean;
+  /** Brief checkmark after inject succeeds (typed into focused app). */
+  transcriptionSuccessFlash?: boolean;
   /** Non-null when a transcription attempt failed and a retryable session is available. */
   retryableSessionId?: string | null;
 }
@@ -102,7 +104,11 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
   const hudW = hasRetry ? HUD_RETRY_W : HUD_W;
-  const hudH = hasRetry ? HUD_RETRY_H : state.injectionFailed ? HUD_ALERT_H : HUD_H;
+  const hudH = hasRetry
+    ? HUD_RETRY_H
+    : state.injectionFailed || Boolean(state.transcriptionSuccessFlash)
+      ? HUD_ALERT_H
+      : HUD_H;
 
   return {
     view: "hud",
@@ -116,6 +122,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       state.appState !== "idle" ||
       state.injectionFailed ||
       state.polishFailed ||
+      Boolean(state.transcriptionSuccessFlash) ||
       hasRetry ||
       Boolean(state.showIdleHud),
   };
