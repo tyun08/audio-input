@@ -38,6 +38,71 @@ export interface ProviderDef {
 
 export const providers: ProviderDef[] = [
   {
+    id: "qwen3_asr",
+    name: "Qwen3-ASR",
+    tagline: l("Local · Streaming · No internet", "本地推理 · 流式输出 · 无需联网"),
+    icon: '<rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 21h8M12 17v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 8v3a5 5 0 0 0 10 0V8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><line x1="12" y1="3" x2="12" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    fields: [
+      {
+        key: "model",
+        label: l("Model", "模型"),
+        type: "select",
+        default: "Qwen/Qwen3-ASR-0.6B",
+        half: true,
+        options: [
+          { value: "Qwen/Qwen3-ASR-0.6B", label: "Qwen3-ASR-0.6B (fast)" },
+          { value: "Qwen/Qwen3-ASR-1.7B", label: "Qwen3-ASR-1.7B (accurate)" },
+        ],
+      },
+      {
+        key: "language",
+        label: l("Language", "语言"),
+        type: "select",
+        default: "auto",
+        half: true,
+        options: [
+          { value: "auto", label: "Auto-detect" },
+          { value: "Chinese", label: "中文 Chinese" },
+          { value: "English", label: "English" },
+          { value: "Japanese", label: "日本語 Japanese" },
+          { value: "Korean", label: "한국어 Korean" },
+          { value: "French", label: "Français French" },
+          { value: "German", label: "Deutsch German" },
+          { value: "Spanish", label: "Español Spanish" },
+        ],
+      },
+      {
+        key: "host",
+        label: l("Server Host", "服务器地址"),
+        type: "text",
+        placeholder: "localhost",
+        mono: true,
+        half: true,
+      },
+      {
+        key: "port",
+        label: l("Port", "端口"),
+        type: "text",
+        placeholder: "8000",
+        mono: true,
+        half: true,
+      },
+      {
+        key: "api_key",
+        label: l("API Key (optional)", "API Key（可选）"),
+        type: "password",
+        placeholder: l("Leave blank if server has no auth", "无鉴权可留空").en,
+      },
+    ],
+    authCheck: "check_qwen3_asr_status",
+    authOkText: l("vLLM server reachable · ready", "vLLM 服务运行中 · 已就绪"),
+    authFailText: l("Cannot reach vLLM server", "无法连接 vLLM 服务"),
+    hint: l(
+      'Install: <code>pip install qwen-asr torch flask</code><br>Start: <code>python scripts/qwen3_asr_server.py</code>',
+      '安装: <code>pip install qwen-asr torch flask</code><br>启动: <code>python scripts/qwen3_asr_server.py</code>'
+    ),
+  },
+  {
     id: "groq",
     name: "Groq",
     tagline: l("Free API Key", "免费 API Key"),

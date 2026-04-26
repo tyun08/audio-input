@@ -1,9 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
+  import { onMount, onDestroy } from "svelte";
 
   export let state: "idle" | "recording" | "processing" | "error" = "idle";
   export let errorMsg = "";
   export let lastTranscription = "";
+  export let streamingText = "";
   export let audioLevels: number[] = [];
   export let shortcut = "Meta+Shift+Space";
 
@@ -36,18 +40,37 @@
 
   $: shortcutKeys = parseShortcut(shortcut);
 
-  // When a new transcription arrives (idle state), populate the output area.
-  $: if (lastTranscription && lastTranscription !== prevTranscription && state === "idle") {
-    editedText = lastTranscription;
-    prevTranscription = lastTranscription;
-    if (outputEl) outputEl.textContent = lastTranscription;
-  }
+  // Direct Tauri event listener — bypasses Svelte's prop/reactivity batching
+  // so each streaming token updates the DOM immediately as it arrives.
+  let unlistenStream: UnlistenFn | null = null;
+
+  onMount(async () => {
+    console.log("[MainWindow] onMount — setting up stream listener, outputEl:", !!outputEl);
+    unlistenStream = await listen<string>("transcription-stream", (e) => {
+      console.log("[MainWindow] stream token:", JSON.stringify(e.payload), "outputEl:", !!outputEl);
+      if (outputEl) {
+        outputEl.textContent = (outputEl.textContent ?? "") + e.payload;
+      }
+    });
+    console.log("[MainWindow] stream listener ready");
+  });
+
+  onDestroy(() => {
+    unlistenStream?.();
+  });
 
   // Clear output when a new recording starts.
   $: if (state === "recording") {
     editedText = "";
     prevTranscription = "";
     if (outputEl) outputEl.textContent = "";
+  }
+
+  // Final transcription (idle state) — overwrites any leftover streaming text.
+  $: if (lastTranscription && lastTranscription !== prevTranscription && state === "idle") {
+    editedText = lastTranscription;
+    prevTranscription = lastTranscription;
+    if (outputEl) outputEl.textContent = lastTranscription;
   }
 
   $: hasResult = state === "idle" && editedText !== "";

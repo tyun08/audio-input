@@ -261,6 +261,7 @@ pub fn run() {
             commands::get_provider_config,
             commands::save_provider_config,
             commands::check_provider_status,
+            commands::check_qwen3_asr_status,
             commands::get_polish_enabled,
             commands::save_polish_enabled,
             commands::list_audio_devices,

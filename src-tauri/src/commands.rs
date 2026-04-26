@@ -4,7 +4,7 @@ use crate::{
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, PreviousAppState, ScreenshotState, SharedState},
-    transcription::{polish, vertex, GroqClient, VertexClient},
+    transcription::{polish, vertex, GroqClient, Qwen3AsrClient, VertexClient},
     tray::set_tray_icon,
 };
 use std::sync::{Arc, Mutex};
@@ -226,7 +226,7 @@ async fn stop_and_transcribe<R: Runtime>(
     info!("Using provider: {}", provider);
 
     // Transcribe
-    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes).await {
+    let raw_text = match transcribe_with_provider(&provider, &pcfg, wav_bytes, &app).await {
         Ok(t) => t,
         Err(e) => {
             error!("Transcription failed: {}", e);
@@ -301,10 +301,11 @@ async fn stop_and_transcribe<R: Runtime>(
 // Provider dispatch helpers — add a match arm here for each new provider.
 // ---------------------------------------------------------------------------
 
-async fn transcribe_with_provider(
+async fn transcribe_with_provider<R: tauri::Runtime>(
     provider: &str,
     config: &serde_json::Value,
     wav_bytes: Vec<u8>,
+    app: &AppHandle<R>,
 ) -> anyhow::Result<String> {
     match provider {
         "groq" => {
@@ -337,8 +338,38 @@ async fn transcribe_with_provider(
                 VertexClient::new(project_id.into(), location.into(), model.into()).await?;
             client.transcribe(wav_bytes).await
         }
+        "qwen3_asr" => {
+            let host = config["host"].as_str().unwrap_or("localhost").to_string();
+            let port = config["port"].as_str().unwrap_or("8000").parse::<u16>().unwrap_or(8000);
+            let model = config["model"].as_str().unwrap_or("Qwen/Qwen3-ASR-0.6B").to_string();
+            let language = config["language"].as_str().unwrap_or("auto").to_string();
+            let api_key = config["api_key"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string());
+            info!("Qwen3-ASR: {}:{} model={} lang={}", host, port, model, language);
+            Qwen3AsrClient::new(host, port, model, language, api_key)
+                .transcribe(wav_bytes, app)
+                .await
+        }
         other => anyhow::bail!("Unsupported provider: {}", other),
     }
+}
+
+#[tauri::command]
+pub async fn check_qwen3_asr_status(
+    _provider: String,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<bool, ()> {
+    let pcfg = {
+        let cfg = config.lock().unwrap();
+        cfg.get_pcfg("qwen3_asr")
+    };
+    let host = pcfg["host"].as_str().unwrap_or("localhost").to_string();
+    let port = pcfg["port"].as_str().unwrap_or("8000").parse::<u16>().unwrap_or(8000);
+    let url = format!("http://{}:{}/health", host, port);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .unwrap();
+    Ok(client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false))
 }
 
 async fn polish_with_provider(

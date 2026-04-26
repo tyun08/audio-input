@@ -55,6 +55,7 @@
   let errorMsg = "";
   let initializationError = "";
   let lastTranscription = "";
+  let streamingText = "";
   let showSettings = false;
   let injectionFailed = false;
   let needsAccessibilityRestart = false;
@@ -184,8 +185,16 @@
       );
 
       unlisten.push(
+        await appApi.listen<string>("transcription-stream", (e) => {
+          console.log("[stream] token arrived:", JSON.stringify(e.payload));
+          streamingText += e.payload;
+        })
+      );
+
+      unlisten.push(
         await appApi.listen<string>("transcription-result", (e) => {
           lastTranscription = e.payload;
+          streamingText = "";
           clearInjectionTimer();
           injectionFailed = false;
         })
@@ -286,6 +295,9 @@
     appState = transition.state.appState;
     showSettings = transition.state.showSettings;
     errorMsg = transition.errorMsg;
+    if (appState === "recording") {
+      streamingText = "";
+    }
     if (appState !== "recording") {
       audioLevels = Array(WAVEFORM_BAR_COUNT).fill(0);
     }
@@ -368,6 +380,7 @@
       state={appState}
       {errorMsg}
       {lastTranscription}
+      {streamingText}
       {audioLevels}
       shortcut={currentShortcut}
     />
