@@ -257,10 +257,10 @@
   }
 
   .hud.recording {
-    border-color: rgba(239, 68, 68, 0.35);
+    border-color: rgba(239, 68, 68, 0.5);
   }
   .hud.processing {
-    border-color: rgba(99, 130, 246, 0.35);
+    border-color: rgba(99, 130, 246, 0.5);
   }
   .hud.error {
     border-color: rgba(239, 68, 68, 0.35);
