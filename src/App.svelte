@@ -180,7 +180,10 @@
             retrying = false;
             clearSuccessFlashTimer();
             transcriptionSuccessFlash = false;
-            injectionFailed = false;
+            if (injectionFailed) {
+              injectionFailed = false;
+              appApi.invoke("stop_paste_monitor").catch(() => {});
+            }
           }
 
           await syncWindow();
@@ -199,6 +202,14 @@
           lastTranscription = e.payload;
           injectionFailed = true;
           await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("paste-detected", async () => {
+          if (injectionFailed) {
+            await clearInjectionFailed();
+          }
         })
       );
 
@@ -371,17 +382,21 @@
     await syncWindow();
   }
 
+  async function clearInjectionFailed() {
+    injectionFailed = false;
+    await appApi.invoke("stop_paste_monitor").catch(() => {});
+    await syncWindow();
+  }
+
   async function handleClipboardCopy() {
     if (lastTranscription) {
       await navigator.clipboard.writeText(lastTranscription).catch(() => {});
     }
-    injectionFailed = false;
-    await syncWindow();
+    await clearInjectionFailed();
   }
 
   async function handleClipboardDismiss() {
-    injectionFailed = false;
-    await syncWindow();
+    await clearInjectionFailed();
   }
 </script>
 

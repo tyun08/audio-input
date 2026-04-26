@@ -5,6 +5,7 @@ mod history;
 mod input;
 #[cfg(target_os = "macos")]
 mod macos_shortcut;
+mod paste_monitor;
 mod screenshot;
 mod shortcut;
 mod state;
@@ -291,6 +292,7 @@ pub fn run() {
             commands::delete_history_entry,
             commands::get_max_history,
             commands::save_max_history,
+            commands::stop_paste_monitor,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");
