@@ -16,7 +16,7 @@
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
-  let activeSection: "general" | "transcription" | "advanced" = "transcription";
+  let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
   let provider = "openai";
   let configValues: Record<string, string> = {};
   let authStatus: boolean | null = null;
@@ -27,6 +27,22 @@
   let saved = false;
   let error = "";
 
+  type HistoryEntry = {
+    id: string;
+    createdAtMs: number;
+    durationS: number;
+    provider: string;
+    rawText: string;
+    polishedText: string;
+    status: "pending" | "completed" | "failed";
+    error: string | null;
+    polishFailed: boolean;
+  };
+
+  let history: HistoryEntry[] = [];
+  let maxHistory = 100;
+  let retryingId: string | null = null;
+
   $: currentProvider = getProvider(provider);
 
   onMount(async () => {
@@ -34,7 +50,60 @@
     await loadProviderConfig();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
+    maxHistory = await invoke<number>("get_max_history").catch(() => 100);
+    await refreshHistory();
   });
+
+  async function refreshHistory() {
+    history = await invoke<HistoryEntry[]>("list_history").catch(() => []);
+  }
+
+  async function handleHistoryRetry(id: string) {
+    if (retryingId) return;
+    retryingId = id;
+    try {
+      await invoke("retry_transcription", { sessionId: id });
+    } catch (e) {
+      error = String(e);
+    } finally {
+      retryingId = null;
+      await refreshHistory();
+    }
+  }
+
+  async function handleHistoryDelete(id: string) {
+    try {
+      await invoke("delete_history_entry", { sessionId: id });
+      await refreshHistory();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function handleMaxHistoryChange(e: Event) {
+    const raw = parseInt((e.target as HTMLInputElement).value, 10);
+    const next = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 1000) : 1;
+    maxHistory = next;
+    await invoke("save_max_history", { max: next });
+    await refreshHistory();
+  }
+
+  function formatTime(ms: number): string {
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = new Date();
+    const sameDay =
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (sameDay) return time;
+    return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
+  }
+
+  function entryText(e: HistoryEntry): string {
+    return e.polishedText || e.rawText || "";
+  }
 
   async function loadProviderConfig() {
     const raw = await invoke<Record<string, string>>("get_provider_config", { provider });
@@ -202,6 +271,26 @@
       </button>
       <button
         class="nav-item"
+        class:active={activeSection === "history"}
+        on:click={() => {
+          activeSection = "history";
+          void refreshHistory();
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" />
+          <path
+            d="M12 7v5l3 2"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        {$t("settings.nav.history")}
+      </button>
+      <button
+        class="nav-item"
         class:active={activeSection === "advanced"}
         on:click={() => (activeSection = "advanced")}
       >
@@ -364,6 +453,81 @@
         {/if}
         {#if error}
           <p class="inline-error">{error}</p>
+        {/if}
+
+        <!-- ── History ── -->
+      {:else if activeSection === "history"}
+        <h2>{$t("history.title")}</h2>
+        <p class="history-section-hint">{$t("history.failed_hint")}</p>
+
+        <div class="group">
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("history.max_label")}</span>
+              <span class="row-sub">{$t("history.max_desc")}</span>
+            </div>
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              class="row-input mono"
+              style="max-width: 90px;"
+              value={maxHistory}
+              on:change={handleMaxHistoryChange}
+            />
+          </div>
+        </div>
+
+        {#if history.length === 0}
+          <div class="history-empty">
+            <p class="history-empty-title">{$t("history.empty")}</p>
+            <p class="history-empty-hint">{$t("history.empty_hint")}</p>
+          </div>
+        {:else}
+          <ul class="history-list">
+            {#each history as entry (entry.id)}
+              <li class="history-item" class:failed={entry.status === "failed"}>
+                <div class="history-head">
+                  <span class="history-time">{formatTime(entry.createdAtMs)}</span>
+                  <span class="history-meta">
+                    {entry.provider} · {$t("history.duration", entry.durationS.toFixed(1))}
+                  </span>
+                  <span class="history-status status-{entry.status}">
+                    {#if entry.status === "completed"}
+                      {$t("history.status.completed")}
+                    {:else if entry.status === "failed"}
+                      {$t("history.status.failed")}
+                    {:else}
+                      {$t("history.status.pending")}
+                    {/if}
+                  </span>
+                </div>
+                {#if entry.status === "failed"}
+                  <p class="history-text history-failed-preview" title={entry.error ?? ""}>
+                    {entry.error?.trim()
+                      ? entry.error
+                      : $t("history.failed_unknown")}
+                  </p>
+                {:else if entryText(entry)}
+                  <p class="history-text">{entryText(entry)}</p>
+                {:else if entry.error}
+                  <p class="history-error" title={entry.error}>{entry.error}</p>
+                {/if}
+                <div class="history-actions">
+                  <button
+                    class="history-btn primary"
+                    on:click={() => handleHistoryRetry(entry.id)}
+                    disabled={retryingId !== null}
+                  >
+                    {retryingId === entry.id ? $t("hud.retrying") : $t("history.retry")}
+                  </button>
+                  <button class="history-btn" on:click={() => handleHistoryDelete(entry.id)}>
+                    {$t("history.delete")}
+                  </button>
+                </div>
+              </li>
+            {/each}
+          </ul>
         {/if}
 
         <!-- ── Advanced ── -->
@@ -820,5 +984,175 @@
     font-size: 12px;
     color: rgba(134, 239, 172, 0.9);
     margin: 0;
+  }
+
+  /* ── History ── */
+  .history-section-hint {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.45);
+    line-height: 1.45;
+    margin: -4px 0 12px;
+    max-width: 520px;
+  }
+  .history-failed-preview {
+    color: rgba(254, 202, 202, 0.92);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+    gap: 4px;
+    text-align: center;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+  }
+  .history-empty-title {
+    font-size: 13.5px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+    margin: 0;
+  }
+  .history-empty-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.35);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .history-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 9px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .history-item.failed {
+    border-color: rgba(239, 68, 68, 0.28);
+    background: rgba(239, 68, 68, 0.06);
+  }
+
+  .history-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .history-time {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .history-meta {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-status {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .status-completed {
+    background: rgba(74, 222, 128, 0.15);
+    color: rgba(134, 239, 172, 0.95);
+  }
+  .status-failed {
+    background: rgba(248, 113, 113, 0.15);
+    color: #fca5a5;
+  }
+  .status-pending {
+    background: rgba(129, 140, 248, 0.15);
+    color: #a5b4fc;
+  }
+
+  .history-text {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.78);
+    line-height: 1.4;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+
+  .history-error {
+    font-size: 12px;
+    color: #fca5a5;
+    line-height: 1.35;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .history-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .history-btn {
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition:
+      background 0.12s,
+      border-color 0.12s;
+  }
+  .history-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .history-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .history-btn.primary {
+    background: rgba(99, 102, 241, 0.6);
+    border-color: rgba(99, 102, 241, 0.75);
+    color: white;
+  }
+  .history-btn.primary:hover:not(:disabled) {
+    background: rgba(99, 102, 241, 0.85);
   }
 </style>

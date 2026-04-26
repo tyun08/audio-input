@@ -1,6 +1,8 @@
 export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_H = 72;
+export const HUD_RETRY_W = 300;
+export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
 export const SETTINGS_H = 480;
 export const ONBOARDING_W = 370;
@@ -22,6 +24,10 @@ export interface UiModelState {
   injectionFailed: boolean;
   polishFailed: boolean;
   showIdleHud?: boolean;
+  /** Brief checkmark after inject succeeds (typed into focused app). */
+  transcriptionSuccessFlash?: boolean;
+  /** Non-null when a transcription attempt failed and a retryable session is available. */
+  retryableSessionId?: string | null;
 }
 
 export interface UiDecision {
@@ -96,11 +102,19 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
     };
   }
 
+  const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
+  const hudW = hasRetry ? HUD_RETRY_W : HUD_W;
+  const hudH = hasRetry
+    ? HUD_RETRY_H
+    : state.injectionFailed || Boolean(state.transcriptionSuccessFlash)
+      ? HUD_ALERT_H
+      : HUD_H;
+
   return {
     view: "hud",
     window: {
-      w: HUD_W,
-      h: state.injectionFailed ? HUD_ALERT_H : HUD_H,
+      w: hudW,
+      h: hudH,
       posKey: HUD_POS_KEY,
     },
     nativeOpaque: false,
@@ -108,6 +122,8 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       state.appState !== "idle" ||
       state.injectionFailed ||
       state.polishFailed ||
+      Boolean(state.transcriptionSuccessFlash) ||
+      hasRetry ||
       Boolean(state.showIdleHud),
   };
 }

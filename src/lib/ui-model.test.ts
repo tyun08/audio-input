@@ -9,6 +9,8 @@ function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
     appState: "idle",
     injectionFailed: false,
     polishFailed: false,
+    transcriptionSuccessFlash: false,
+    retryableSessionId: null,
     ...overrides,
   };
 }
@@ -85,6 +87,13 @@ describe("deriveUiDecision", () => {
     expect(decision.shouldShowWindow).toBe(true);
   });
 
+  it("transcription success flash keeps HUD visible while idle", () => {
+    const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.h).toBe(72);
+  });
+
   it("idle with no issues hides the HUD", () => {
     const decision = deriveUiDecision(baseState());
     expect(decision.view).toBe("hud");
@@ -105,5 +114,22 @@ describe("deriveUiDecision", () => {
     expect(decision.view).toBe("hud");
     expect(decision.window.h).toBe(44);
     expect(decision.shouldShowWindow).toBe(true);
+  });
+
+  it("retryable transcription error shows the retry HUD", () => {
+    const decision = deriveUiDecision(
+      baseState({ appState: "error", retryableSessionId: "rec_123" })
+    );
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.w).toBe(300);
+    expect(decision.window.h).toBe(108);
+  });
+
+  it("error without a retryable session uses the small HUD", () => {
+    const decision = deriveUiDecision(baseState({ appState: "error" }));
+    expect(decision.view).toBe("hud");
+    expect(decision.window.w).toBe(200);
+    expect(decision.window.h).toBe(44);
   });
 });
