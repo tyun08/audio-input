@@ -103,10 +103,10 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   }
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
-  const hudW = hasRetry ? HUD_RETRY_W : HUD_W;
-  const hudH = hasRetry
+  const hudW = hasRetry || state.injectionFailed ? HUD_RETRY_W : HUD_W;
+  const hudH = hasRetry || state.injectionFailed
     ? HUD_RETRY_H
-    : state.injectionFailed || Boolean(state.transcriptionSuccessFlash)
+    : Boolean(state.transcriptionSuccessFlash)
       ? HUD_ALERT_H
       : HUD_H;
 

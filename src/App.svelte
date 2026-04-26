@@ -74,7 +74,6 @@
   const WAVEFORM_BAR_COUNT = 20;
   let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
 
-  const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
   const TRANSCRIPTION_SUCCESS_FLASH_MS = 2200;
 
@@ -91,14 +90,6 @@
   const appApi = createAppApi();
   const appWindow = appApi.window;
   const unlisten: UnlistenFn[] = [];
-  let injectionTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearInjectionTimer() {
-    if (injectionTimer !== null) {
-      clearTimeout(injectionTimer);
-      injectionTimer = null;
-    }
-  }
 
   function getUiState(): UiModelState {
     return {
@@ -172,7 +163,6 @@
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
-          clearInjectionTimer();
           const closingSettings =
             showSettings && (e.payload === "recording" || e.payload === "processing");
           if (closingSettings) {
@@ -190,23 +180,16 @@
             retrying = false;
             clearSuccessFlashTimer();
             transcriptionSuccessFlash = false;
+            injectionFailed = false;
           }
 
           await syncWindow();
-
-          if (e.payload === "idle" && injectionFailed) {
-            injectionTimer = setTimeout(async () => {
-              injectionFailed = false;
-              await syncWindow();
-            }, INJECTION_FAILURE_DISPLAY_DURATION_MS);
-          }
         })
       );
 
       unlisten.push(
         await appApi.listen<string>("transcription-result", (e) => {
           lastTranscription = e.payload;
-          clearInjectionTimer();
           injectionFailed = false;
         })
       );
@@ -328,7 +311,6 @@
   });
 
   onDestroy(() => {
-    clearInjectionTimer();
     clearSuccessFlashTimer();
     unlisten.forEach((fn) => fn());
   });
@@ -386,6 +368,19 @@
       appState = "idle";
       errorMsg = "";
     }
+    await syncWindow();
+  }
+
+  async function handleClipboardCopy() {
+    if (lastTranscription) {
+      await navigator.clipboard.writeText(lastTranscription).catch(() => {});
+    }
+    injectionFailed = false;
+    await syncWindow();
+  }
+
+  async function handleClipboardDismiss() {
+    injectionFailed = false;
     await syncWindow();
   }
 </script>
@@ -451,6 +446,8 @@
       {transcriptionSuccessFlash}
       on:retry={handleRetry}
       on:dismiss={handleDismiss}
+      on:clipboardCopy={handleClipboardCopy}
+      on:clipboardDismiss={handleClipboardDismiss}
     />
   {/if}
 </div>
