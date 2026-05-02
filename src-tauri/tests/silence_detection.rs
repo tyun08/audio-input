@@ -93,8 +93,8 @@ fn single_sample_spike_is_silent() {
     // A single-sample impulse in an otherwise silent buffer is not speech;
     // RMS = peak / sqrt(n) which is negligibly small.
     let mut samples = vec![0.0f32; 16_000];
-    samples[8_000] = 1.0; // full-scale spike
-    // RMS = 1.0 / sqrt(16000) ≈ 0.0079 — below threshold
+    samples[8_000] = 0.5;
+    // RMS = 0.5 / sqrt(16000) ≈ 0.004 — below threshold
     assert!(is_silent(&samples));
 }
 

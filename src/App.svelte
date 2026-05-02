@@ -60,6 +60,8 @@
   let showOnboarding = false;
   let polishFailed = false;
   let shortcutConflict = "";
+  let retryableSessionId: string | null = null;
+  let retrying = false;
 
   // Settings data
   let polishEnabled = true;
@@ -72,20 +74,22 @@
   const WAVEFORM_BAR_COUNT = 20;
   let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
 
-  const INJECTION_FAILURE_DISPLAY_DURATION_MS = 1500;
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
+  const TRANSCRIPTION_SUCCESS_FLASH_MS = 5000;
+
+  let transcriptionSuccessFlash = false;
+  let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearSuccessFlashTimer() {
+    if (successFlashTimer !== null) {
+      clearTimeout(successFlashTimer);
+      successFlashTimer = null;
+    }
+  }
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
   const unlisten: UnlistenFn[] = [];
-  let injectionTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearInjectionTimer() {
-    if (injectionTimer !== null) {
-      clearTimeout(injectionTimer);
-      injectionTimer = null;
-    }
-  }
 
   function getUiState(): UiModelState {
     return {
@@ -96,6 +100,8 @@
       injectionFailed,
       polishFailed,
       showIdleHud,
+      transcriptionSuccessFlash,
+      retryableSessionId,
     };
   }
 
@@ -157,7 +163,6 @@
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
-          clearInjectionTimer();
           const closingSettings =
             showSettings && (e.payload === "recording" || e.payload === "processing");
           if (closingSettings) {
@@ -165,21 +170,29 @@
           }
 
           handleStateChange(e.payload);
-          await syncWindow();
 
-          if (e.payload === "idle" && injectionFailed) {
-            injectionTimer = setTimeout(async () => {
-              injectionFailed = false;
-              await syncWindow();
-            }, INJECTION_FAILURE_DISPLAY_DURATION_MS);
+          if (e.payload !== "error" && !e.payload.startsWith("error:")) {
+            // Anytime we leave the error state (idle, recording, processing),
+            // the retry affordance is no longer meaningful.
+            retryableSessionId = null;
           }
+          if (e.payload === "processing" || e.payload === "recording") {
+            retrying = false;
+            clearSuccessFlashTimer();
+            transcriptionSuccessFlash = false;
+            if (injectionFailed) {
+              injectionFailed = false;
+              appApi.invoke("stop_paste_monitor").catch(() => {});
+            }
+          }
+
+          await syncWindow();
         })
       );
 
       unlisten.push(
         await appApi.listen<string>("transcription-result", (e) => {
           lastTranscription = e.payload;
-          clearInjectionTimer();
           injectionFailed = false;
         })
       );
@@ -189,6 +202,27 @@
           lastTranscription = e.payload;
           injectionFailed = true;
           await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("paste-detected", async () => {
+          if (injectionFailed) {
+            await clearInjectionFailed();
+          }
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("transcription-success", async () => {
+          clearSuccessFlashTimer();
+          transcriptionSuccessFlash = true;
+          await syncWindow();
+          successFlashTimer = setTimeout(async () => {
+            transcriptionSuccessFlash = false;
+            successFlashTimer = null;
+            await syncWindow();
+          }, TRANSCRIPTION_SUCCESS_FLASH_MS);
         })
       );
 
@@ -246,11 +280,29 @@
       unlisten.push(
         await appApi.listen<number>("audio-level", (e) => {
           if (appState === "recording") {
-            // Scale up RMS values (typically 0..0.25) to fill the visible bar range
-            const level = Math.min(1.0, e.payload * 4);
+            // Typical speech RMS sits around 0.03..0.20, so linear scaling
+            // looks flat. A power curve (~pow 0.6) lifts quiet speech while
+            // letting loud peaks still hit the ceiling, giving visible motion
+            // without requiring the user to shout.
+            const raw = Math.max(0, e.payload);
+            const level = Math.min(1.0, Math.pow(raw, 0.6) * 2.8);
             audioLevels = [...audioLevels.slice(-(WAVEFORM_BAR_COUNT - 1)), level];
           }
         })
+      );
+
+      unlisten.push(
+        await appApi.listen<{ sessionId: string; message: string }>(
+          "transcription-error",
+          async (e) => {
+            clearSuccessFlashTimer();
+            transcriptionSuccessFlash = false;
+            retryableSessionId = e.payload.sessionId || null;
+            errorMsg = e.payload.message;
+            retrying = false;
+            await syncWindow();
+          }
+        )
       );
 
       await syncWindow();
@@ -270,7 +322,7 @@
   });
 
   onDestroy(() => {
-    clearInjectionTimer();
+    clearSuccessFlashTimer();
     unlisten.forEach((fn) => fn());
   });
 
@@ -304,6 +356,53 @@
   async function handleAccessibilityDismiss() {
     needsAccessibilityRestart = false;
     await syncWindow();
+  }
+
+  async function handleRetry() {
+    if (!retryableSessionId || retrying) return;
+    retrying = true;
+    try {
+      await appApi.invoke("retry_transcription", { sessionId: retryableSessionId });
+    } catch (err) {
+      retrying = false;
+      errorMsg = err instanceof Error ? err.message : String(err);
+      await syncWindow();
+    }
+  }
+
+  async function handleDismiss() {
+    retryableSessionId = null;
+    retrying = false;
+    try {
+      await appApi.invoke("dismiss_error");
+    } catch {
+      appState = "idle";
+      errorMsg = "";
+    }
+    await syncWindow();
+  }
+
+  async function clearInjectionFailed() {
+    injectionFailed = false;
+    await appApi.invoke("stop_paste_monitor").catch(() => {});
+    await syncWindow();
+  }
+
+  async function handleClipboardCopy() {
+    if (lastTranscription) {
+      await navigator.clipboard.writeText(lastTranscription).catch(() => {});
+    }
+    await clearInjectionFailed();
+  }
+
+  async function handleClipboardDismiss() {
+    await clearInjectionFailed();
+  }
+
+  async function handleSuccessCopy() {
+    if (lastTranscription) {
+      await navigator.clipboard.writeText(lastTranscription).catch(() => {});
+    }
   }
 </script>
 
@@ -359,10 +458,17 @@
     <RecordingIndicator
       state={appState}
       {errorMsg}
-      {lastTranscription}
       {injectionFailed}
       {polishFailed}
       {audioLevels}
+      {retryableSessionId}
+      {retrying}
+      {transcriptionSuccessFlash}
+      on:retry={handleRetry}
+      on:dismiss={handleDismiss}
+      on:clipboardCopy={handleClipboardCopy}
+      on:clipboardDismiss={handleClipboardDismiss}
+      on:successCopy={handleSuccessCopy}
     />
   {/if}
 </div>

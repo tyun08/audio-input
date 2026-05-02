@@ -1,9 +1,11 @@
 pub mod audio;
 mod commands;
 mod config;
+mod history;
 mod input;
 #[cfg(target_os = "macos")]
 mod macos_shortcut;
+mod paste_monitor;
 mod screenshot;
 mod shortcut;
 mod state;
@@ -13,6 +15,7 @@ mod tray;
 use audio::Recorder;
 use commands::RecorderState;
 use config::AppConfig;
+use history::{history_dir, new_history_state};
 use state::{new_screenshot_state, new_shared_state};
 
 use std::sync::{Arc, Mutex};
@@ -129,6 +132,7 @@ pub fn run() {
             // Load persisted config
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
+            let max_history = config.max_history;
             app.manage(Arc::new(Mutex::new(config)));
 
             // Init shared state
@@ -137,6 +141,14 @@ pub fn run() {
 
             // Init screenshot context state
             app.manage(new_screenshot_state());
+
+            // Init history store (audio + metadata persistence for retry)
+            let app_data = handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let hist = new_history_state(history_dir(&app_data), max_history);
+            app.manage(hist);
 
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
@@ -274,6 +286,13 @@ pub fn run() {
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
+            commands::retry_transcription,
+            commands::dismiss_error,
+            commands::list_history,
+            commands::delete_history_entry,
+            commands::get_max_history,
+            commands::save_max_history,
+            commands::stop_paste_monitor,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");

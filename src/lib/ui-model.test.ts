@@ -9,6 +9,8 @@ function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
     appState: "idle",
     injectionFailed: false,
     polishFailed: false,
+    transcriptionSuccessFlash: false,
+    retryableSessionId: null,
     ...overrides,
   };
 }
@@ -74,7 +76,7 @@ describe("deriveUiDecision", () => {
 
   it("injection failure uses taller HUD and stays visible", () => {
     const decision = deriveUiDecision(baseState({ injectionFailed: true }));
-    expect(decision.window).toEqual({ w: 200, h: 72, posKey: "hud-window-pos" });
+    expect(decision.window).toEqual({ w: 300, h: 108, posKey: "hud-window-pos" });
     expect(decision.shouldShowWindow).toBe(true);
     expect(decision.nativeOpaque).toBe(false);
   });
@@ -83,6 +85,14 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ polishFailed: true }));
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
+  });
+
+  it("transcription success flash keeps HUD visible while idle", () => {
+    const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.w).toBe(300);
+    expect(decision.window.h).toBe(108);
   });
 
   it("idle with no issues hides the HUD", () => {
@@ -105,5 +115,22 @@ describe("deriveUiDecision", () => {
     expect(decision.view).toBe("hud");
     expect(decision.window.h).toBe(44);
     expect(decision.shouldShowWindow).toBe(true);
+  });
+
+  it("retryable transcription error shows the retry HUD", () => {
+    const decision = deriveUiDecision(
+      baseState({ appState: "error", retryableSessionId: "rec_123" })
+    );
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.w).toBe(300);
+    expect(decision.window.h).toBe(108);
+  });
+
+  it("error without a retryable session uses the small HUD", () => {
+    const decision = deriveUiDecision(baseState({ appState: "error" }));
+    expect(decision.view).toBe("hud");
+    expect(decision.window.w).toBe(200);
+    expect(decision.window.h).toBe(44);
   });
 });

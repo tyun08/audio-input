@@ -61,6 +61,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.nav.transcription": "Transcription",
     "settings.nav.general": "General",
     "settings.nav.advanced": "Advanced",
+    "settings.nav.history": "History",
 
     // Settings section headers
     "settings.section.startup": "Startup",
@@ -94,7 +95,34 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.transcribing": "Transcribing…",
     "hud.error": "Error",
     "hud.copied": "Copied — ⌘V to paste",
+    "hud.copied_title": "Copied to Clipboard",
+    "hud.copied_detail": "Text copied to clipboard — press ⌘V to paste",
+    "hud.copy_again": "Copy Again",
+    "history.copy": "Copy",
     "hud.polish_failed": "Polish failed — original used",
+    "hud.retry_title": "Transcription failed",
+    "hud.retry": "Retry",
+    "hud.retrying": "Retrying…",
+    "hud.dismiss": "Dismiss",
+    "hud.success": "Sent ✓",
+    "hud.success_detail": "Paste sent to active app",
+    "hud.copy_manually": "Copy Manually",
+
+    // History tab
+    "history.title": "History",
+    "history.empty": "No recordings yet",
+    "history.empty_hint": "Your recent recordings will appear here so you can retry or reuse them.",
+    "history.status.completed": "Done",
+    "history.status.failed": "Failed",
+    "history.status.pending": "Processing…",
+    "history.retry": "Retry",
+    "history.delete": "Delete",
+    "history.duration": "{0}s",
+    "history.max_label": "Keep recent recordings",
+    "history.max_desc": "Audio for the last N attempts is saved locally for retry.",
+    "history.failed_unknown": "(Transcription failed — no error text)",
+    "history.failed_hint":
+      "Failed attempts are kept here with the error message so you can retry from Settings → History.",
   },
 
   zh: {
@@ -134,6 +162,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.nav.transcription": "转录",
     "settings.nav.general": "通用",
     "settings.nav.advanced": "高级",
+    "settings.nav.history": "历史",
 
     // Settings section headers
     "settings.section.startup": "启动",
@@ -164,7 +193,32 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.transcribing": "转录中…",
     "hud.error": "错误",
     "hud.copied": "已复制 — ⌘V 粘贴",
+    "hud.copied_title": "已复制到剪贴板",
+    "hud.copied_detail": "文字已复制到剪贴板 — 按 ⌘V 粘贴",
+    "hud.copy_again": "重新复制",
+    "history.copy": "复制",
     "hud.polish_failed": "润色失败 — 使用原文",
+    "hud.retry_title": "转录失败",
+    "hud.retry": "重试",
+    "hud.retrying": "重试中…",
+    "hud.dismiss": "忽略",
+    "hud.success": "已写入 ✓",
+    "hud.success_detail": "已向当前应用发送粘贴",
+    "hud.copy_manually": "手动复制",
+
+    "history.title": "历史记录",
+    "history.empty": "暂无录音",
+    "history.empty_hint": "最近的录音会保存在这里，可随时重试或复用。",
+    "history.status.completed": "完成",
+    "history.status.failed": "失败",
+    "history.status.pending": "处理中…",
+    "history.retry": "重试",
+    "history.delete": "删除",
+    "history.duration": "{0} 秒",
+    "history.max_label": "保留最近录音",
+    "history.max_desc": "最近 N 次的音频会保存在本地以供重试。",
+    "history.failed_unknown": "（转录失败 — 无错误详情）",
+    "history.failed_hint": "失败记录会保留在此并显示错误信息，可在 设置 → 历史 中重试。",
   },
 };
 

@@ -67,7 +67,7 @@ test.describe("Recording HUD", () => {
     await expect(page.locator(".hud")).toBeVisible();
   });
 
-  test("shows injection-failed state with clipboard icon", async ({
+  test("shows injection-failed state with clipboard panel", async ({
     page,
   }) => {
     await loadApp(page);
@@ -82,10 +82,16 @@ test.describe("Recording HUD", () => {
       (window as any).__tauriEmit("injection-failed", "hello world");
     });
 
-    await expect(page.locator(".clip-icon")).toBeVisible();
-    await expect(page.locator(".label.amber")).toHaveText(
-      "Copied — ⌘V to paste"
+    await expect(page.locator(".hud.injection")).toBeVisible();
+    await expect(page.locator(".injection-title")).toHaveText(
+      "Copied to Clipboard"
     );
+    await expect(page.locator(".injection-msg")).toHaveText(
+      "Text copied to clipboard — press ⌘V to paste"
+    );
+    await expect(
+      page.getByRole("button", { name: "Copy Again" })
+    ).toBeVisible();
   });
 
   test("shows polish-failed state", async ({ page }) => {

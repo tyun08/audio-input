@@ -54,13 +54,16 @@ extern "C" {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const KCG_SESSION_EVENT_TAP: u32 = 1;
+// HID level = 0 sits earlier in the macOS event chain than session level (= 1).
+// Session-level taps (e.g. 1Password) cannot steal an HID-level match.
+const KCG_HID_EVENT_TAP: u32 = 0;
 const KCG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
 
 const KCG_EVENT_KEY_DOWN: u32 = 10;
 const KCG_EVENT_KEY_UP: u32 = 11;
 const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
+const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 
@@ -117,8 +120,11 @@ unsafe extern "C" fn tap_callback(
 
     let ctx = &*(user_info as *const TapContext);
 
-    // macOS disables the tap if the callback is too slow; re-enable automatically.
-    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT {
+    // macOS can disable the tap (slow callback, user input, etc.); re-enable
+    // automatically so the shortcut keeps working across long sessions.
+    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == KCG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
         CGEventTapEnable(ctx.tap_ref, true);
         return event;
     }
@@ -214,7 +220,7 @@ where
 
     unsafe {
         let tap = CGEventTapCreate(
-            KCG_SESSION_EVENT_TAP,
+            KCG_HID_EVENT_TAP,
             KCG_HEAD_INSERT_EVENT_TAP,
             KCG_EVENT_TAP_OPTION_DEFAULT,
             event_mask,

@@ -20,6 +20,10 @@ fn default_shortcut() -> String {
     return "Meta+Shift+Space".to_string();
 }
 
+fn default_max_history() -> usize {
+    crate::history::DEFAULT_MAX_HISTORY
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_provider")]
@@ -39,6 +43,8 @@ pub struct AppConfig {
     pub screenshot_context_enabled: bool,
     #[serde(default)]
     pub show_idle_hud: bool,
+    #[serde(default = "default_max_history")]
+    pub max_history: usize,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -62,6 +68,7 @@ impl Default for AppConfig {
             onboarding_completed: false,
             screenshot_context_enabled: false,
             show_idle_hud: false,
+            max_history: default_max_history(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),
