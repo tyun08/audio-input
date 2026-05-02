@@ -521,6 +521,14 @@
                   >
                     {retryingId === entry.id ? $t("hud.retrying") : $t("history.retry")}
                   </button>
+                  {#if entryText(entry)}
+                    <button
+                      class="history-btn"
+                      on:click={() => navigator.clipboard.writeText(entryText(entry)).catch(() => {})}
+                    >
+                      {$t("history.copy")}
+                    </button>
+                  {/if}
                   <button class="history-btn" on:click={() => handleHistoryDelete(entry.id)}>
                     {$t("history.delete")}
                   </button>

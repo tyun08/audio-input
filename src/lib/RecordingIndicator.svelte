@@ -14,7 +14,12 @@
   /** After inject succeeds: brief green check (idle + flash). */
   export let transcriptionSuccessFlash = false;
 
-  const dispatch = createEventDispatcher<{ retry: void; dismiss: void }>();
+  const dispatch = createEventDispatcher<{
+    retry: void;
+    dismiss: void;
+    clipboardCopy: void;
+    clipboardDismiss: void;
+  }>();
 
   $: showRetry = state === "error" && !!retryableSessionId;
 
@@ -26,6 +31,16 @@
   function handleDismiss(e: MouseEvent) {
     e.stopPropagation();
     dispatch("dismiss");
+  }
+
+  function handleClipboardCopy(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("clipboardCopy");
+  }
+
+  function handleClipboardDismiss(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("clipboardDismiss");
   }
 
   let seconds = 0;
@@ -76,7 +91,8 @@
   aria-label="Recording status"
   class:recording={state === "recording"}
   class:processing={state === "processing"}
-  class:error={state === "error" || injectionFailed}
+  class:error={state === "error" && !injectionFailed}
+  class:injection={injectionFailed && !showRetry}
   class:retry={showRetry}
   class:success={transcriptionSuccessFlash}
   on:mousedown={handleMousedown}
@@ -131,25 +147,30 @@
   {:else if state === "error"}
     <div class="err-dot"></div>
     <span class="label red">{errorMsg || $t("hud.error")}</span>
-  {:else if injectionFailed && lastTranscription}
-    <svg class="clip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none">
-      <rect
-        x="8"
-        y="2"
-        width="8"
-        height="4"
-        rx="1"
-        stroke="rgba(255,200,80,0.9)"
-        stroke-width="1.8"
-      />
-      <path
-        d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1"
-        stroke="rgba(255,200,80,0.9)"
-        stroke-width="1.8"
-        stroke-linecap="round"
-      />
-    </svg>
-    <span class="label amber">{$t("hud.copied")}</span>
+  {:else if injectionFailed}
+    <div class="injection-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="8" y="2" width="8" height="4" rx="1" stroke="rgba(251,191,36,0.9)" stroke-width="1.8" />
+        <path
+          d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1"
+          stroke="rgba(251,191,36,0.9)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <div class="injection-text">
+        <p class="injection-title">{$t("hud.copied_title")}</p>
+        <p class="injection-msg">{$t("hud.copied_detail")}</p>
+      </div>
+    </div>
+    <div class="injection-actions">
+      <button class="btn amber-btn" on:click={handleClipboardCopy}>
+        {$t("hud.copy_again")}
+      </button>
+      <button class="btn" on:click={handleClipboardDismiss}>
+        {$t("hud.dismiss")}
+      </button>
+    </div>
   {:else if polishFailed}
     <div class="err-dot"></div>
     <span class="label amber">{$t("hud.polish_failed")}</span>
@@ -236,10 +257,10 @@
   }
 
   .hud.recording {
-    border-color: rgba(239, 68, 68, 0.35);
+    border-color: rgba(239, 68, 68, 0.5);
   }
   .hud.processing {
-    border-color: rgba(99, 130, 246, 0.35);
+    border-color: rgba(99, 130, 246, 0.5);
   }
   .hud.error {
     border-color: rgba(239, 68, 68, 0.35);
@@ -286,6 +307,65 @@
     background: rgba(32, 24, 26, 0.96);
     border-color: rgba(239, 68, 68, 0.4);
     white-space: normal;
+  }
+
+  .hud.injection {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    height: 100px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: rgba(26, 24, 18, 0.96);
+    border-color: rgba(251, 191, 36, 0.4);
+    white-space: normal;
+  }
+
+  .injection-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .injection-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .injection-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(251, 191, 36, 0.95);
+    margin: 0;
+    letter-spacing: 0.01em;
+  }
+
+  .injection-msg {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  .injection-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .btn.amber-btn {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: rgba(253, 224, 71, 0.95);
+  }
+
+  .btn.amber-btn:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.32);
   }
 
   .retry-head {

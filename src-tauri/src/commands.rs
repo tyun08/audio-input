@@ -1,3 +1,7 @@
+/// Holds the active paste-key observer so it can be stopped from any context.
+static PASTE_MONITOR: std::sync::Mutex<Option<crate::paste_monitor::PasteMonitorHandle>> =
+    std::sync::Mutex::new(None);
+
 use crate::{
     audio::{encode_wav, Recorder},
     config::AppConfig,
@@ -328,8 +332,14 @@ async fn run_transcription_pipeline<R: Runtime>(
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
             }
+            // Transition to idle BEFORE emitting injection-failed so the HUD
+            // leaves "Transcribing…" immediately and shows the clipboard panel.
+            reset_to_idle(app, shared_state);
             let _ = app.emit("injection-failed", &text);
-            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+            // Start a passive ⌘V observer so the HUD auto-dismisses when the
+            // user manually pastes.
+            *PASTE_MONITOR.lock().unwrap() = Some(crate::paste_monitor::start(app.clone()));
+            return;
         }
     }
 
@@ -970,3 +980,11 @@ pub async fn save_max_history(
         .map_err(|e| e.to_string())
 }
 
+
+/// Stop the passive ⌘V observer that auto-dismisses the injection-failed HUD.
+/// Called from the frontend whenever the HUD is dismissed (Copy Again / Dismiss,
+/// or the `paste-detected` event handler).
+#[tauri::command]
+pub fn stop_paste_monitor() {
+    let _ = PASTE_MONITOR.lock().unwrap().take();
+}
