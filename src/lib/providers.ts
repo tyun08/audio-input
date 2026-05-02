@@ -100,8 +100,8 @@ export const providers: ProviderDef[] = [
       },
     ],
     hint: l(
-      'Uses <code>https://api.openai.com/v1</code>. Enter an OpenAI API key and pick a transcription model.',
-      '使用 <code>https://api.openai.com/v1</code>。填写 OpenAI API Key 后选择转录模型即可。'
+      "Uses <code>https://api.openai.com/v1</code>. Enter an OpenAI API key and pick a transcription model.",
+      "使用 <code>https://api.openai.com/v1</code>。填写 OpenAI API Key 后选择转录模型即可。"
     ),
   },
   {
@@ -202,8 +202,8 @@ export const providers: ProviderDef[] = [
       },
     ],
     hint: l(
-      'For a self-hosted LiteLLM proxy or any custom OpenAI-compatible endpoint. Enter your own API base URL, API key, and model name.',
-      '用于自建 LiteLLM Proxy 或其它自定义 OpenAI 兼容端点。请填写自己的 API Base URL、API Key 和模型名。'
+      "For a self-hosted LiteLLM proxy or any custom OpenAI-compatible endpoint. Enter your own API base URL, API key, and model name.",
+      "用于自建 LiteLLM Proxy 或其它自定义 OpenAI 兼容端点。请填写自己的 API Base URL、API Key 和模型名。"
     ),
   },
 ];
