@@ -1061,6 +1061,27 @@ pub async fn save_max_history(
 }
 
 
+#[tauri::command]
+pub fn get_sent_hud_timeout_secs(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> u32 {
+    config.lock().unwrap().sent_hud_timeout_secs
+}
+
+#[tauri::command]
+pub async fn save_sent_hud_timeout_secs(
+    secs: u32,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let secs = secs.max(1).min(30);
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.sent_hud_timeout_secs = secs;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+
 /// Stop the passive ⌘V observer that auto-dismisses the injection-failed HUD.
 /// Called from the frontend whenever the HUD is dismissed (Copy Again / Dismiss,
 /// or the `paste-detected` event handler).

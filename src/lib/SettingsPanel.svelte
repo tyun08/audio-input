@@ -13,6 +13,7 @@
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
   export let showIdleHud: boolean = false;
+  export let sentHudTimeoutSecs: number = 5;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
@@ -175,6 +176,13 @@
   async function handleShowIdleHudToggle() {
     showIdleHud = !showIdleHud;
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
+  }
+
+  async function handleSentHudTimeoutChange(e: Event) {
+    const raw = parseInt((e.target as HTMLInputElement).value, 10);
+    const next = Number.isFinite(raw) && raw >= 1 ? Math.min(raw, 30) : 1;
+    sentHudTimeoutSecs = next;
+    await invoke("save_sent_hud_timeout_secs", { secs: next });
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -589,6 +597,22 @@
             >
               <span class="toggle-knob"></span>
             </button>
+          </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.sent_hud_timeout")}</span>
+              <span class="row-sub">{$t("settings.sent_hud_timeout_desc")}</span>
+            </div>
+            <input
+              type="number"
+              min="1"
+              max="30"
+              class="row-input mono"
+              style="max-width: 70px;"
+              value={sentHudTimeoutSecs}
+              on:change={handleSentHudTimeoutChange}
+            />
           </div>
         </div>
       {/if}

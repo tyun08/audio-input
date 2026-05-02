@@ -292,6 +292,8 @@ pub fn run() {
             commands::delete_history_entry,
             commands::get_max_history,
             commands::save_max_history,
+            commands::get_sent_hud_timeout_secs,
+            commands::save_sent_hud_timeout_secs,
             commands::stop_paste_monitor,
         ])
         .run(tauri::generate_context!())
