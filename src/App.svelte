@@ -458,7 +458,6 @@
     <RecordingIndicator
       state={appState}
       {errorMsg}
-      {lastTranscription}
       {injectionFailed}
       {polishFailed}
       {audioLevels}

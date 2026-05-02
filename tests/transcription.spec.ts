@@ -45,9 +45,17 @@ test.describe("Transcription", () => {
       (window as any).__tauriEmit("injection-failed", "Transcribed text here");
     });
 
-    // Should show clipboard/copied indicator
-    await expect(page.locator(".clip-icon")).toBeVisible();
-    await expect(page.locator(".label.amber")).toContainText("Copied");
+    // Should show the clipboard fallback panel
+    await expect(page.locator(".hud.injection")).toBeVisible();
+    await expect(page.locator(".injection-title")).toHaveText(
+      "Copied to Clipboard"
+    );
+    await expect(page.locator(".injection-msg")).toContainText(
+      "Text copied to clipboard"
+    );
+    await expect(
+      page.getByRole("button", { name: "Copy Again" })
+    ).toBeVisible();
   });
 
   test("shows polish-failed notification and it auto-clears", async ({

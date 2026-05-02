@@ -218,8 +218,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "history.max_label": "保留最近录音",
     "history.max_desc": "最近 N 次的音频会保存在本地以供重试。",
     "history.failed_unknown": "（转录失败 — 无错误详情）",
-    "history.failed_hint":
-      "失败记录会保留在此并显示错误信息，可在 设置 → 历史 中重试。",
+    "history.failed_hint": "失败记录会保留在此并显示错误信息，可在 设置 → 历史 中重试。",
   },
 };
 

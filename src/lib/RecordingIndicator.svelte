@@ -5,7 +5,6 @@
 
   export let state: "idle" | "recording" | "processing" | "error" = "idle";
   export let errorMsg = "";
-  export let lastTranscription = "";
   export let injectionFailed = false;
   export let polishFailed = false;
   export let audioLevels: number[] = [];
@@ -132,9 +131,7 @@
           {$t("hud.retry")}
         {/if}
       </button>
-      <button class="btn" on:click={handleDismiss} disabled={retrying}
-        >{$t("hud.dismiss")}</button
-      >
+      <button class="btn" on:click={handleDismiss} disabled={retrying}>{$t("hud.dismiss")}</button>
     </div>
   {:else if state === "recording"}
     <div class="dot-wrap">
@@ -156,7 +153,15 @@
   {:else if injectionFailed}
     <div class="injection-head">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <rect x="8" y="2" width="8" height="4" rx="1" stroke="rgba(251,191,36,0.9)" stroke-width="1.8" />
+        <rect
+          x="8"
+          y="2"
+          width="8"
+          height="4"
+          rx="1"
+          stroke="rgba(251,191,36,0.9)"
+          stroke-width="1.8"
+        />
         <path
           d="M6 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1"
           stroke="rgba(251,191,36,0.9)"
@@ -583,11 +588,6 @@
     height: 8px;
     border-radius: 50%;
     background: #f87171;
-    flex-shrink: 0;
-  }
-
-  /* Clipboard icon */
-  .clip-icon {
     flex-shrink: 0;
   }
 

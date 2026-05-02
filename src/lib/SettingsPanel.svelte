@@ -504,9 +504,7 @@
                 </div>
                 {#if entry.status === "failed"}
                   <p class="history-text history-failed-preview" title={entry.error ?? ""}>
-                    {entry.error?.trim()
-                      ? entry.error
-                      : $t("history.failed_unknown")}
+                    {entry.error?.trim() ? entry.error : $t("history.failed_unknown")}
                   </p>
                 {:else if entryText(entry)}
                   <p class="history-text">{entryText(entry)}</p>
@@ -524,7 +522,8 @@
                   {#if entryText(entry)}
                     <button
                       class="history-btn"
-                      on:click={() => navigator.clipboard.writeText(entryText(entry)).catch(() => {})}
+                      on:click={() =>
+                        navigator.clipboard.writeText(entryText(entry)).catch(() => {})}
                     >
                       {$t("history.copy")}
                     </button>
