@@ -14,6 +14,7 @@
     SETTINGS_POS_KEY,
     type AppState,
     type UiModelState,
+    HUD_SUCCESS_DEFAULT_W,
   } from "./lib/ui-model";
 
   async function savePos(key: string) {
@@ -70,6 +71,7 @@
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
   let showIdleHud = false;
+  let successHudWidth = HUD_SUCCESS_DEFAULT_W;
 
   // Audio waveform — rolling buffer of recent RMS levels (0..1) for the HUD
   const WAVEFORM_BAR_COUNT = 20;
@@ -103,6 +105,7 @@
       showIdleHud,
       transcriptionSuccessFlash,
       successTranscriptLength: editableTranscription.length || lastTranscription.length,
+      successHudWidth,
       retryableSessionId,
     };
   }
@@ -162,6 +165,9 @@
         .invoke<boolean>("get_screenshot_context_enabled")
         .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
+      successHudWidth = await appApi
+        .invoke<number>("get_success_hud_width")
+        .catch(() => HUD_SUCCESS_DEFAULT_W);
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -466,6 +472,7 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       bind:showIdleHud
+      bind:successHudWidth
       {appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}

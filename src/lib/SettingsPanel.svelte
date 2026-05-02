@@ -13,6 +13,7 @@
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
   export let showIdleHud: boolean = false;
+  export let successHudWidth: number = 560;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
@@ -175,6 +176,13 @@
   async function handleShowIdleHudToggle() {
     showIdleHud = !showIdleHud;
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
+  }
+
+  async function handleSuccessHudWidthChange(e: Event) {
+    const raw = parseInt((e.target as HTMLInputElement).value, 10);
+    const next = Number.isFinite(raw) ? Math.min(Math.max(raw, 420), 760) : 560;
+    successHudWidth = next;
+    await invoke("save_success_hud_width", { width: next });
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -590,6 +598,25 @@
               <span class="toggle-knob"></span>
             </button>
           </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.success_hud_width")}</span>
+              <span class="row-sub">{$t("settings.success_hud_width_desc")}</span>
+            </div>
+            <div class="range-control">
+              <input
+                type="range"
+                min="420"
+                max="760"
+                step="20"
+                bind:value={successHudWidth}
+                on:change={handleSuccessHudWidthChange}
+                aria-label="Success HUD width"
+              />
+              <span class="range-value">{successHudWidth}px</span>
+            </div>
+          </div>
         </div>
       {/if}
     </main>
@@ -899,6 +926,29 @@
     background: white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .toggle.on .toggle-knob {
+    transform: translateX(18px);
+  }
+
+  .range-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 190px;
+  }
+
+  .range-control input[type="range"] {
+    width: 132px;
+    accent-color: #3ecf8e;
+  }
+
+  .range-value {
+    min-width: 44px;
+    text-align: right;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
 
   /* Save / action row */

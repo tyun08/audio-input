@@ -91,7 +91,15 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.w).toBe(520);
+    expect(decision.window.w).toBe(560);
+    expect(decision.window.h).toBe(170);
+  });
+
+  it("transcription success HUD uses configured base width", () => {
+    const decision = deriveUiDecision(
+      baseState({ transcriptionSuccessFlash: true, successHudWidth: 640 })
+    );
+    expect(decision.window.w).toBe(640);
     expect(decision.window.h).toBe(170);
   });
 
@@ -101,7 +109,7 @@ describe("deriveUiDecision", () => {
     );
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.w).toBe(520);
+    expect(decision.window.w).toBe(650);
     expect(decision.window.h).toBe(280);
   });
 
@@ -111,7 +119,19 @@ describe("deriveUiDecision", () => {
     );
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.w).toBe(520);
+    expect(decision.window.w).toBe(720);
+    expect(decision.window.h).toBe(380);
+  });
+
+  it("configured success HUD width is clamped before adaptive expansion", () => {
+    const decision = deriveUiDecision(
+      baseState({
+        transcriptionSuccessFlash: true,
+        successTranscriptLength: 700,
+        successHudWidth: 740,
+      })
+    );
+    expect(decision.window.w).toBe(760);
     expect(decision.window.h).toBe(380);
   });
 

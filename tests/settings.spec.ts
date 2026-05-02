@@ -198,4 +198,21 @@ test.describe("Settings Panel", () => {
     await polishToggle.click();
     await expect(polishToggle).toHaveClass(/on/);
   });
+
+  test("configures editable success HUD width", async ({ page }) => {
+    await loadApp(page);
+    await openSettings(page);
+
+    await page.getByRole("button", { name: /Advanced/i }).click();
+
+    const widthSlider = page.getByLabel("Success HUD width");
+    await expect(widthSlider).toBeVisible();
+    await expect(widthSlider).toHaveValue("560");
+
+    await widthSlider.fill("700");
+    await widthSlider.dispatchEvent("change");
+
+    await expect(widthSlider).toHaveValue("700");
+    await expect(page.locator(".range-value")).toContainText("700px");
+  });
 });

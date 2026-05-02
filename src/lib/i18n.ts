@@ -55,6 +55,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot_desc": "Capture screen while recording for better polish",
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
+    "settings.success_hud_width": "Review HUD Width",
+    "settings.success_hud_width_desc": "Base width for editable transcription review",
     "settings.language": "Language",
 
     // Settings nav tabs
@@ -156,6 +158,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot_desc": "录音时截屏，提升润色准确度",
     "settings.show_idle_hud": "显示待机指示器",
     "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
+    "settings.success_hud_width": "确认窗口宽度",
+    "settings.success_hud_width_desc": "可编辑转录确认窗口的基础宽度",
     "settings.language": "语言",
 
     // Settings nav tabs

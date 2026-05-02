@@ -767,6 +767,25 @@ pub async fn save_show_idle_hud(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_success_hud_width(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> u32 {
+    config.lock().unwrap().success_hud_width.clamp(420, 760)
+}
+
+#[tauri::command]
+pub async fn save_success_hud_width(
+    width: u32,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.success_hud_width = width.clamp(420, 760);
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
 // --- Screenshot context ------------------------------------------------------
 
 #[tauri::command]

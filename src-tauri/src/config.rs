@@ -24,6 +24,10 @@ fn default_max_history() -> usize {
     crate::history::DEFAULT_MAX_HISTORY
 }
 
+fn default_success_hud_width() -> u32 {
+    560
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_provider")]
@@ -43,6 +47,8 @@ pub struct AppConfig {
     pub screenshot_context_enabled: bool,
     #[serde(default)]
     pub show_idle_hud: bool,
+    #[serde(default = "default_success_hud_width")]
+    pub success_hud_width: u32,
     #[serde(default = "default_max_history")]
     pub max_history: usize,
 
@@ -68,6 +74,7 @@ impl Default for AppConfig {
             onboarding_completed: false,
             screenshot_context_enabled: false,
             show_idle_hud: false,
+            success_hud_width: default_success_hud_width(),
             max_history: default_max_history(),
             api_key: String::new(),
             gcp_project_id: String::new(),

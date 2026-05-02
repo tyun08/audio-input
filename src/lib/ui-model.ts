@@ -2,7 +2,11 @@ export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_W = 300;
 export const HUD_ALERT_H = 108;
-export const HUD_SUCCESS_W = 520;
+export const HUD_SUCCESS_MIN_W = 420;
+export const HUD_SUCCESS_DEFAULT_W = 560;
+export const HUD_SUCCESS_MAX_W = 760;
+export const HUD_SUCCESS_MEDIUM_W_DELTA = 90;
+export const HUD_SUCCESS_LONG_W_DELTA = 160;
 export const HUD_SUCCESS_H = 170;
 export const HUD_SUCCESS_LONG_H = 280;
 export const HUD_SUCCESS_MAX_H = 380;
@@ -33,6 +37,8 @@ export interface UiModelState {
   transcriptionSuccessFlash?: boolean;
   /** Length of the transcript shown in the post-success review HUD. */
   successTranscriptLength?: number;
+  /** User-configured base width for the post-success review HUD. */
+  successHudWidth?: number;
   /** Non-null when a transcription attempt failed and a retryable session is available. */
   retryableSessionId?: string | null;
 }
@@ -111,17 +117,28 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
   const successLength = state.successTranscriptLength ?? 0;
+  const successBaseWidth = clamp(
+    state.successHudWidth ?? HUD_SUCCESS_DEFAULT_W,
+    HUD_SUCCESS_MIN_W,
+    HUD_SUCCESS_MAX_W
+  );
   const successHeight =
     successLength > 450
       ? HUD_SUCCESS_MAX_H
       : successLength > 120
         ? HUD_SUCCESS_LONG_H
         : HUD_SUCCESS_H;
+  const successWidth =
+    successLength > 450
+      ? Math.min(HUD_SUCCESS_MAX_W, successBaseWidth + HUD_SUCCESS_LONG_W_DELTA)
+      : successLength > 120
+        ? Math.min(HUD_SUCCESS_MAX_W, successBaseWidth + HUD_SUCCESS_MEDIUM_W_DELTA)
+        : successBaseWidth;
   const hudW =
     hasRetry || state.injectionFailed
       ? HUD_RETRY_W
       : Boolean(state.transcriptionSuccessFlash)
-        ? HUD_SUCCESS_W
+        ? successWidth
         : HUD_W;
   const hudH =
     hasRetry || state.injectionFailed
@@ -146,4 +163,9 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       hasRetry ||
       Boolean(state.showIdleHud),
   };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }

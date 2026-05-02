@@ -56,6 +56,8 @@
     list_audio_devices: ["Default Microphone", "USB Microphone"],
     get_autostart_enabled: false,
     get_screenshot_context_enabled: false,
+    get_show_idle_hud: false,
+    get_success_hud_width: 560,
     get_provider: "groq",
     get_provider_config: { api_key: "" },
     get_shortcut: "Meta+Shift+Space",
@@ -68,6 +70,8 @@
     save_shortcut: null,
     save_autostart_enabled: null,
     save_screenshot_context_enabled: null,
+    save_show_idle_hud: null,
+    save_success_hud_width: null,
     set_native_opaque: null,
     // Provider auth
     check_provider_status: false,

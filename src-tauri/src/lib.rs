@@ -285,6 +285,8 @@ pub fn run() {
             commands::save_screenshot_context_enabled,
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
+            commands::get_success_hud_width,
+            commands::save_success_hud_width,
             commands::set_native_opaque,
             commands::retry_transcription,
             commands::dismiss_error,
