@@ -78,6 +78,26 @@ test.describe("Transcription", () => {
     });
   });
 
+  test("copy manually dismisses the success HUD immediately", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    await page.evaluate(() => {
+      (window as any).__tauriEmit("transcription-result", "Copied text");
+      (window as any).__tauriEmit("state-change", "idle");
+      (window as any).__tauriEmit("transcription-success", null);
+    });
+
+    const copyButton = page.getByRole("button", { name: "Copy Manually" });
+    await expect(copyButton).toBeVisible();
+
+    await copyButton.click();
+
+    await expect(copyButton).not.toBeVisible();
+    await expect(page.locator(".success-head")).not.toBeVisible();
+  });
+
   test("shows API key missing error and opens settings", async ({ page }) => {
     await loadApp(page);
 

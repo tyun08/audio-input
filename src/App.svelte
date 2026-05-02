@@ -403,6 +403,9 @@
     if (lastTranscription) {
       await navigator.clipboard.writeText(lastTranscription).catch(() => {});
     }
+    clearSuccessFlashTimer();
+    transcriptionSuccessFlash = false;
+    await syncWindow();
   }
 </script>
 

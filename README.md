@@ -20,6 +20,8 @@ brew install --cask tonyyun/tap/audio-input
 ```
 Or grab the `.dmg` from [Releases](../../releases). First launch: right-click → Open to bypass Gatekeeper.
 
+For local DMG installation, local builds, and macOS permission repair steps, see [LOCAL_INSTALL.md](LOCAL_INSTALL.md).
+
 **Windows**
 
 Download `Audio.Input_x.x.x_x64-setup.exe` from [Releases](../../releases) and run it.
