@@ -19,6 +19,7 @@
     dismiss: void;
     clipboardCopy: void;
     clipboardDismiss: void;
+    successCopy: void;
   }>();
 
   $: showRetry = state === "error" && !!retryableSessionId;
@@ -41,6 +42,11 @@
   function handleClipboardDismiss(e: MouseEvent) {
     e.stopPropagation();
     dispatch("clipboardDismiss");
+  }
+
+  function handleSuccessCopy(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("successCopy");
   }
 
   let seconds = 0;
@@ -175,26 +181,33 @@
     <div class="err-dot"></div>
     <span class="label amber">{$t("hud.polish_failed")}</span>
   {:else if transcriptionSuccessFlash}
-    <svg
-      class="check-icon"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" stroke="rgba(62,207,142,0.95)" stroke-width="1.8" />
-      <path
-        d="M7.5 12.5l2.8 2.8L16.2 8.4"
-        stroke="rgba(62,207,142,0.95)"
-        stroke-width="1.9"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </svg>
-    <div class="success-col">
-      <span class="label ok">{$t("hud.success")}</span>
-      <span class="success-sub">{$t("hud.success_detail")}</span>
+    <div class="success-head">
+      <svg
+        class="check-icon"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" stroke="rgba(62,207,142,0.95)" stroke-width="1.8" />
+        <path
+          d="M7.5 12.5l2.8 2.8L16.2 8.4"
+          stroke="rgba(62,207,142,0.95)"
+          stroke-width="1.9"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <div class="success-col">
+        <span class="label ok">{$t("hud.success")}</span>
+        <span class="success-sub">{$t("hud.success_detail")}</span>
+      </div>
+    </div>
+    <div class="success-actions">
+      <button class="btn success-btn" on:click={handleSuccessCopy}>
+        {$t("hud.copy_manually")}
+      </button>
     </div>
   {:else}
     <svg class="mic-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-label="Ready">
@@ -267,31 +280,62 @@
   }
 
   .hud.success {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    height: 100px;
+    padding: 10px 14px;
+    border-radius: 14px;
     border-color: rgba(62, 207, 142, 0.45);
     background: rgba(28, 40, 34, 0.96);
+    white-space: normal;
   }
 
   .check-icon {
     flex-shrink: 0;
   }
 
+  .success-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
   .success-col {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    line-height: 1.15;
+    gap: 2px;
+    line-height: 1.25;
     min-width: 0;
+    flex: 1;
   }
 
   .success-sub {
-    font-size: 0.68rem;
-    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
     font-weight: 500;
   }
 
   .label.ok {
     color: rgba(190, 242, 210, 0.98);
     font-weight: 600;
+  }
+
+  .success-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .btn.success-btn {
+    background: rgba(62, 207, 142, 0.18);
+    border-color: rgba(62, 207, 142, 0.42);
+    color: rgba(214, 255, 228, 0.96);
+  }
+
+  .btn.success-btn:hover:not(:disabled) {
+    background: rgba(62, 207, 142, 0.28);
   }
 
   /* Retry panel */

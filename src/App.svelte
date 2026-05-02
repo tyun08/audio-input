@@ -75,7 +75,7 @@
   let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
 
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
-  const TRANSCRIPTION_SUCCESS_FLASH_MS = 2200;
+  const TRANSCRIPTION_SUCCESS_FLASH_MS = 5000;
 
   let transcriptionSuccessFlash = false;
   let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
@@ -398,6 +398,12 @@
   async function handleClipboardDismiss() {
     await clearInjectionFailed();
   }
+
+  async function handleSuccessCopy() {
+    if (lastTranscription) {
+      await navigator.clipboard.writeText(lastTranscription).catch(() => {});
+    }
+  }
 </script>
 
 <div class="container">
@@ -463,6 +469,7 @@
       on:dismiss={handleDismiss}
       on:clipboardCopy={handleClipboardCopy}
       on:clipboardDismiss={handleClipboardDismiss}
+      on:successCopy={handleSuccessCopy}
     />
   {/if}
 </div>

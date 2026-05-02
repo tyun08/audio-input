@@ -76,7 +76,7 @@ describe("deriveUiDecision", () => {
 
   it("injection failure uses taller HUD and stays visible", () => {
     const decision = deriveUiDecision(baseState({ injectionFailed: true }));
-    expect(decision.window).toEqual({ w: 200, h: 72, posKey: "hud-window-pos" });
+    expect(decision.window).toEqual({ w: 300, h: 108, posKey: "hud-window-pos" });
     expect(decision.shouldShowWindow).toBe(true);
     expect(decision.nativeOpaque).toBe(false);
   });
@@ -91,7 +91,8 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.h).toBe(72);
+    expect(decision.window.w).toBe(300);
+    expect(decision.window.h).toBe(108);
   });
 
   it("idle with no issues hides the HUD", () => {

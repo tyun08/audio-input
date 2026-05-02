@@ -1,6 +1,7 @@
 export const HUD_W = 200;
 export const HUD_H = 44;
-export const HUD_ALERT_H = 72;
+export const HUD_ALERT_W = 300;
+export const HUD_ALERT_H = 108;
 export const HUD_RETRY_W = 300;
 export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
@@ -103,7 +104,11 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   }
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
-  const hudW = hasRetry || state.injectionFailed ? HUD_RETRY_W : HUD_W;
+  const hudW = hasRetry || state.injectionFailed
+    ? HUD_RETRY_W
+    : Boolean(state.transcriptionSuccessFlash)
+      ? HUD_ALERT_W
+      : HUD_W;
   const hudH = hasRetry || state.injectionFailed
     ? HUD_RETRY_H
     : Boolean(state.transcriptionSuccessFlash)

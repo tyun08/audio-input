@@ -96,7 +96,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.error": "Error",
     "hud.copied": "Copied — ⌘V to paste",
     "hud.copied_title": "Copied to Clipboard",
-    "hud.copied_detail": "No input focused — press ⌘V to paste",
+    "hud.copied_detail": "Text copied to clipboard — press ⌘V to paste",
     "hud.copy_again": "Copy Again",
     "history.copy": "Copy",
     "hud.polish_failed": "Polish failed — original used",
@@ -105,7 +105,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.retrying": "Retrying…",
     "hud.dismiss": "Dismiss",
     "hud.success": "Sent ✓",
-    "hud.success_detail": "Typed at cursor",
+    "hud.success_detail": "Paste sent to active app",
+    "hud.copy_manually": "Copy Manually",
 
     // History tab
     "history.title": "History",
@@ -193,7 +194,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.error": "错误",
     "hud.copied": "已复制 — ⌘V 粘贴",
     "hud.copied_title": "已复制到剪贴板",
-    "hud.copied_detail": "未检测到输入框 — 按 ⌘V 粘贴",
+    "hud.copied_detail": "文字已复制到剪贴板 — 按 ⌘V 粘贴",
     "hud.copy_again": "重新复制",
     "history.copy": "复制",
     "hud.polish_failed": "润色失败 — 使用原文",
@@ -202,7 +203,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "hud.retrying": "重试中…",
     "hud.dismiss": "忽略",
     "hud.success": "已写入 ✓",
-    "hud.success_detail": "已键入到光标处",
+    "hud.success_detail": "已向当前应用发送粘贴",
+    "hud.copy_manually": "手动复制",
 
     "history.title": "历史记录",
     "history.empty": "暂无录音",

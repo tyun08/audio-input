@@ -31,11 +31,6 @@ pub async fn inject_text(text: &str) -> Result<()> {
         bail!("Accessibility permission not granted — text copied to clipboard, press ⌘V to paste manually.");
     }
 
-    if !has_focused_text_input() {
-        info!("no focused text input — text copied to clipboard, ⌘V to paste manually");
-        bail!("No focused text input — text is on your clipboard, press ⌘V to paste.");
-    }
-
     info!("simulating paste keypress");
     paste_via_keyevent()?;
 
@@ -130,81 +125,6 @@ fn paste_via_keyevent() -> Result<()> {
         bail!("xdotool ctrl+v failed");
     }
     Ok(())
-}
-
-// --- Focused text input detection ---------------------------------------------
-
-/// Returns true if the currently-focused UI element supports text editing
-/// (i.e. it has an `AXSelectedTextRange` attribute).  We use this to avoid
-/// silently "pasting" into a non-text target when the user has clicked away
-/// from an input field between recording and inject time.
-#[cfg(target_os = "macos")]
-fn has_focused_text_input() -> bool {
-    use std::ffi::{c_char, c_void, CString};
-    use std::ptr;
-
-    // kCFStringEncodingUTF8 = 0x08000100
-    const UTF8: u32 = 0x08000100;
-
-    #[link(name = "ApplicationServices", kind = "framework")]
-    extern "C" {
-        fn AXUIElementCreateSystemWide() -> *mut c_void;
-        fn AXUIElementCopyAttributeValue(
-            element: *const c_void,
-            attribute: *const c_void,
-            value: *mut *const c_void,
-        ) -> i32;
-    }
-
-    #[link(name = "CoreFoundation", kind = "framework")]
-    extern "C" {
-        fn CFRelease(cf: *const c_void);
-        fn CFStringCreateWithCString(
-            alloc: *const c_void,
-            cstr: *const c_char,
-            encoding: u32,
-        ) -> *mut c_void;
-    }
-
-    unsafe {
-        let system_wide = AXUIElementCreateSystemWide();
-        if system_wide.is_null() {
-            return false;
-        }
-
-        // Get the currently-focused UI element.
-        let attr = CString::new("AXFocusedUIElement").unwrap();
-        let attr_cf = CFStringCreateWithCString(ptr::null(), attr.as_ptr(), UTF8);
-        let mut focused: *const c_void = ptr::null();
-        let err = AXUIElementCopyAttributeValue(system_wide, attr_cf, &mut focused);
-        CFRelease(attr_cf);
-        CFRelease(system_wide);
-
-        if err != 0 || focused.is_null() {
-            return false;
-        }
-
-        // Any element that accepts keyboard text (AXTextField, AXTextArea, and
-        // contenteditable regions in browsers) exposes AXSelectedTextRange.
-        // Non-editable elements (buttons, images, etc.) return an error here.
-        let range_attr = CString::new("AXSelectedTextRange").unwrap();
-        let range_cf = CFStringCreateWithCString(ptr::null(), range_attr.as_ptr(), UTF8);
-        let mut range_val: *const c_void = ptr::null();
-        let range_err = AXUIElementCopyAttributeValue(focused, range_cf, &mut range_val);
-        CFRelease(range_cf);
-        CFRelease(focused);
-
-        if !range_val.is_null() {
-            CFRelease(range_val);
-        }
-
-        range_err == 0
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn has_focused_text_input() -> bool {
-    true // Windows / Linux: assume yes; platform-specific check can be added later
 }
 
 // --- Accessibility permission --------------------------------------------------
