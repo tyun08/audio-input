@@ -900,6 +900,9 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  .toggle.on .toggle-knob {
+    transform: translateX(18px);
+  }
 
   /* Save / action row */
   .action-row {
