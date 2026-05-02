@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { providers, getProvider } from "./providers";
+  import { providers, getDefaultConfig, getProvider } from "./providers";
   import { t, locale } from "./i18n";
   import FieldSelect from "./FieldSelect.svelte";
 
@@ -38,15 +38,11 @@
 
   async function loadProviderConfig() {
     const raw = await invoke<Record<string, string>>("get_provider_config", { provider });
-    const loaded = raw ?? {};
+    const loaded = { ...(raw ?? {}) };
     const cp = getProvider(provider);
     // Apply field defaults for any unset values
     if (cp) {
-      for (const field of cp.fields) {
-        if (field.default !== undefined && !(field.key in loaded)) {
-          loaded[field.key] = field.default;
-        }
-      }
+      Object.assign(loaded, { ...getDefaultConfig(cp.fields), ...loaded });
     }
     configValues = loaded;
     if (cp?.authCheck) {
@@ -257,11 +253,19 @@
                     class="row-input"
                     class:mono={field.mono}
                     placeholder={field.placeholder ?? ""}
+                    list={field.options ? `${provider}-${field.key}-presets` : undefined}
                     bind:value={configValues[field.key]}
                     on:keydown={(e) => e.key === "Enter" && handleSaveConfig()}
                     autocomplete="off"
                     spellcheck="false"
                   />
+                  {#if field.options}
+                    <datalist id={`${provider}-${field.key}-presets`}>
+                      {#each field.options as opt}
+                        <option value={opt.value} label={opt.label}></option>
+                      {/each}
+                    </datalist>
+                  {/if}
                 {/if}
               </div>
             {/each}

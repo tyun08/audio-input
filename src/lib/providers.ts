@@ -36,6 +36,16 @@ export interface ProviderDef {
   hint?: L;
 }
 
+export function getDefaultConfig(fields: ProviderField[]): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of fields) {
+    if (field.default !== undefined) {
+      values[field.key] = field.default;
+    }
+  }
+  return values;
+}
+
 export const providers: ProviderDef[] = [
   {
     id: "groq",
@@ -63,6 +73,64 @@ export const providers: ProviderDef[] = [
     hint: l(
       'Get one free at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>',
       '在 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费获取'
+    ),
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    tagline: l("Hosted API", "官方 API"),
+    icon: '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 12h7M12 8.5v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    fields: [
+      {
+        key: "api_key",
+        label: l("API Key", "API Key"),
+        type: "password",
+        placeholder: "sk-...",
+      },
+      {
+        key: "model",
+        label: l("Model", "模型"),
+        type: "select",
+        default: "gpt-4o-mini-transcribe",
+        options: [
+          { value: "gpt-4o-mini-transcribe", label: "GPT-4o mini Transcribe" },
+          { value: "gpt-4o-transcribe", label: "GPT-4o Transcribe" },
+          { value: "whisper-1", label: "Whisper" },
+        ],
+      },
+    ],
+    hint: l(
+      'Uses <code>https://api.openai.com/v1</code>. Enter an OpenAI API key and pick a transcription model.',
+      '使用 <code>https://api.openai.com/v1</code>。填写 OpenAI API Key 后选择转录模型即可。'
+    ),
+  },
+  {
+    id: "gemini",
+    name: "Gemini",
+    tagline: l("Google AI Studio", "Google AI Studio"),
+    icon: '<path d="M12 2l2.2 6.1L20 10.3l-5.8 2.2L12 22l-2.2-9.5L4 10.3l5.8-2.2L12 2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+    fields: [
+      {
+        key: "api_key",
+        label: l("API Key", "API Key"),
+        type: "password",
+        placeholder: "AIza...",
+      },
+      {
+        key: "model",
+        label: l("Model", "模型"),
+        type: "select",
+        default: "gemini-2.5-flash",
+        options: [
+          { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+          { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
+          { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+        ],
+      },
+    ],
+    hint: l(
+      'Uses the Gemini API directly. Create an API key in <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.',
+      '直接使用 Gemini API。可在 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a> 创建 API Key。'
     ),
   },
   {
@@ -115,7 +183,7 @@ export const providers: ProviderDef[] = [
         key: "api_base",
         label: l("API Base URL", "API 基础 URL"),
         type: "text",
-        placeholder: "https://api.openai.com/v1",
+        placeholder: "http://localhost:4000/v1",
         mono: true,
       },
       {
@@ -134,8 +202,8 @@ export const providers: ProviderDef[] = [
       },
     ],
     hint: l(
-      'Use any OpenAI-compatible endpoint. Examples: <code>whisper-1</code> (OpenAI), <code>groq/whisper-large-v3-turbo</code> (Groq via LiteLLM). See <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener">LiteLLM docs</a>.',
-      '支持任何 OpenAI 兼容端点。示例：<code>whisper-1</code>（OpenAI），<code>groq/whisper-large-v3-turbo</code>（通过 LiteLLM 使用 Groq）。详见 <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener">LiteLLM 文档</a>。'
+      'For a self-hosted LiteLLM proxy or any custom OpenAI-compatible endpoint. Enter your own API base URL, API key, and model name.',
+      '用于自建 LiteLLM Proxy 或其它自定义 OpenAI 兼容端点。请填写自己的 API Base URL、API Key 和模型名。'
     ),
   },
 ];
