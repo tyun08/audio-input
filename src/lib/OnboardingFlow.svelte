@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { providers, getDefaultConfig, getProvider, groupFields } from "./providers";
+  import { providers, getProvider, groupFields } from "./providers";
   import { t, locale, type Locale } from "./i18n";
 
   const dispatch = createEventDispatcher();
@@ -11,7 +11,7 @@
 
   let step = 1;
   let provider = providers[0]?.id ?? "groq";
-  let configValues: Record<string, string> = getDefaultConfig(providers[0]?.fields ?? []);
+  let configValues: Record<string, string> = {};
   let authStatus: boolean | null = null;
 
   let configSaving = false;
@@ -32,7 +32,7 @@
 
   async function handleProviderSwitch(id: string) {
     provider = id;
-    configValues = getDefaultConfig(getProvider(id)?.fields ?? []);
+    configValues = {};
     configError = "";
     const cp = getProvider(id);
     if (cp?.authCheck) {
