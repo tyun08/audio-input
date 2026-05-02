@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use tauri::{
     image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
@@ -5,7 +6,6 @@ use tauri::{
     AppHandle, Emitter as _, Manager, Runtime,
 };
 use tracing::info;
-use std::sync::{Arc, Mutex};
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let polish_enabled = app
@@ -102,22 +102,37 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> tauri::Result<Menu<R>> {
-    let last     = MenuItem::with_id(app, "last-result", "No transcription yet", false, None::<&str>)?;
-    let sep1     = PredefinedMenuItem::separator(app)?;
-    let polish   = CheckMenuItem::with_id(app, "toggle-polish", "AI Polish", true, polish_enabled, None::<&str>)?;
-    let sep2     = PredefinedMenuItem::separator(app)?;
-    let settings  = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let open_log  = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
-    let sep3      = PredefinedMenuItem::separator(app)?;
-    let quit      = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+pub fn build_tray_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    polish_enabled: bool,
+) -> tauri::Result<Menu<R>> {
+    let last = MenuItem::with_id(
+        app,
+        "last-result",
+        "No transcription yet",
+        false,
+        None::<&str>,
+    )?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let polish = CheckMenuItem::with_id(
+        app,
+        "toggle-polish",
+        "AI Polish",
+        true,
+        polish_enabled,
+        None::<&str>,
+    )?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+    let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     #[cfg(debug_assertions)]
     let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
 
-    let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> = vec![
-        &last, &sep1, &polish, &sep2, &settings, &open_log,
-    ];
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> =
+        vec![&last, &sep1, &polish, &sep2, &settings, &open_log];
     #[cfg(debug_assertions)]
     items.push(&devtools);
     items.push(&sep3);
@@ -129,10 +144,10 @@ pub fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, polish_enabled: bool) -> 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
     if let Some(tray) = app.tray_by_id("main-tray") {
         let (icon, as_template) = match state {
-            "recording"  => (recording_icon(), false),
+            "recording" => (recording_icon(), false),
             "processing" => (processing_icon(), false),
-            "error"      => (error_icon(), false),
-            _            => (idle_icon(), true),
+            "error" => (error_icon(), false),
+            _ => (idle_icon(), true),
         };
         let _ = tray.set_icon(Some(icon));
         let _ = tray.set_icon_as_template(as_template);
@@ -171,8 +186,7 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
             let windows: *mut objc::runtime::Object = msg_send![ns_app, windows];
             let count: usize = msg_send![windows, count];
             for i in 0..count {
-                let win: *mut objc::runtime::Object =
-                    msg_send![windows, objectAtIndex: i];
+                let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                 let _: () = msg_send![win, setOpaque: true];
                 let bg: *mut objc::runtime::Object = msg_send![
                     class!(NSColor),
@@ -200,10 +214,12 @@ fn idle_icon() -> Image<'static> {
     Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png corrupted")
 }
 fn recording_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-recording.png")).expect("tray-recording.png corrupted")
+    Image::from_bytes(include_bytes!("../icons/tray-recording.png"))
+        .expect("tray-recording.png corrupted")
 }
 fn processing_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-processing.png")).expect("tray-processing.png corrupted")
+    Image::from_bytes(include_bytes!("../icons/tray-processing.png"))
+        .expect("tray-processing.png corrupted")
 }
 fn error_icon() -> Image<'static> {
     Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png corrupted")

@@ -218,11 +218,11 @@ async fn stop_and_transcribe<R: Runtime>(
     // Persist audio + pending metadata BEFORE the API call so a crash or
     // failure never loses the user's speech.
     let history_state = app.state::<HistoryState>().inner().clone();
-    let session_id = match history_state
-        .lock()
-        .unwrap()
-        .insert_pending(provider_name.clone(), duration_s, &wav_bytes)
-    {
+    let session_id = match history_state.lock().unwrap().insert_pending(
+        provider_name.clone(),
+        duration_s,
+        &wav_bytes,
+    ) {
         Ok(id) => id,
         Err(e) => {
             warn!("Failed to persist recording to history: {}", e);
@@ -275,10 +275,12 @@ async fn run_transcription_pipeline<R: Runtime>(
     if raw_text.is_empty() {
         warn!("Transcription empty — possibly silence, mic unauthorized, or recording too short");
         if !session_id.is_empty() {
-            let _ = history_state
-                .lock()
-                .unwrap()
-                .mark_completed(&session_id, String::new(), String::new(), false);
+            let _ = history_state.lock().unwrap().mark_completed(
+                &session_id,
+                String::new(),
+                String::new(),
+                false,
+            );
         }
         reset_to_idle(app, shared_state);
         return;
@@ -349,9 +351,7 @@ async fn run_transcription_pipeline<R: Runtime>(
     info!("State → Idle");
 }
 
-fn read_provider_config<R: Runtime>(
-    app: &AppHandle<R>,
-) -> (String, serde_json::Value, bool) {
+fn read_provider_config<R: Runtime>(app: &AppHandle<R>) -> (String, serde_json::Value, bool) {
     let config = app.state::<Arc<Mutex<AppConfig>>>();
     let cfg = config.lock().unwrap();
     let p = cfg.provider.clone();
@@ -686,9 +686,7 @@ pub fn list_audio_devices() -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn get_preferred_device(
-    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
-) -> Option<String> {
+pub fn get_preferred_device(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> Option<String> {
     config.lock().unwrap().preferred_device.clone()
 }
 
@@ -821,8 +819,7 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
             let windows: *mut objc::runtime::Object = msg_send![app, windows];
             let count: usize = msg_send![windows, count];
             for i in 0..count {
-                let win: *mut objc::runtime::Object =
-                    msg_send![windows, objectAtIndex: i];
+                let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
 
                 // Visibility via alphaValue instead of show/hide or offscreen parking.
                 // alphaValue=0 keeps the window on-screen so macOS CVDisplayLink keeps
@@ -1060,6 +1057,25 @@ pub async fn save_max_history(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_sent_hud_timeout_secs(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> u32 {
+    config.lock().unwrap().sent_hud_timeout_secs
+}
+
+#[tauri::command]
+pub async fn save_sent_hud_timeout_secs(
+    secs: u32,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let secs = secs.clamp(1, 30);
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.sent_hud_timeout_secs = secs;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
 
 /// Stop the passive ⌘V observer that auto-dismisses the injection-failed HUD.
 /// Called from the frontend whenever the HUD is dismissed (Copy Again / Dismiss,

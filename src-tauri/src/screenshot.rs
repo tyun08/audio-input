@@ -18,7 +18,12 @@ pub fn capture_primary_screen() -> Option<String> {
 
     let image = screen
         .capture()
-        .map_err(|e| warn!("Screenshot failed (may lack Screen Recording permission): {}", e))
+        .map_err(|e| {
+            warn!(
+                "Screenshot failed (may lack Screen Recording permission): {}",
+                e
+            )
+        })
         .ok()?;
 
     let width = image.width();

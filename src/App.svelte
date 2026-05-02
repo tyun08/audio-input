@@ -69,16 +69,23 @@
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
   let showIdleHud = false;
+  let sentHudTimeoutSecs = 5;
 
   // Audio waveform — rolling buffer of recent RMS levels (0..1) for the HUD
   const WAVEFORM_BAR_COUNT = 20;
   let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
 
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
-  const TRANSCRIPTION_SUCCESS_FLASH_MS = 5000;
+  $: TRANSCRIPTION_SUCCESS_FLASH_MS = sentHudTimeoutSecs * 1000;
 
   let transcriptionSuccessFlash = false;
   let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function normalizeSentHudTimeoutSecs(value: unknown): number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 1
+      ? Math.min(Math.floor(value), 30)
+      : 5;
+  }
 
   function clearSuccessFlashTimer() {
     if (successFlashTimer !== null) {
@@ -160,6 +167,9 @@
         .invoke<boolean>("get_screenshot_context_enabled")
         .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
+      sentHudTimeoutSecs = normalizeSentHudTimeoutSecs(
+        await appApi.invoke<unknown>("get_sent_hud_timeout_secs").catch(() => 5)
+      );
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -403,6 +413,9 @@
     if (lastTranscription) {
       await navigator.clipboard.writeText(lastTranscription).catch(() => {});
     }
+    clearSuccessFlashTimer();
+    transcriptionSuccessFlash = false;
+    await syncWindow();
   }
 </script>
 
@@ -449,6 +462,7 @@
       bind:autostartEnabled
       bind:screenshotContextEnabled
       bind:showIdleHud
+      bind:sentHudTimeoutSecs
       {appState}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}

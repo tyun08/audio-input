@@ -27,9 +27,7 @@ pub struct Recorder {
 pub fn list_input_devices() -> Vec<String> {
     let host = cpal::default_host();
     match host.input_devices() {
-        Ok(devices) => devices
-            .filter_map(|d| d.name().ok())
-            .collect(),
+        Ok(devices) => devices.filter_map(|d| d.name().ok()).collect(),
         Err(e) => {
             warn!("Failed to list input devices: {}", e);
             Vec::new()
@@ -65,16 +63,18 @@ impl Recorder {
 
         let device = if let Some(ref name) = preferred_device_name {
             // Try to find the preferred device
-            let found = host
-                .input_devices()
-                .ok()
-                .and_then(|mut devs| devs.find(|d| d.name().as_deref().ok() == Some(name.as_str())));
+            let found = host.input_devices().ok().and_then(|mut devs| {
+                devs.find(|d| d.name().as_deref().ok() == Some(name.as_str()))
+            });
 
             if let Some(d) = found {
                 info!("Using configured recording device: {}", name);
                 d
             } else {
-                warn!("Configured device '{}' unavailable, falling back to default", name);
+                warn!(
+                    "Configured device '{}' unavailable, falling back to default",
+                    name
+                );
                 host.default_input_device()
                     .context("No default microphone found")?
             }
@@ -83,7 +83,10 @@ impl Recorder {
                 .context("No default microphone found")?
         };
 
-        info!("Using recording device: {}", device.name().unwrap_or_default());
+        info!(
+            "Using recording device: {}",
+            device.name().unwrap_or_default()
+        );
 
         let config = device
             .default_input_config()
@@ -136,7 +139,11 @@ impl Recorder {
             buf.clone()
         };
 
-        info!("Recorded {} samples ({:.1}s)", samples.len(), samples.len() as f32 / self.sample_rate as f32);
+        info!(
+            "Recorded {} samples ({:.1}s)",
+            samples.len(),
+            samples.len() as f32 / self.sample_rate as f32
+        );
 
         Ok(AudioData {
             samples,

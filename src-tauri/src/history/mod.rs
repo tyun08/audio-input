@@ -173,8 +173,7 @@ impl HistoryStore {
 
     pub fn load_wav(&self, id: &str) -> Result<Vec<u8>> {
         let path = self.wav_path(id);
-        std::fs::read(&path)
-            .with_context(|| format!("Failed to read recording at {:?}", path))
+        std::fs::read(&path).with_context(|| format!("Failed to read recording at {:?}", path))
     }
 
     pub fn delete(&mut self, id: &str) -> Result<()> {
@@ -198,8 +197,11 @@ impl HistoryStore {
         }
         // Drop orphan WAV files not referenced by the index (best-effort).
         if let Ok(rd) = std::fs::read_dir(&self.dir) {
-            let known: std::collections::HashSet<String> =
-                self.entries.iter().map(|e| format!("{}.wav", e.id)).collect();
+            let known: std::collections::HashSet<String> = self
+                .entries
+                .iter()
+                .map(|e| format!("{}.wav", e.id))
+                .collect();
             for entry in rd.flatten() {
                 let p: PathBuf = entry.path();
                 if p.extension().and_then(|s| s.to_str()) == Some("wav") {

@@ -77,7 +77,12 @@ impl LiteLLMClient {
             .build()
             .expect("Failed to create HTTP client");
 
-        LiteLLMClient { api_base, api_key, model, client }
+        LiteLLMClient {
+            api_base,
+            api_key,
+            model,
+            client,
+        }
     }
 
     pub async fn transcribe(&self, wav_bytes: Vec<u8>) -> Result<String> {
@@ -104,7 +109,10 @@ impl LiteLLMClient {
             .text("temperature", "0")
             .text("response_format", "json");
 
-        let url = format!("{}/audio/transcriptions", self.api_base.trim_end_matches('/'));
+        let url = format!(
+            "{}/audio/transcriptions",
+            self.api_base.trim_end_matches('/')
+        );
 
         let resp = self
             .client
@@ -166,8 +174,10 @@ pub async fn polish_text_litellm(
     // Try vision-assisted polish if a screenshot is available
     if let Some(img_data) = screenshot {
         info!("Using vision model for LiteLLM polish (screenshot context attached)");
-        match try_polish_vision(&client, &url, api_key, text, img_data, 0.1, false, max_tokens)
-            .await
+        match try_polish_vision(
+            &client, &url, api_key, text, img_data, 0.1, false, max_tokens,
+        )
+        .await
         {
             Ok(polished) if polished.chars().count() >= threshold => {
                 info!("LiteLLM vision polish complete");
@@ -179,9 +189,10 @@ pub async fn polish_text_litellm(
                     short.chars().count(),
                     threshold
                 );
-                if let Ok(p) =
-                    try_polish_vision(&client, &url, api_key, text, img_data, 0.3, true, max_tokens)
-                        .await
+                if let Ok(p) = try_polish_vision(
+                    &client, &url, api_key, text, img_data, 0.3, true, max_tokens,
+                )
+                .await
                 {
                     if p.chars().count() >= threshold {
                         return (p, false);
@@ -338,7 +349,10 @@ async fn send_chat_request(
         .context("LiteLLM chat request failed")?;
 
     let status = resp.status();
-    let body = resp.text().await.context("Failed to read LiteLLM response")?;
+    let body = resp
+        .text()
+        .await
+        .context("Failed to read LiteLLM response")?;
 
     if !status.is_success() {
         bail!("LiteLLM chat API error: HTTP {} {}", status, body);

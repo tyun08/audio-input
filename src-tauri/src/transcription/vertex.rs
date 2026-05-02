@@ -80,8 +80,13 @@ impl VertexClient {
             }
         });
 
-        let text =
-            send_gemini_request(&self.client, &self.gemini_url(&self.model), &self.access_token, &body).await?;
+        let text = send_gemini_request(
+            &self.client,
+            &self.gemini_url(&self.model),
+            &self.access_token,
+            &body,
+        )
+        .await?;
 
         info!("Vertex AI transcription result: {:?}", text);
         Ok(text)
@@ -123,8 +128,17 @@ pub async fn polish_text_vertex(
 
     if let Some(img_data) = screenshot {
         info!("Using Vertex AI vision model for polish (screenshot attached)");
-        match try_vision(&client, &url, &access_token, text, img_data, 0.1, false, max_tokens)
-            .await
+        match try_vision(
+            &client,
+            &url,
+            &access_token,
+            text,
+            img_data,
+            0.1,
+            false,
+            max_tokens,
+        )
+        .await
         {
             Ok(p) if p.chars().count() >= threshold => {
                 info!("Vertex AI vision polish complete");
@@ -136,9 +150,17 @@ pub async fn polish_text_vertex(
                     short.chars().count(),
                     threshold
                 );
-                if let Ok(p) =
-                    try_vision(&client, &url, &access_token, text, img_data, 0.3, true, max_tokens)
-                        .await
+                if let Ok(p) = try_vision(
+                    &client,
+                    &url,
+                    &access_token,
+                    text,
+                    img_data,
+                    0.3,
+                    true,
+                    max_tokens,
+                )
+                .await
                 {
                     if p.chars().count() >= threshold {
                         return (p, false);
@@ -147,7 +169,10 @@ pub async fn polish_text_vertex(
                 warn!("Vision polish retry failed, falling back to text-only");
             }
             Err(e) => {
-                warn!("Vertex AI vision model failed: {}, falling back to text-only", e);
+                warn!(
+                    "Vertex AI vision model failed: {}, falling back to text-only",
+                    e
+                );
             }
         }
     }
@@ -157,15 +182,13 @@ pub async fn polish_text_vertex(
             info!("Vertex AI polish complete");
             (p, false)
         }
-        Ok(_) => {
-            match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens).await {
-                Ok(p) if p.chars().count() >= threshold => (p, false),
-                _ => {
-                    warn!("Vertex AI polish retry failed, returning original text");
-                    (text.to_string(), true)
-                }
+        Ok(_) => match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens).await {
+            Ok(p) if p.chars().count() >= threshold => (p, false),
+            _ => {
+                warn!("Vertex AI polish retry failed, returning original text");
+                (text.to_string(), true)
             }
-        }
+        },
         Err(e) => {
             warn!("Vertex AI polish failed: {}", e);
             (text.to_string(), true)
@@ -320,7 +343,9 @@ async fn get_access_token() -> Result<String> {
         );
     }
 
-    let client_id = creds["client_id"].as_str().context("ADC missing client_id")?;
+    let client_id = creds["client_id"]
+        .as_str()
+        .context("ADC missing client_id")?;
     let client_secret = creds["client_secret"]
         .as_str()
         .context("ADC missing client_secret")?;
@@ -346,7 +371,10 @@ async fn get_access_token() -> Result<String> {
         bail!("Failed to get access token: {}", body);
     }
 
-    let token: TokenResponse = resp.json().await.context("Failed to parse token response")?;
+    let token: TokenResponse = resp
+        .json()
+        .await
+        .context("Failed to parse token response")?;
     Ok(token.access_token)
 }
 
