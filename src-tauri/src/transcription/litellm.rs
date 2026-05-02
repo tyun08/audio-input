@@ -102,7 +102,7 @@ impl LiteLLMClient {
             .part("file", file_part)
             .text("model", self.model.clone())
             .text("temperature", "0")
-            .text("response_format", "verbose_json");
+            .text("response_format", "json");
 
         let url = format!("{}/audio/transcriptions", self.api_base.trim_end_matches('/'));
 
