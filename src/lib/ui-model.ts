@@ -2,10 +2,10 @@ export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_W = 300;
 export const HUD_ALERT_H = 108;
-export const HUD_SUCCESS_W = 420;
-export const HUD_SUCCESS_H = 180;
-export const HUD_SUCCESS_LONG_H = 260;
-export const HUD_SUCCESS_MAX_H = 340;
+export const HUD_SUCCESS_W = 520;
+export const HUD_SUCCESS_H = 170;
+export const HUD_SUCCESS_LONG_H = 280;
+export const HUD_SUCCESS_MAX_H = 380;
 export const HUD_RETRY_W = 300;
 export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
@@ -112,9 +112,9 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
   const successLength = state.successTranscriptLength ?? 0;
   const successHeight =
-    successLength > 600
+    successLength > 450
       ? HUD_SUCCESS_MAX_H
-      : successLength > 240
+      : successLength > 120
         ? HUD_SUCCESS_LONG_H
         : HUD_SUCCESS_H;
   const hudW =

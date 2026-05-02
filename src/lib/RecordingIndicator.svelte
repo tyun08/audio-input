@@ -312,7 +312,7 @@
     align-items: stretch;
     justify-content: flex-start;
     gap: 8px;
-    height: calc(100% - 8px);
+    height: 100%;
     padding: 10px 14px;
     border-radius: 14px;
     border-color: rgba(62, 207, 142, 0.45);
@@ -358,7 +358,7 @@
 
   .success-transcript {
     width: 100%;
-    min-height: 70px;
+    min-height: 76px;
     flex: 1;
     resize: none;
     overflow-y: auto;

@@ -413,10 +413,9 @@
     await syncWindow();
   }
 
-  async function handleSuccessEdit(e: CustomEvent<string>) {
+  function handleSuccessEdit(e: CustomEvent<string>) {
     editableTranscription = e.detail;
     clearSuccessFlashTimer();
-    await syncWindow();
   }
 
   function handleSuccessFocus() {

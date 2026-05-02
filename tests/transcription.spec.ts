@@ -149,6 +149,25 @@ test.describe("Transcription", () => {
     await expect(editor).toHaveValue("Keep this visible");
   });
 
+  test("typing in the success transcript keeps focus in the editor", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    await page.evaluate(() => {
+      (window as any).__tauriEmit("transcription-result", "Edit");
+      (window as any).__tauriEmit("state-change", "idle");
+      (window as any).__tauriEmit("transcription-success", null);
+    });
+
+    const editor = page.getByLabel("Editable transcription");
+    await editor.click();
+    await page.keyboard.type(" this text smoothly");
+
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveValue("Edit this text smoothly");
+  });
+
   test("shows API key missing error and opens settings", async ({ page }) => {
     await loadApp(page);
 

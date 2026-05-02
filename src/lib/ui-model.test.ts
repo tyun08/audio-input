@@ -91,18 +91,28 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.w).toBe(420);
-    expect(decision.window.h).toBe(180);
+    expect(decision.window.w).toBe(520);
+    expect(decision.window.h).toBe(170);
   });
 
-  it("long transcription success text uses a taller review HUD", () => {
+  it("medium transcription success text uses a taller review HUD", () => {
+    const decision = deriveUiDecision(
+      baseState({ transcriptionSuccessFlash: true, successTranscriptLength: 240 })
+    );
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.w).toBe(520);
+    expect(decision.window.h).toBe(280);
+  });
+
+  it("long transcription success text uses the tallest review HUD", () => {
     const decision = deriveUiDecision(
       baseState({ transcriptionSuccessFlash: true, successTranscriptLength: 700 })
     );
     expect(decision.view).toBe("hud");
     expect(decision.shouldShowWindow).toBe(true);
-    expect(decision.window.w).toBe(420);
-    expect(decision.window.h).toBe(340);
+    expect(decision.window.w).toBe(520);
+    expect(decision.window.h).toBe(380);
   });
 
   it("idle with no issues hides the HUD", () => {
