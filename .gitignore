@@ -16,3 +16,4 @@ rust_out
 
 *.pyc
 .python-version
+imk-helper/
