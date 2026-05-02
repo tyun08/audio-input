@@ -13,4 +13,3 @@ playwright-report/
 # Tauri generated schemas (platform-specific build artifacts)
 src-tauri/gen/schemas/linux-schema.json
 rust_out
-imk-helper/

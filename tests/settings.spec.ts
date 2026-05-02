@@ -65,42 +65,6 @@ test.describe("Settings Panel", () => {
     await expect(page.locator(".content")).toContainText("GCP Project ID");
   });
 
-  test("shows OpenAI API key and model without API base", async ({ page }) => {
-    await loadApp(page);
-    await openSettings(page);
-
-    const providerSelect = page.locator(".row-select").first();
-    await providerSelect.selectOption("openai");
-
-    await expect(page.locator(".content")).not.toContainText("API Base URL");
-    await expect(page.locator('input[type="password"]')).toHaveAttribute("placeholder", "sk-...");
-    await expect(page.locator(".dropdown")).toHaveValue("gpt-4o-mini-transcribe");
-  });
-
-  test("shows Gemini API key and model without API base", async ({ page }) => {
-    await loadApp(page);
-    await openSettings(page);
-
-    const providerSelect = page.locator(".row-select").first();
-    await providerSelect.selectOption("gemini");
-
-    await expect(page.locator(".content")).not.toContainText("API Base URL");
-    await expect(page.locator('input[type="password"]')).toHaveAttribute("placeholder", "AIza...");
-    await expect(page.locator(".dropdown")).toHaveValue("gemini-2.5-flash");
-  });
-
-  test("keeps API base editable for LiteLLM", async ({ page }) => {
-    await loadApp(page);
-    await openSettings(page);
-
-    const providerSelect = page.locator(".row-select").first();
-    await providerSelect.selectOption("litellm");
-
-    await expect(page.locator(".content")).toContainText("API Base URL");
-    await expect(page.locator('input[placeholder="http://localhost:4000/v1"]')).toBeVisible();
-    await expect(page.locator('input[placeholder="whisper-1"]')).toHaveValue("whisper-1");
-  });
-
   test("shows API key field for Groq provider", async ({ page }) => {
     await loadApp(page);
     await openSettings(page);

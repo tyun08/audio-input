@@ -4,9 +4,7 @@ use crate::{
     input::inject_text,
     screenshot::capture_primary_screen,
     state::{AppState, ScreenshotState, SharedState},
-    transcription::{
-        gemini, polish, vertex, GeminiClient, GroqClient, LiteLLMClient, VertexClient,
-    },
+    transcription::{polish, vertex, GroqClient, VertexClient},
     tray::set_tray_icon,
 };
 use std::sync::{Arc, Mutex};
@@ -311,52 +309,6 @@ async fn transcribe_with_provider(
                 VertexClient::new(project_id.into(), location.into(), model.into()).await?;
             client.transcribe(wav_bytes).await
         }
-        "openai" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                anyhow::bail!("OpenAI API key not configured");
-            }
-            let model = config["model"]
-                .as_str()
-                .unwrap_or("gpt-4o-mini-transcribe")
-                .to_string();
-            info!("OpenAI model: {}", model);
-            LiteLLMClient::new(
-                crate::transcription::litellm::DEFAULT_API_BASE.to_string(),
-                api_key.to_string(),
-                model,
-            )
-            .transcribe(wav_bytes)
-            .await
-        }
-        "gemini" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                anyhow::bail!("Gemini API key not configured");
-            }
-            let model = config["model"]
-                .as_str()
-                .unwrap_or("gemini-2.5-flash")
-                .to_string();
-            info!("Gemini model: {}", model);
-            GeminiClient::new(api_key.to_string(), model)?
-                .transcribe(wav_bytes)
-                .await
-        }
-        "litellm" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                anyhow::bail!("LiteLLM API key not configured");
-            }
-            let api_base = config["api_base"]
-                .as_str()
-                .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
-            let model = config["model"].as_str().unwrap_or("whisper-1").to_string();
-            info!("LiteLLM api_base: {}, model: {}", api_base, model);
-            LiteLLMClient::new(api_base.to_string(), api_key.to_string(), model)
-                .transcribe(wav_bytes)
-                .await
-        }
         other => anyhow::bail!("Unsupported provider: {}", other),
     }
 }
@@ -377,38 +329,6 @@ async fn polish_with_provider(
             let location = config["location"].as_str().unwrap_or("us-central1");
             let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
             vertex::polish_text_vertex(text, project_id, location, model, screenshot).await
-        }
-        "openai" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                return (text.to_string(), true);
-            }
-            crate::transcription::litellm::polish_text_litellm(
-                text,
-                crate::transcription::litellm::DEFAULT_API_BASE,
-                api_key,
-                screenshot,
-            )
-            .await
-        }
-        "gemini" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                return (text.to_string(), true);
-            }
-            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            gemini::polish_text_gemini(text, api_key, model, screenshot).await
-        }
-        "litellm" => {
-            let api_key = config["api_key"].as_str().unwrap_or("");
-            if api_key.is_empty() {
-                return (text.to_string(), true);
-            }
-            let api_base = config["api_base"]
-                .as_str()
-                .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
-            crate::transcription::litellm::polish_text_litellm(text, api_base, api_key, screenshot)
-                .await
         }
         _ => (text.to_string(), true),
     }
