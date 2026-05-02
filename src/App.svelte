@@ -81,6 +81,12 @@
   let transcriptionSuccessFlash = false;
   let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
+  function normalizeSentHudTimeoutSecs(value: unknown): number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 1
+      ? Math.min(Math.floor(value), 30)
+      : 5;
+  }
+
   function clearSuccessFlashTimer() {
     if (successFlashTimer !== null) {
       clearTimeout(successFlashTimer);
@@ -161,7 +167,9 @@
         .invoke<boolean>("get_screenshot_context_enabled")
         .catch(() => false);
       showIdleHud = await appApi.invoke<boolean>("get_show_idle_hud").catch(() => false);
-      sentHudTimeoutSecs = await appApi.invoke<number>("get_sent_hud_timeout_secs").catch(() => 5);
+      sentHudTimeoutSecs = normalizeSentHudTimeoutSecs(
+        await appApi.invoke<unknown>("get_sent_hud_timeout_secs").catch(() => 5)
+      );
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {

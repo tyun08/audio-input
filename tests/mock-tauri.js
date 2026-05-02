@@ -56,6 +56,7 @@
     list_audio_devices: ["Default Microphone", "USB Microphone"],
     get_autostart_enabled: false,
     get_screenshot_context_enabled: false,
+    get_sent_hud_timeout_secs: 5,
     get_provider: "groq",
     get_provider_config: { api_key: "" },
     get_shortcut: "Meta+Shift+Space",
