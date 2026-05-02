@@ -98,6 +98,57 @@ test.describe("Transcription", () => {
     await expect(page.locator(".success-head")).not.toBeVisible();
   });
 
+  test("success HUD lets users edit before manual copy", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__lastClipboardText = "";
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text: string) => {
+            (window as any).__lastClipboardText = text;
+          },
+        },
+      });
+    });
+    await loadApp(page);
+
+    await page.evaluate(() => {
+      (window as any).__tauriEmit("transcription-result", "originnal transcript");
+      (window as any).__tauriEmit("state-change", "idle");
+      (window as any).__tauriEmit("transcription-success", null);
+    });
+
+    const editor = page.getByLabel("Editable transcription");
+    await expect(editor).toHaveValue("originnal transcript");
+
+    await editor.fill("original transcript");
+    await page.getByRole("button", { name: "Copy Manually" }).click();
+
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__lastClipboardText))
+      .toBe("original transcript");
+    await expect(editor).not.toBeVisible();
+  });
+
+  test("focusing success transcript keeps the HUD open past the default timeout", async ({
+    page,
+  }) => {
+    await loadApp(page);
+
+    await page.evaluate(() => {
+      (window as any).__tauriEmit("transcription-result", "Keep this visible");
+      (window as any).__tauriEmit("state-change", "idle");
+      (window as any).__tauriEmit("transcription-success", null);
+    });
+
+    const editor = page.getByLabel("Editable transcription");
+    await editor.focus();
+
+    await page.waitForTimeout(5500);
+    await expect(editor).toBeVisible();
+    await expect(editor).toHaveValue("Keep this visible");
+  });
+
   test("shows API key missing error and opens settings", async ({ page }) => {
     await loadApp(page);
 

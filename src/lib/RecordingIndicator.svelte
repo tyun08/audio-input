@@ -12,6 +12,8 @@
   export let retrying = false;
   /** After inject succeeds: brief green check (idle + flash). */
   export let transcriptionSuccessFlash = false;
+  /** Transcript shown in the editable post-success review HUD. */
+  export let transcript = "";
 
   const dispatch = createEventDispatcher<{
     retry: void;
@@ -19,6 +21,8 @@
     clipboardCopy: void;
     clipboardDismiss: void;
     successCopy: void;
+    successEdit: string;
+    successFocus: void;
   }>();
 
   $: showRetry = state === "error" && !!retryableSessionId;
@@ -46,6 +50,15 @@
   function handleSuccessCopy(e: MouseEvent) {
     e.stopPropagation();
     dispatch("successCopy");
+  }
+
+  function handleSuccessInput(e: Event) {
+    dispatch("successEdit", (e.currentTarget as HTMLTextAreaElement).value);
+  }
+
+  function handleSuccessFocus(e: FocusEvent) {
+    e.stopPropagation();
+    dispatch("successFocus");
   }
 
   let seconds = 0;
@@ -84,7 +97,7 @@
   }
 
   async function handleMousedown(e: MouseEvent) {
-    if ((e.target as HTMLElement | null)?.closest("button")) return;
+    if ((e.target as HTMLElement | null)?.closest("button, textarea")) return;
     await getCurrentWindow().startDragging();
   }
 </script>
@@ -209,6 +222,15 @@
         <span class="success-sub">{$t("hud.success_detail")}</span>
       </div>
     </div>
+    <textarea
+      class="success-transcript"
+      value={transcript}
+      spellcheck="true"
+      aria-label="Editable transcription"
+      on:input={handleSuccessInput}
+      on:focus={handleSuccessFocus}
+      on:mousedown|stopPropagation
+    ></textarea>
     <div class="success-actions">
       <button class="btn success-btn" on:click={handleSuccessCopy}>
         {$t("hud.copy_manually")}
@@ -288,9 +310,9 @@
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 8px;
-    height: 100px;
+    height: calc(100% - 8px);
     padding: 10px 14px;
     border-radius: 14px;
     border-color: rgba(62, 207, 142, 0.45);
@@ -331,6 +353,31 @@
   .success-actions {
     display: flex;
     justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  .success-transcript {
+    width: 100%;
+    min-height: 70px;
+    flex: 1;
+    resize: none;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(190, 242, 210, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.92);
+    padding: 8px 9px;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    outline: none;
+    user-select: text;
+    cursor: text;
+  }
+
+  .success-transcript:focus {
+    border-color: rgba(62, 207, 142, 0.56);
+    background: rgba(255, 255, 255, 0.09);
   }
 
   .btn.success-btn {

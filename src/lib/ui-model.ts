@@ -2,6 +2,10 @@ export const HUD_W = 200;
 export const HUD_H = 44;
 export const HUD_ALERT_W = 300;
 export const HUD_ALERT_H = 108;
+export const HUD_SUCCESS_W = 420;
+export const HUD_SUCCESS_H = 180;
+export const HUD_SUCCESS_LONG_H = 260;
+export const HUD_SUCCESS_MAX_H = 340;
 export const HUD_RETRY_W = 300;
 export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
@@ -27,6 +31,8 @@ export interface UiModelState {
   showIdleHud?: boolean;
   /** Brief checkmark after inject succeeds (typed into focused app). */
   transcriptionSuccessFlash?: boolean;
+  /** Length of the transcript shown in the post-success review HUD. */
+  successTranscriptLength?: number;
   /** Non-null when a transcription attempt failed and a retryable session is available. */
   retryableSessionId?: string | null;
 }
@@ -104,17 +110,24 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   }
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
+  const successLength = state.successTranscriptLength ?? 0;
+  const successHeight =
+    successLength > 600
+      ? HUD_SUCCESS_MAX_H
+      : successLength > 240
+        ? HUD_SUCCESS_LONG_H
+        : HUD_SUCCESS_H;
   const hudW =
     hasRetry || state.injectionFailed
       ? HUD_RETRY_W
       : Boolean(state.transcriptionSuccessFlash)
-        ? HUD_ALERT_W
+        ? HUD_SUCCESS_W
         : HUD_W;
   const hudH =
     hasRetry || state.injectionFailed
       ? HUD_RETRY_H
       : Boolean(state.transcriptionSuccessFlash)
-        ? HUD_ALERT_H
+        ? successHeight
         : HUD_H;
 
   return {

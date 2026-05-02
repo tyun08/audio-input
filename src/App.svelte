@@ -54,6 +54,7 @@
   let errorMsg = "";
   let initializationError = "";
   let lastTranscription = "";
+  let editableTranscription = "";
   let showSettings = false;
   let injectionFailed = false;
   let needsAccessibilityRestart = false;
@@ -101,6 +102,7 @@
       polishFailed,
       showIdleHud,
       transcriptionSuccessFlash,
+      successTranscriptLength: editableTranscription.length || lastTranscription.length,
       retryableSessionId,
     };
   }
@@ -193,6 +195,7 @@
       unlisten.push(
         await appApi.listen<string>("transcription-result", (e) => {
           lastTranscription = e.payload;
+          editableTranscription = e.payload;
           injectionFailed = false;
         })
       );
@@ -200,6 +203,7 @@
       unlisten.push(
         await appApi.listen<string>("injection-failed", async (e) => {
           lastTranscription = e.payload;
+          editableTranscription = e.payload;
           injectionFailed = true;
           await syncWindow();
         })
@@ -400,12 +404,23 @@
   }
 
   async function handleSuccessCopy() {
-    if (lastTranscription) {
-      await navigator.clipboard.writeText(lastTranscription).catch(() => {});
+    const text = editableTranscription || lastTranscription;
+    if (text) {
+      await navigator.clipboard.writeText(text).catch(() => {});
     }
     clearSuccessFlashTimer();
     transcriptionSuccessFlash = false;
     await syncWindow();
+  }
+
+  async function handleSuccessEdit(e: CustomEvent<string>) {
+    editableTranscription = e.detail;
+    clearSuccessFlashTimer();
+    await syncWindow();
+  }
+
+  function handleSuccessFocus() {
+    clearSuccessFlashTimer();
   }
 </script>
 
@@ -467,11 +482,14 @@
       {retryableSessionId}
       {retrying}
       {transcriptionSuccessFlash}
+      transcript={editableTranscription || lastTranscription}
       on:retry={handleRetry}
       on:dismiss={handleDismiss}
       on:clipboardCopy={handleClipboardCopy}
       on:clipboardDismiss={handleClipboardDismiss}
       on:successCopy={handleSuccessCopy}
+      on:successEdit={handleSuccessEdit}
+      on:successFocus={handleSuccessFocus}
     />
   {/if}
 </div>
