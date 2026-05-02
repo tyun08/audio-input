@@ -16,7 +16,6 @@ use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
 use tracing::info;
 
-
 // ── CoreGraphics FFI ────────────────────────────────────────────────────────
 
 #[link(name = "CoreGraphics", kind = "framework")]
@@ -168,19 +167,54 @@ fn parse_to_cg(shortcut_str: &str) -> Result<(i64, u64)> {
             key => {
                 keycode = Some(match key {
                     "Space" => 0x31,
-                    "A" => 0x00, "B" => 0x0B, "C" => 0x08, "D" => 0x02,
-                    "E" => 0x0E, "F" => 0x03, "G" => 0x05, "H" => 0x04,
-                    "I" => 0x22, "J" => 0x26, "K" => 0x28, "L" => 0x25,
-                    "M" => 0x2E, "N" => 0x2D, "O" => 0x1F, "P" => 0x23,
-                    "Q" => 0x0C, "R" => 0x0F, "S" => 0x01, "T" => 0x11,
-                    "U" => 0x20, "V" => 0x09, "W" => 0x0D, "X" => 0x07,
-                    "Y" => 0x10, "Z" => 0x06,
-                    "0" => 0x1D, "1" => 0x12, "2" => 0x13, "3" => 0x14,
-                    "4" => 0x15, "5" => 0x17, "6" => 0x16, "7" => 0x1A,
-                    "8" => 0x1C, "9" => 0x19,
-                    "F1"  => 0x7A, "F2"  => 0x78, "F3"  => 0x63, "F4"  => 0x76,
-                    "F5"  => 0x60, "F6"  => 0x61, "F7"  => 0x62, "F8"  => 0x64,
-                    "F9"  => 0x65, "F10" => 0x6D, "F11" => 0x67, "F12" => 0x6F,
+                    "A" => 0x00,
+                    "B" => 0x0B,
+                    "C" => 0x08,
+                    "D" => 0x02,
+                    "E" => 0x0E,
+                    "F" => 0x03,
+                    "G" => 0x05,
+                    "H" => 0x04,
+                    "I" => 0x22,
+                    "J" => 0x26,
+                    "K" => 0x28,
+                    "L" => 0x25,
+                    "M" => 0x2E,
+                    "N" => 0x2D,
+                    "O" => 0x1F,
+                    "P" => 0x23,
+                    "Q" => 0x0C,
+                    "R" => 0x0F,
+                    "S" => 0x01,
+                    "T" => 0x11,
+                    "U" => 0x20,
+                    "V" => 0x09,
+                    "W" => 0x0D,
+                    "X" => 0x07,
+                    "Y" => 0x10,
+                    "Z" => 0x06,
+                    "0" => 0x1D,
+                    "1" => 0x12,
+                    "2" => 0x13,
+                    "3" => 0x14,
+                    "4" => 0x15,
+                    "5" => 0x17,
+                    "6" => 0x16,
+                    "7" => 0x1A,
+                    "8" => 0x1C,
+                    "9" => 0x19,
+                    "F1" => 0x7A,
+                    "F2" => 0x78,
+                    "F3" => 0x63,
+                    "F4" => 0x76,
+                    "F5" => 0x60,
+                    "F6" => 0x61,
+                    "F7" => 0x62,
+                    "F8" => 0x64,
+                    "F9" => 0x65,
+                    "F10" => 0x6D,
+                    "F11" => 0x67,
+                    "F12" => 0x6F,
                     other => bail!("Unknown key: {}", other),
                 });
             }
@@ -230,9 +264,7 @@ where
 
         if tap.is_null() {
             drop(Box::from_raw(ctx_ptr));
-            bail!(
-                "CGEventTapCreate failed — Accessibility permission may not be granted"
-            );
+            bail!("CGEventTapCreate failed — Accessibility permission may not be granted");
         }
 
         (*ctx_ptr).tap_ref = tap;

@@ -71,7 +71,8 @@ pub(crate) const SYSTEM_PROMPT_TEXT: &str = "You are a transcription cleanup ass
     3) Preserve the original meaning without rewriting. \
     Output only the cleaned text, no explanations. Respond in the same language as the input.";
 
-pub(crate) const SYSTEM_PROMPT_VISION: &str = "You are a transcription cleanup assistant with access to a \
+pub(crate) const SYSTEM_PROMPT_VISION: &str =
+    "You are a transcription cleanup assistant with access to a \
     screenshot of the user's current screen for context. \
     Use visible text — especially brand names, product names, and technical terms — as a \
     reference when the transcription contains a word that sounds similar but may be a \
@@ -115,7 +116,10 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
                 warn!("Vision model retry failed, falling back to text-only polish");
             }
             Err(e) => {
-                warn!("Vision model failed: {}, falling back to text-only polish", e);
+                warn!(
+                    "Vision model failed: {}, falling back to text-only polish",
+                    e
+                );
             }
         }
     }
@@ -144,7 +148,10 @@ pub async fn polish_text(text: &str, api_key: &str, screenshot: Option<&str>) ->
             }
         }
         Err(e) => {
-            warn!("Primary model polish failed: {}, retrying with higher temperature", e);
+            warn!(
+                "Primary model polish failed: {}, retrying with higher temperature",
+                e
+            );
             match try_polish_text(text, api_key, PRIMARY_MODEL, 0.3, true, max_tokens).await {
                 Ok(p) if p.chars().count() >= threshold => {
                     info!("Polish retry succeeded");

@@ -98,8 +98,8 @@ fn paste_via_keyevent() -> Result<()> {
 fn paste_via_keyevent() -> Result<()> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| anyhow::anyhow!("enigo init: {:?}", e))?;
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|e| anyhow::anyhow!("enigo init: {:?}", e))?;
 
     enigo
         .key(Key::Control, Direction::Press)

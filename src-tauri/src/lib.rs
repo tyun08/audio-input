@@ -32,8 +32,7 @@ pub fn run() {
     // Write to both stderr and a log file
     // In packaged builds stderr is invisible; the log file is the only debug channel
     let log_path = {
-        let mut p = dirs::cache_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+        let mut p = dirs::cache_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
         p.push("com.audioinput.app");
         std::fs::create_dir_all(&p).ok();
         p.push("app.log");
@@ -43,7 +42,9 @@ pub fn run() {
         .unwrap_or_else(|_| "audio_input=debug".parse().unwrap());
 
     if let Ok(file) = std::fs::OpenOptions::new()
-        .create(true).write(true).truncate(true)
+        .create(true)
+        .write(true)
+        .truncate(true)
         .open(&log_path)
     {
         use tracing_subscriber::prelude::*;

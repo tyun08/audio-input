@@ -32,7 +32,11 @@ impl GroqClient {
             .build()
             .expect("Failed to create HTTP client");
 
-        GroqClient { api_key, model, client }
+        GroqClient {
+            api_key,
+            model,
+            client,
+        }
     }
 
     pub async fn transcribe(&self, wav_bytes: Vec<u8>) -> Result<String> {

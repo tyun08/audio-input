@@ -19,8 +19,7 @@ pub fn is_silent(samples: &[f32]) -> bool {
     if samples.is_empty() {
         return true;
     }
-    let rms =
-        (samples.iter().map(|&s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+    let rms = (samples.iter().map(|&s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
     debug!("Audio RMS energy: {:.6}", rms);
     rms < SILENCE_RMS_THRESHOLD
 }
