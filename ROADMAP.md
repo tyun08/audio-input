@@ -34,6 +34,7 @@
 ### 商业化路径
 
 - [ ] **当前过渡期：BYOK 模式**（用户自带 Groq API Key）：免费分发，零运营成本，降低用户决策门槛
+- [ ] **托管 API 订阅（Pro $3/month）**：无需 API Key，包含 20 hrs/month 转录；详见 [docs/pricing-strategy.md](docs/pricing-strategy.md)
 - [ ] **本地推理上线后：买断制**（目标定价 $9–15，参考 lookaway $9.99）：零边际成本，一次收费
 - [ ] **（可选）订阅增强版**：词汇表云端同步、多设备支持等持续价值功能，届时再评估
 
