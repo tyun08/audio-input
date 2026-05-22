@@ -6,5 +6,7 @@
   <string>Audio Input 需要麦克风权限以进行语音输入转录。</string>
   <key>LSUIElement</key>
   <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.productivity</string>
 </dict>
 </plist>

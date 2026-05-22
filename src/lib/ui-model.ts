@@ -6,8 +6,8 @@ export const HUD_RETRY_W = 300;
 export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
 export const SETTINGS_H = 480;
-export const ONBOARDING_W = 370;
-export const ONBOARDING_H = 540;
+export const ONBOARDING_W = 500;
+export const ONBOARDING_H = 560;
 export const AX_W = 320;
 export const AX_H = 160;
 
@@ -15,10 +15,11 @@ export const HUD_POS_KEY = "hud-window-pos";
 export const SETTINGS_POS_KEY = "settings-window-pos";
 
 export type AppState = "idle" | "recording" | "processing" | "error";
-export type UiView = "onboarding" | "ax" | "settings" | "hud";
+export type UiView = "onboarding" | "mic" | "ax" | "settings" | "hud";
 
 export interface UiModelState {
   onboardingDone: boolean;
+  micGranted: boolean;
   axGranted: boolean;
   showSettings: boolean;
   appState: AppState;
@@ -80,6 +81,15 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
     return {
       view: "onboarding",
       window: { w: ONBOARDING_W, h: ONBOARDING_H },
+      nativeOpaque: true,
+      shouldShowWindow: true,
+    };
+  }
+
+  if (!state.micGranted) {
+    return {
+      view: "mic",
+      window: { w: AX_W, h: AX_H },
       nativeOpaque: true,
       shouldShowWindow: true,
     };

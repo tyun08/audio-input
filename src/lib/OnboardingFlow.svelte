@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount } from "svelte";
+  import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { providers, getDefaultConfig, getProvider, groupFields } from "./providers";
   import { t, locale, type Locale } from "./i18n";
@@ -17,6 +17,44 @@
   let configSaving = false;
   let configSaved = false;
   let configError = "";
+
+  let micStatus = "not_determined";
+  let axGranted = false;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  let micRequestedOnce = false;
+
+  $: {
+    stopPolling();
+    if (!isWindows && step === 2) {
+      startPermissionsStep();
+    }
+  }
+
+  async function startPermissionsStep() {
+    await refreshPermissions();
+    pollTimer = setInterval(refreshPermissions, 1000);
+    // Auto-trigger mic permission dialog the first time we reach this step
+    // if status is still undetermined — avoids requiring an extra button click.
+    if (!micRequestedOnce && micStatus === "not_determined") {
+      micRequestedOnce = true;
+      invoke("request_microphone_permission").catch(() => {});
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  async function refreshPermissions() {
+    micStatus = await invoke<string>("get_microphone_status").catch(() => "not_determined");
+    axGranted = await invoke<boolean>("get_accessibility_status").catch(() => false);
+  }
+
+  onDestroy(stopPolling);
 
   $: currentProvider = getProvider(provider);
   $: fieldGroups = groupFields(currentProvider?.fields ?? []);
@@ -50,7 +88,7 @@
       await invoke("save_provider_config", { provider, configValues });
       configSaved = true;
       setTimeout(() => {
-        step = isWindows ? totalSteps : 3;
+        step = totalSteps;
       }, 500);
     } catch (e) {
       configError = String(e);
@@ -61,7 +99,7 @@
 
   async function skipConfig() {
     await invoke("save_provider", { provider });
-    step = isWindows ? totalSteps : 3;
+    step = totalSteps;
   }
 
   async function finishOnboarding() {
@@ -79,6 +117,11 @@
 </script>
 
 <div class="onboarding">
+  <!-- Draggable title bar with close button -->
+  <div class="win-bar" data-tauri-drag-region>
+    <button class="win-close" on:click={finishOnboarding} title="Close">✕</button>
+  </div>
+
   <div class="dots">
     {#each Array(totalSteps) as _, i}
       <div class="dot" class:active={i + 1 === step} class:done={i + 1 < step}></div>
@@ -127,8 +170,8 @@
       <button class="primary-btn" on:click={next}>{$t("onboarding.start")}</button>
     </div>
 
-    <!-- Step 2: Provider + Config -->
-  {:else if step === 2}
+    <!-- Step 3 (macOS) / Step 2 (Windows): Provider + Config -->
+  {:else if (isWindows && step === 2) || (!isWindows && step === 3)}
     <div class="step">
       <div class="step-num">{step} / {totalSteps}</div>
       <h2>{$t("onboarding.configure")}</h2>
@@ -140,7 +183,6 @@
             class:active={provider === p.id}
             on:click={() => handleProviderSwitch(p.id)}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">{@html p.icon}</svg>
             <div class="tab-text">
               <span class="tab-name">{p.name}</span>
               <span class="tab-desc">{p.tagline[$locale]}</span>
@@ -233,44 +275,51 @@
       </div>
     </div>
 
-    <!-- Step 3: Accessibility (macOS) -->
-  {:else if step === 3 && !isWindows}
-    <div class="step">
-      <div class="step-num">{step} / {totalSteps}</div>
-      <h2>{$t("onboarding.ax_title")}</h2>
-      <p class="desc">{$t("onboarding.ax_desc")}</p>
-      <div class="ax-illustration">
-        <div class="path-step">
-          <div class="path-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="9" stroke="rgba(129,140,248,0.8)" stroke-width="1.8" />
-              <circle cx="12" cy="8" r="1.5" fill="rgba(129,140,248,0.8)" />
-              <line
-                x1="12"
-                y1="12"
-                x2="12"
-                y2="18"
-                stroke="rgba(129,140,248,0.8)"
-                stroke-width="1.8"
-                stroke-linecap="round"
-              />
-            </svg>
-          </div>
-          <span>{$t("onboarding.ax_path1")}</span>
+    <!-- Step 2: Permissions (macOS only) -->
+  {:else if step === 2 && !isWindows}
+    <div class="step perm-step">
+      <h2>{$t("onboarding.perms_title")}</h2>
+      <p class="desc" style="text-align:center">{$t("onboarding.perms_subtitle")}</p>
+
+      <!-- Microphone -->
+      <div class="perm-section">
+        <div class="perm-header">
+          <span class="perm-name">{$t("onboarding.perms_mic")}</span>
+          <span class="perm-sdesc">{$t("onboarding.perms_mic_desc")}</span>
         </div>
-        <div class="path-arrow">›</div>
-        <div class="path-step"><span>{$t("onboarding.ax_path2")}</span></div>
-        <div class="path-arrow">›</div>
-        <div class="path-step"><span>{$t("onboarding.ax_path3")}</span></div>
-        <div class="path-arrow">›</div>
-        <div class="path-step highlight"><span>{$t("onboarding.ax_path4")}</span></div>
+        {#if micStatus === "authorized"}
+          <button class="perm-btn granted" disabled>{$t("onboarding.perms_granted")}</button>
+        {:else if micStatus === "denied" || micStatus === "restricted"}
+          <button class="perm-btn" on:click={() => invoke("open_microphone_prefs")}
+            >{$t("onboarding.mic_open")}</button
+          >
+        {:else}
+          <button class="perm-btn" on:click={() => invoke("request_microphone_permission")}
+            >{$t("onboarding.perms_request")}</button
+          >
+        {/if}
       </div>
-      <div class="btn-row">
-        <button class="ghost-btn" on:click={next}>{$t("onboarding.ax_done")}</button>
-        <button class="primary-btn" on:click={() => invoke("open_accessibility_prefs")}
-          >{$t("onboarding.ax_open")}</button
-        >
+
+      <div class="perm-divider"></div>
+
+      <!-- Accessibility -->
+      <div class="perm-section">
+        <div class="perm-header">
+          <span class="perm-name">{$t("onboarding.perms_ax")}</span>
+          <span class="perm-sdesc">{$t("onboarding.perms_ax_desc")}</span>
+        </div>
+        {#if axGranted}
+          <button class="perm-btn granted" disabled>{$t("onboarding.perms_granted")}</button>
+        {:else}
+          <button class="perm-btn" on:click={() => invoke("open_accessibility_prefs")}
+            >{$t("onboarding.ax_open")}</button
+          >
+        {/if}
       </div>
+
+      <button class="primary-btn" style="width:100%;margin-top:4px" on:click={next}
+        >{$t("onboarding.perms_continue")}</button
+      >
     </div>
 
     <!-- Final step: Done -->
@@ -302,19 +351,55 @@
 
 <style>
   .onboarding {
-    width: 320px;
-    background: rgba(30, 30, 32, 0.92);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 20px;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
-    padding: 24px 24px 20px;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: rgba(30, 30, 32, 1);
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+    padding: 36px 24px 20px;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    justify-content: center;
     gap: 16px;
+    overflow-y: auto;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
+  }
+  .win-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px;
+    -webkit-app-region: drag;
+  }
+  .win-close {
+    -webkit-app-region: no-drag;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 8px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+  }
+  .win-close:hover {
+    background: rgba(255, 95, 86, 0.85);
+    color: rgba(255, 255, 255, 0.9);
   }
   .dots {
     display: flex;
@@ -426,7 +511,7 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     padding: 10px 12px;
     border-radius: 12px;
     border: 1.5px solid rgba(255, 255, 255, 0.08);
@@ -450,15 +535,23 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    min-width: 0;
+    width: 100%;
   }
   .tab-name {
     font-size: 13px;
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .tab-desc {
     font-size: 10px;
     opacity: 0.55;
     font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* Config inputs */
@@ -544,37 +637,66 @@
     background: rgba(74, 222, 128, 0.65);
   }
 
-  /* Accessibility */
-  .ax-illustration {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    padding: 10px 12px;
-    flex-wrap: wrap;
-    justify-content: center;
+  /* OBS-style permissions page */
+  .perm-step {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .perm-step h2 {
+    align-self: center;
+  }
+  .perm-section {
     width: 100%;
-  }
-  .path-step {
     display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.55);
+    flex-direction: column;
+    gap: 10px;
   }
-  .path-step.highlight {
-    color: rgba(74, 222, 128, 0.85);
-    font-weight: 600;
+  .perm-header {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
   }
-  .path-arrow {
+  .perm-name {
     font-size: 13px;
-    color: rgba(255, 255, 255, 0.2);
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
   }
-  .path-icon {
-    display: flex;
-    align-items: center;
+  .perm-sdesc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    line-height: 1.4;
+  }
+  .perm-btn {
+    width: 100%;
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+  }
+  .perm-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+  .perm-btn.granted {
+    color: rgba(134, 239, 172, 0.85);
+    background: rgba(74, 222, 128, 0.06);
+    border-color: rgba(74, 222, 128, 0.18);
+    cursor: default;
+  }
+  .perm-btn.muted {
+    color: rgba(255, 255, 255, 0.25);
+    cursor: default;
+  }
+  .perm-divider {
+    width: 100%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
   }
   .done-check {
     margin-top: 8px;

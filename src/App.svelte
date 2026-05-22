@@ -57,6 +57,8 @@
   let showSettings = false;
   let injectionFailed = false;
   let needsAccessibilityRestart = false;
+  let needsMicPermission = false;
+  let micPollInterval: ReturnType<typeof setInterval> | null = null;
   let showOnboarding = false;
   let polishFailed = false;
   let shortcutConflict = "";
@@ -98,9 +100,30 @@
   const appWindow = appApi.window;
   const unlisten: UnlistenFn[] = [];
 
+  function startMicPoll() {
+    if (micPollInterval) return;
+    micPollInterval = setInterval(async () => {
+      const s = await appApi.invoke<string>("get_microphone_status").catch(() => "denied");
+      if (s === "authorized") {
+        clearInterval(micPollInterval!);
+        micPollInterval = null;
+        needsMicPermission = false;
+        await syncWindow();
+      }
+    }, 1000);
+  }
+
+  function stopMicPoll() {
+    if (micPollInterval) {
+      clearInterval(micPollInterval);
+      micPollInterval = null;
+    }
+  }
+
   function getUiState(): UiModelState {
     return {
       onboardingDone: !showOnboarding,
+      micGranted: !needsMicPermission,
       axGranted: !needsAccessibilityRestart,
       showSettings,
       appState,
@@ -159,6 +182,12 @@
 
       const axGranted = await appApi.invoke<boolean>("get_accessibility_status").catch(() => true);
       needsAccessibilityRestart = !axGranted;
+
+      const micStatus = await appApi.invoke<string>("get_microphone_status").catch(() => "authorized");
+      if (micStatus === "denied" || micStatus === "restricted") {
+        needsMicPermission = true;
+        startMicPoll();
+      }
 
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
       audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
@@ -258,6 +287,25 @@
           appState = "error";
           needsAccessibilityRestart = true;
           await syncWindow();
+          // Poll until accessibility is granted, then auto-dismiss
+          const axPoll = setInterval(async () => {
+            const granted = await appApi.invoke<boolean>("get_accessibility_status").catch(() => false);
+            if (granted) {
+              clearInterval(axPoll);
+              needsAccessibilityRestart = false;
+              appState = "idle";
+              errorMsg = "";
+              await syncWindow();
+            }
+          }, 1000);
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("microphone-denied", async () => {
+          needsMicPermission = true;
+          await syncWindow();
+          startMicPoll();
         })
       );
 
@@ -333,6 +381,7 @@
 
   onDestroy(() => {
     clearSuccessFlashTimer();
+    stopMicPoll();
     unlisten.forEach((fn) => fn());
   });
 
@@ -365,6 +414,12 @@
 
   async function handleAccessibilityDismiss() {
     needsAccessibilityRestart = false;
+    await syncWindow();
+  }
+
+  async function handleMicDismiss() {
+    needsMicPermission = false;
+    stopMicPoll();
     await syncWindow();
   }
 
@@ -427,6 +482,25 @@
     </div>
   {:else if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
+  {:else if needsMicPermission}
+    <div class="ax-banner">
+      <div class="ax-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <rect x="9" y="2" width="6" height="12" rx="3" stroke="rgba(251,191,36,0.85)" stroke-width="2"/>
+          <path d="M5 10a7 7 0 0 0 14 0" stroke="rgba(251,191,36,0.85)" stroke-width="2" stroke-linecap="round"/>
+          <line x1="12" y1="19" x2="12" y2="22" stroke="rgba(251,191,36,0.85)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="ax-text">
+        <p>{$t("onboarding.mic_denied")}</p>
+      </div>
+      <div class="ax-buttons">
+        <button class="primary" on:click={() => appApi.invoke("open_microphone_prefs")}
+          >{$t("onboarding.mic_open")}</button
+        >
+        <button on:click={handleMicDismiss}>{$t("ax.dismiss")}</button>
+      </div>
+    </div>
   {:else if needsAccessibilityRestart}
     <div class="ax-banner">
       <div class="ax-icon">

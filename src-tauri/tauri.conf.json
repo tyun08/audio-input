@@ -1,6 +1,6 @@
 {
   "productName": "Audio Input",
-  "version": "0.4.2",
+  "version": "0.4.4",
   "identifier": "com.audioinput.app",
   "build": {
     "frontendDist": "../dist",
@@ -40,7 +40,8 @@
     "macOS": {
       "infoPlist": "Info.plist",
       "entitlements": "entitlements.plist",
-      "signingIdentity": "-"
+      "signingIdentity": "Developer ID Application: Jingtao Yun (V8RQ99X6H4)",
+      "minimumSystemVersion": "12.0"
     }
   }
 }

@@ -61,6 +61,24 @@ async fn start_recording<R: Runtime>(
 ) {
     info!("Recording started...");
 
+    // Check microphone permission before starting
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        let mic_status: i64 = unsafe {
+            let media_type: *mut objc::runtime::Object =
+                msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+            msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
+        };
+        if mic_status == 2 || mic_status == 1 {
+            // denied or restricted — re-surface the banner instead of a truncated HUD error
+            warn!("Microphone permission denied (status={}), cannot record", mic_status);
+            set_tray_icon(app, "idle");
+            let _ = app.emit("microphone-denied", ());
+            return;
+        }
+    }
+
     let result = {
         match recorder_state.lock() {
             Ok(mut recorder) => recorder.start(app),
@@ -594,6 +612,76 @@ pub fn get_accessibility_status() -> bool {
 }
 
 #[tauri::command]
+pub async fn get_microphone_status() -> String {
+    #[cfg(target_os = "macos")]
+    {
+        use objc::{class, msg_send, sel, sel_impl};
+        unsafe {
+            let media_type: *mut objc::runtime::Object =
+                msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+            let status: i64 =
+                msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type];
+            let result = match status {
+                0 => "not_determined",
+                1 => "restricted",
+                2 => "denied",
+                3 => "authorized",
+                _ => "unknown",
+            };
+            tracing::debug!("get_microphone_status: raw={} result={}", status, result);
+            result.to_string()
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    "authorized".to_string()
+}
+
+#[tauri::command]
+pub async fn request_microphone_permission(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        // requestAccessForMediaType must run on the main thread so the NSRunLoop
+        // is available; calling it from a tokio thread silently denies with no dialog.
+        let h = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            use block::ConcreteBlock;
+            use objc::{class, msg_send, sel, sel_impl};
+            unsafe {
+                let media_type: *mut objc::runtime::Object =
+                    msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+                if let Some(cls) = objc::runtime::Class::get("AVCaptureDevice") {
+                    let app2 = h.clone();
+                    let block = ConcreteBlock::new(move |granted: bool| {
+                        info!("requestAccessForMediaType completed: granted={}", granted);
+                        if !granted {
+                            use tauri::Emitter as _;
+                            let _ = app2.emit("microphone-denied", ());
+                        }
+                    });
+                    let block = block.copy();
+                    info!("Calling requestAccessForMediaType on main thread");
+                    let _: () = msg_send![
+                        cls,
+                        requestAccessForMediaType: media_type
+                        completionHandler: &*block
+                    ];
+                }
+            }
+        });
+    }
+}
+
+#[tauri::command]
+pub fn open_microphone_prefs() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .spawn();
+    }
+}
+
+#[tauri::command]
 pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
     shared_state.lock().unwrap().to_string()
 }
@@ -898,9 +986,21 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
             // NSApplicationActivationPolicyRegular  = 0
             // NSApplicationActivationPolicyAccessory = 1
             if opaque {
+                // Settings / onboarding: normal window level so other windows can cover it.
+                // NSNormalWindowLevel = 0
+                for i in 0..count {
+                    let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
+                    let _: () = msg_send![win, setLevel: 0i64];
+                }
                 let _: () = msg_send![app, setActivationPolicy: 0i64];
                 let _: () = msg_send![app, activateIgnoringOtherApps: true];
             } else {
+                // HUD mode: floating so the indicator is always visible.
+                // NSFloatingWindowLevel = 3
+                for i in 0..count {
+                    let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
+                    let _: () = msg_send![win, setLevel: 3i64];
+                }
                 let _: () = msg_send![app, setActivationPolicy: 1i64];
             }
         }

@@ -1,3 +1,7 @@
+#[cfg(target_os = "macos")]
+#[link(name = "AVFoundation", kind = "framework")]
+extern "C" {}
+
 pub mod audio;
 mod commands;
 mod config;
@@ -101,32 +105,32 @@ pub fn run() {
                 }
             }
 
-            // macOS hardened runtime: explicitly request microphone access via AVFoundation.
-            // Without this, CoreAudio silently returns zero-filled buffers even when the
-            // com.apple.security.device.microphone entitlement is present.
+            // macOS: pre-load AVFoundation so AVCaptureDevice is available when
+            // request_microphone_permission is called from the frontend (after run loop starts).
             #[cfg(target_os = "macos")]
             {
-                use block::ConcreteBlock;
-                use objc::{class, msg_send, sel, sel_impl};
+                use objc::runtime::Class;
                 unsafe {
-                    // AVMediaTypeAudio = @"soun"
-                    let media_type: *mut objc::runtime::Object = msg_send![
-                        class!(NSString),
-                        stringWithUTF8String: c"soun".as_ptr()
-                    ];
-                    let block = ConcreteBlock::new(|granted: bool| {
-                        if granted {
-                            tracing::info!("Microphone access granted");
-                        } else {
-                            tracing::warn!("Microphone access denied by user");
+                    extern "C" {
+                        fn dlopen(
+                            filename: *const std::ffi::c_char,
+                            flag: std::ffi::c_int,
+                        ) -> *mut std::ffi::c_void;
+                    }
+                    const RTLD_LAZY: std::ffi::c_int = 0x1;
+                    const RTLD_GLOBAL: std::ffi::c_int = 0x8;
+                    let av_lib = dlopen(
+                        c"/System/Library/Frameworks/AVFoundation.framework/AVFoundation".as_ptr(),
+                        RTLD_LAZY | RTLD_GLOBAL,
+                    );
+                    if av_lib.is_null() {
+                        tracing::warn!("dlopen AVFoundation failed");
+                    } else {
+                        tracing::info!("AVFoundation loaded via dlopen");
+                        if Class::get("AVCaptureDevice").is_some() {
+                            tracing::info!("AVCaptureDevice class ready");
                         }
-                    });
-                    let block = block.copy();
-                    let _: () = msg_send![
-                        class!(AVCaptureDevice),
-                        requestAccessForMediaType: media_type
-                        completionHandler: &*block
-                    ];
+                    }
                 }
             }
 
@@ -296,6 +300,9 @@ pub fn run() {
             commands::get_sent_hud_timeout_secs,
             commands::save_sent_hud_timeout_secs,
             commands::stop_paste_monitor,
+            commands::get_microphone_status,
+            commands::open_microphone_prefs,
+            commands::request_microphone_permission,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");
