@@ -141,6 +141,8 @@ jobs:
     needs: [create-release, build-macos]
     runs-on: ubuntu-latest
     if: ${{ needs.build-macos.result == 'success' }}
+    permissions:
+      contents: write
 
     steps:
       - name: Publish release
