@@ -4,6 +4,7 @@ import { applyAppStateChange, deriveUiDecision, type UiModelState } from "./ui-m
 function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
   return {
     onboardingDone: true,
+    micGranted: true,
     axGranted: true,
     showSettings: false,
     appState: "idle",
@@ -48,7 +49,7 @@ describe("deriveUiDecision", () => {
     );
     expect(decision).toEqual({
       view: "onboarding",
-      window: { w: 370, h: 540 },
+      window: { w: 500, h: 560 },
       nativeOpaque: true,
       shouldShowWindow: true,
     });

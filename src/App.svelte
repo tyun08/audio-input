@@ -200,7 +200,9 @@
       // event from Rust is the authoritative signal — if paste truly fails,
       // it'll fire and we'll show the banner then.
 
-      const micStatus = await appApi.invoke<string>("get_microphone_status").catch(() => "authorized");
+      const micStatus = await appApi
+        .invoke<string>("get_microphone_status")
+        .catch(() => "authorized");
       if (micStatus === "denied" || micStatus === "restricted") {
         needsMicPermission = true;
         startMicPoll();
@@ -309,7 +311,9 @@
           await syncWindow();
           // Poll until accessibility is granted, then auto-dismiss
           const axPoll = setInterval(async () => {
-            const granted = await appApi.invoke<boolean>("get_accessibility_status").catch(() => false);
+            const granted = await appApi
+              .invoke<boolean>("get_accessibility_status")
+              .catch(() => false);
             if (granted) {
               clearInterval(axPoll);
               needsAccessibilityRestart = false;
@@ -506,9 +510,30 @@
     <div class="ax-banner">
       <div class="ax-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <rect x="9" y="2" width="6" height="12" rx="3" stroke="rgba(251,191,36,0.85)" stroke-width="2"/>
-          <path d="M5 10a7 7 0 0 0 14 0" stroke="rgba(251,191,36,0.85)" stroke-width="2" stroke-linecap="round"/>
-          <line x1="12" y1="19" x2="12" y2="22" stroke="rgba(251,191,36,0.85)" stroke-width="2" stroke-linecap="round"/>
+          <rect
+            x="9"
+            y="2"
+            width="6"
+            height="12"
+            rx="3"
+            stroke="rgba(251,191,36,0.85)"
+            stroke-width="2"
+          />
+          <path
+            d="M5 10a7 7 0 0 0 14 0"
+            stroke="rgba(251,191,36,0.85)"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <line
+            x1="12"
+            y1="19"
+            x2="12"
+            y2="22"
+            stroke="rgba(251,191,36,0.85)"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
         </svg>
       </div>
       <div class="ax-text">

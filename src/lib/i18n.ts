@@ -73,7 +73,8 @@ const messages: Record<Locale, Record<string, string>> = {
     // Onboarding
     "onboarding.start": "Get Started",
     "onboarding.perms_title": "Review Permissions",
-    "onboarding.perms_subtitle": "Audio Input needs these to work. You can grant them now or later.",
+    "onboarding.perms_subtitle":
+      "Audio Input needs these to work. You can grant them now or later.",
     "onboarding.perms_mic": "Microphone",
     "onboarding.perms_mic_desc": "Required to record your voice.",
     "onboarding.perms_ax": "Accessibility",
@@ -103,7 +104,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.ax_open": "Open System Settings",
     "onboarding.ready": "All Set!",
     "onboarding.shortcut_label": "Your shortcut",
-    "onboarding.shortcut_hint": "Press once to start recording · Press again to stop, transcribe, and paste at your cursor",
+    "onboarding.shortcut_hint":
+      "Press once to start recording · Press again to stop, transcribe, and paste at your cursor",
     "onboarding.settings_hint_mac": "Click the menu bar icon for settings.",
     "onboarding.settings_hint_win": "Click the system tray icon for settings.",
     "onboarding.finish": "Start Using",

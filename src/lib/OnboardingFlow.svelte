@@ -144,7 +144,12 @@
   <div class="win-bar" data-tauri-drag-region>
     <button class="win-close" on:click={finishOnboarding} aria-label="Close">
       <svg width="8" height="8" viewBox="0 0 8 8">
-        <path d="M1 1l6 6M7 1L1 7" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+        <path
+          d="M1 1l6 6M7 1L1 7"
+          stroke="rgba(0,0,0,0.5)"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        />
       </svg>
     </button>
   </div>
