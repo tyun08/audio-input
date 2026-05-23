@@ -23,14 +23,16 @@ pub async fn inject_text(text: &str) -> Result<()> {
 
     sleep(Duration::from_millis(100)).await;
 
-    if !check_accessibility_permission() {
-        // Prompt the user via the macOS system dialog (opens System Settings →
-        // Privacy & Security → Accessibility). The text is already on the
-        // clipboard so they can ⌘V manually while granting permission.
-        request_accessibility_permission();
-        bail!("Accessibility permission not granted — text copied to clipboard, press ⌘V to paste manually.");
-    }
-
+    // Do NOT pre-check AXIsProcessTrusted here. Even when Accessibility is
+    // granted, `AXIsProcessTrusted()` keeps returning false for the lifetime
+    // of the process if permission was granted *after* the process started
+    // (a long-standing macOS quirk). Pre-checking causes spurious "needs
+    // permission" warnings even on working setups.
+    //
+    // Just attempt the paste. If Accessibility really isn't granted, CGEventPost
+    // silently no-ops and the user can ⌘V manually from the clipboard (which we
+    // already populated above). The paste-detected NSEvent monitor will pick
+    // that up and dismiss the HUD.
     info!("simulating paste keypress");
     paste_via_keyevent()?;
 

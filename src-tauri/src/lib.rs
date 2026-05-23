@@ -181,31 +181,44 @@ pub fn run() {
 
                 #[cfg(target_os = "macos")]
                 let hid_ok = {
-                    let h = handle.clone();
-                    let ss = shared_state.clone();
-                    let rec = Arc::clone(&recorder);
-                    match macos_shortcut::install(&shortcut_str, move || {
-                        let app = h.clone();
-                        let state = ss.clone();
-                        let r = Arc::clone(&rec);
-                        tauri::async_runtime::spawn(async move {
-                            commands::toggle_recording(app, state, r).await;
-                        });
-                    }) {
-                        Ok(sh) => {
-                            app.manage(sh);
-                            info!(
-                                "Global shortcut {} registered via CGEventTap (HID-level, overrides other apps)",
-                                shortcut_str
-                            );
-                            true
-                        }
-                        Err(e) => {
-                            warn!(
-                                "CGEventTap shortcut failed: {} — falling back to Carbon hotkey",
-                                e
-                            );
-                            false
+                    // CGEventTap requires Accessibility permission. Calling it
+                    // before the user has granted Accessibility causes macOS to
+                    // silently add the app to the Accessibility list, which is
+                    // an unwanted UX side-effect on first launch. Skip the
+                    // HID-level tap until permission is in place — Carbon
+                    // hotkey works fine as a baseline.
+                    if !input::injector::check_accessibility_permission() {
+                        info!(
+                            "Accessibility not granted yet — using Carbon hotkey only (CGEventTap will be installed after permission is granted)"
+                        );
+                        false
+                    } else {
+                        let h = handle.clone();
+                        let ss = shared_state.clone();
+                        let rec = Arc::clone(&recorder);
+                        match macos_shortcut::install(&shortcut_str, move || {
+                            let app = h.clone();
+                            let state = ss.clone();
+                            let r = Arc::clone(&rec);
+                            tauri::async_runtime::spawn(async move {
+                                commands::toggle_recording(app, state, r).await;
+                            });
+                        }) {
+                            Ok(sh) => {
+                                app.manage(sh);
+                                info!(
+                                    "Global shortcut {} registered via CGEventTap (HID-level, overrides other apps)",
+                                    shortcut_str
+                                );
+                                true
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "CGEventTap shortcut failed: {} — falling back to Carbon hotkey",
+                                    e
+                                );
+                                false
+                            }
                         }
                     }
                 };

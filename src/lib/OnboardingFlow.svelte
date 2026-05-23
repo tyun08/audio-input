@@ -22,8 +22,6 @@
   let axGranted = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  let micRequestedOnce = false;
-
   $: {
     stopPolling();
     if (!isWindows && step === 2) {
@@ -34,12 +32,9 @@
   async function startPermissionsStep() {
     await refreshPermissions();
     pollTimer = setInterval(refreshPermissions, 1000);
-    // Auto-trigger mic permission the first time we reach this step
-    // if status is still undetermined — avoids requiring an extra button click.
-    if (!micRequestedOnce && micStatus === "not_determined") {
-      micRequestedOnce = true;
-      invoke("request_microphone_permission").catch(() => {});
-    }
+    // Permission requests are user-initiated only — users click "Grant Access"
+    // to trigger the macOS prompt. Auto-triggering surprises the user with a
+    // system dialog they didn't ask for.
   }
 
   function stopPolling() {

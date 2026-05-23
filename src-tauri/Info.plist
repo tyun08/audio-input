@@ -3,10 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Audio Input 需要麦克风权限以进行语音输入转录。</string>
+  <string>Audio Input needs microphone access to record your voice for transcription.</string>
   <key>LSUIElement</key>
   <true/>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
 </dict>
 </plist>

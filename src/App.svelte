@@ -120,6 +120,18 @@
     }
   }
 
+  let audioDevicesLoaded = false;
+  async function ensureAudioDevicesLoaded() {
+    if (audioDevicesLoaded) return;
+    audioDevicesLoaded = true;
+    audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
+  }
+
+  // Lazily enumerate audio devices the first time the Settings panel opens.
+  // Doing this on startup would trigger macOS's microphone TCC dialog before
+  // the user has consented via the onboarding flow.
+  $: if (showSettings) ensureAudioDevicesLoaded();
+
   function getUiState(): UiModelState {
     return {
       onboardingDone: !showOnboarding,
@@ -190,7 +202,10 @@
       }
 
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
-      audioDevices = await appApi.invoke<string[]>("list_audio_devices").catch(() => []);
+      // NOTE: do NOT enumerate audio devices on startup — cpal's
+      // host.input_devices() triggers macOS to show the microphone TCC dialog,
+      // which surprises the user before they've reached the onboarding step.
+      // We populate the list lazily when the Settings panel is opened.
       autostartEnabled = await appApi.invoke<boolean>("get_autostart_enabled").catch(() => false);
       screenshotContextEnabled = await appApi
         .invoke<boolean>("get_screenshot_context_enabled")
