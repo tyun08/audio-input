@@ -17,3 +17,11 @@ rust_out
 *.pyc
 .python-version
 imk-helper/
+
+# Editor / AI assistant scratch directories
+.claude/
+.deepseek/
+
+# Local-only signing certificates — never commit
+*.cer
+*.p12
