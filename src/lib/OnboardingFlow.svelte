@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { providers, getDefaultConfig, getProvider, groupFields } from "./providers";
   import { t, locale, type Locale } from "./i18n";
 
@@ -97,10 +98,37 @@
     step = totalSteps;
   }
 
+  let onboardingFinished = false;
   async function finishOnboarding() {
+    if (onboardingFinished) return;
+    onboardingFinished = true;
     await invoke("save_onboarding_completed");
     dispatch("done");
   }
+
+  // On the final "All Set" step, if the user presses the shortcut (Rust emits
+  // a state-change to "recording"), auto-finish onboarding so they don't have
+  // to first click "Start Using" before their first recording works.
+  let unlistenStateChange: UnlistenFn | null = null;
+  $: if (step === totalSteps && !unlistenStateChange) {
+    listen<string>("state-change", (e) => {
+      if (e.payload === "recording" || e.payload === "processing") {
+        finishOnboarding();
+      }
+    }).then((un) => {
+      if (onboardingFinished) {
+        un();
+      } else {
+        unlistenStateChange = un;
+      }
+    });
+  }
+  onDestroy(() => {
+    if (unlistenStateChange) {
+      unlistenStateChange();
+      unlistenStateChange = null;
+    }
+  });
 
   function next() {
     if (step < totalSteps) step++;
