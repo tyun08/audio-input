@@ -34,7 +34,7 @@
   async function startPermissionsStep() {
     await refreshPermissions();
     pollTimer = setInterval(refreshPermissions, 1000);
-    // Auto-trigger mic permission dialog the first time we reach this step
+    // Auto-trigger mic permission the first time we reach this step
     // if status is still undetermined — avoids requiring an extra button click.
     if (!micRequestedOnce && micStatus === "not_determined") {
       micRequestedOnce = true;
@@ -119,7 +119,11 @@
 <div class="onboarding">
   <!-- Draggable title bar with close button -->
   <div class="win-bar" data-tauri-drag-region>
-    <button class="win-close" on:click={finishOnboarding} title="Close">✕</button>
+    <button class="win-close" on:click={finishOnboarding} aria-label="Close">
+      <svg width="8" height="8" viewBox="0 0 8 8">
+        <path d="M1 1l6 6M7 1L1 7" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
   </div>
 
   <div class="dots">
@@ -281,6 +285,23 @@
       <h2>{$t("onboarding.perms_title")}</h2>
       <p class="desc" style="text-align:center">{$t("onboarding.perms_subtitle")}</p>
 
+      <!-- Accessibility -->
+      <div class="perm-section">
+        <div class="perm-header">
+          <span class="perm-name">{$t("onboarding.perms_ax")}</span>
+          <span class="perm-sdesc">{$t("onboarding.perms_ax_desc")}</span>
+        </div>
+        {#if axGranted}
+          <button class="perm-btn granted" disabled>{$t("onboarding.perms_granted")}</button>
+        {:else}
+          <button class="perm-btn" on:click={() => invoke("open_accessibility_prefs")}
+            >{$t("onboarding.ax_open")}</button
+          >
+        {/if}
+      </div>
+
+      <div class="perm-divider"></div>
+
       <!-- Microphone -->
       <div class="perm-section">
         <div class="perm-header">
@@ -296,23 +317,6 @@
         {:else}
           <button class="perm-btn" on:click={() => invoke("request_microphone_permission")}
             >{$t("onboarding.perms_request")}</button
-          >
-        {/if}
-      </div>
-
-      <div class="perm-divider"></div>
-
-      <!-- Accessibility -->
-      <div class="perm-section">
-        <div class="perm-header">
-          <span class="perm-name">{$t("onboarding.perms_ax")}</span>
-          <span class="perm-sdesc">{$t("onboarding.perms_ax_desc")}</span>
-        </div>
-        {#if axGranted}
-          <button class="perm-btn granted" disabled>{$t("onboarding.perms_granted")}</button>
-        {:else}
-          <button class="perm-btn" on:click={() => invoke("open_accessibility_prefs")}
-            >{$t("onboarding.ax_open")}</button
           >
         {/if}
       </div>
@@ -376,7 +380,7 @@
     height: 36px;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     padding: 0 12px;
     -webkit-app-region: drag;
   }
@@ -385,9 +389,9 @@
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
+    background: #ff5f57;
     border: none;
-    color: rgba(255, 255, 255, 0.35);
+    color: transparent;
     font-size: 8px;
     line-height: 1;
     cursor: pointer;
@@ -395,11 +399,17 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    transition: background 0.15s, color 0.15s;
+    transition: filter 0.1s;
+  }
+  .win-close svg {
+    opacity: 0;
+    transition: opacity 0.1s;
   }
   .win-close:hover {
-    background: rgba(255, 95, 86, 0.85);
-    color: rgba(255, 255, 255, 0.9);
+    filter: brightness(0.88);
+  }
+  .win-close:hover svg {
+    opacity: 1;
   }
   .dots {
     display: flex;

@@ -71,7 +71,6 @@ async fn start_recording<R: Runtime>(
             msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
         };
         if mic_status == 2 || mic_status == 1 {
-            // denied or restricted — re-surface the banner instead of a truncated HUD error
             warn!("Microphone permission denied (status={}), cannot record", mic_status);
             set_tray_icon(app, "idle");
             let _ = app.emit("microphone-denied", ());
@@ -640,8 +639,9 @@ pub async fn get_microphone_status() -> String {
 pub async fn request_microphone_permission(app: AppHandle) {
     #[cfg(target_os = "macos")]
     {
-        // requestAccessForMediaType must run on the main thread so the NSRunLoop
-        // is available; calling it from a tokio thread silently denies with no dialog.
+        // Standard TCC dialog (works on macOS 15 and earlier, and on macOS 26
+        // once entitlements are correct). Must run on the main thread so the
+        // run loop is available — calling from a tokio thread silently denies.
         let h = app.clone();
         let _ = app.run_on_main_thread(move || {
             use block::ConcreteBlock;
@@ -670,6 +670,7 @@ pub async fn request_microphone_permission(app: AppHandle) {
         });
     }
 }
+
 
 #[tauri::command]
 pub fn open_microphone_prefs() {
