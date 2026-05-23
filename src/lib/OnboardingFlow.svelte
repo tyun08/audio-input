@@ -337,12 +337,29 @@
         </svg>
       </div>
       <h2>{$t("onboarding.ready")}</h2>
-      <p class="desc">
-        {$t(
-          isWindows ? "onboarding.ready_win" : "onboarding.ready_mac",
-          isWindows ? "Ctrl+Shift+Space" : "⌘⇧Space"
-        )}
+
+      <div class="shortcut-display">
+        <span class="shortcut-label">{$t("onboarding.shortcut_label")}</span>
+        <div class="key-row">
+          {#if isWindows}
+            <kbd class="key">Ctrl</kbd>
+            <span class="plus">+</span>
+            <kbd class="key">Shift</kbd>
+            <span class="plus">+</span>
+            <kbd class="key key-wide">Space</kbd>
+          {:else}
+            <kbd class="key">⌘</kbd>
+            <kbd class="key">⇧</kbd>
+            <kbd class="key key-wide">Space</kbd>
+          {/if}
+        </div>
+        <p class="shortcut-hint">{$t("onboarding.shortcut_hint")}</p>
+      </div>
+
+      <p class="settings-hint">
+        {$t(isWindows ? "onboarding.settings_hint_win" : "onboarding.settings_hint_mac")}
       </p>
+
       <button class="primary-btn" on:click={finishOnboarding}>{$t("onboarding.finish")}</button>
     </div>
   {/if}
@@ -705,6 +722,74 @@
   }
   .done-check {
     margin-top: 8px;
+  }
+
+  /* Final "All Set" — prominent keyboard shortcut display */
+  .shortcut-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    margin: 4px 0 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 320px;
+  }
+  .shortcut-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .key-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+    border-radius: 7px;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.92);
+    box-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  .key-wide {
+    min-width: 64px;
+    padding: 0 14px;
+  }
+  .plus {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.35);
+    font-weight: 400;
+  }
+  .shortcut-hint {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+    margin: 0;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .settings-hint {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.4);
+    margin: 0;
+    text-align: center;
   }
 
   /* Buttons */

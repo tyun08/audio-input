@@ -192,8 +192,13 @@
       const state = await appApi.invoke<string>("get_app_state").catch(() => "idle");
       handleStateChange(state);
 
-      const axGranted = await appApi.invoke<boolean>("get_accessibility_status").catch(() => true);
-      needsAccessibilityRestart = !axGranted;
+      // Do NOT pre-flag needsAccessibilityRestart from AXIsProcessTrusted at
+      // startup. That API can return false even when permission is actually
+      // granted (it doesn't update during the lifetime of a process whose
+      // permission was granted after launch), producing a permanent warning
+      // banner the user has to dismiss every session. The accessibility-missing
+      // event from Rust is the authoritative signal — if paste truly fails,
+      // it'll fire and we'll show the banner then.
 
       const micStatus = await appApi.invoke<string>("get_microphone_status").catch(() => "authorized");
       if (micStatus === "denied" || micStatus === "restricted") {

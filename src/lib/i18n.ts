@@ -102,10 +102,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.ax_done": "Done",
     "onboarding.ax_open": "Open System Settings",
     "onboarding.ready": "All Set!",
-    "onboarding.ready_mac":
-      "Press {0} to start recording. Release to auto-transcribe and type at cursor.\nClick the menu bar icon for settings.",
-    "onboarding.ready_win":
-      "Press {0} to start recording. Release to auto-transcribe and type at cursor.\nClick the system tray icon for settings.",
+    "onboarding.shortcut_label": "Your shortcut",
+    "onboarding.shortcut_hint": "Hold to record · Release to transcribe and paste",
+    "onboarding.settings_hint_mac": "Click the menu bar icon for settings.",
+    "onboarding.settings_hint_win": "Click the system tray icon for settings.",
     "onboarding.finish": "Start Using",
 
     // HUD (RecordingIndicator)
@@ -219,10 +219,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.ax_done": "已完成",
     "onboarding.ax_open": "打开系统设置",
     "onboarding.ready": "准备就绪！",
-    "onboarding.ready_mac":
-      "按下 {0} 开始录音，松开自动转文字并输入到光标位置。\n点击菜单栏图标可打开设置。",
-    "onboarding.ready_win":
-      "按下 {0} 开始录音，松开自动转文字并输入到光标位置。\n点击系统托盘图标可打开设置。",
+    "onboarding.shortcut_label": "你的快捷键",
+    "onboarding.shortcut_hint": "按住录音 · 松开自动转文字并粘贴",
+    "onboarding.settings_hint_mac": "点击菜单栏图标可打开设置",
+    "onboarding.settings_hint_win": "点击系统托盘图标可打开设置",
     "onboarding.finish": "开始使用",
 
     "hud.idle": "就绪",
