@@ -97,36 +97,50 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          # Decode the base64-encoded P12 and import into a temporary keychain.
-          # Using a dedicated keychain (rather than the default login one)
-          # keeps the certificate isolated and lets us nuke it cleanly at the
-          # end of the job.
+          set -e
           CERT_PATH="$RUNNER_TEMP/cert.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
 
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
 
+          # Create + configure a dedicated keychain (isolated from the login one)
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+          # Put our keychain in the search list BEFORE the import — some tools
+          # only consider identities in keychains on the active search list.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # Import the P12. -A lets any application use the key without
+          # prompting (we don't have a UI on CI to confirm). -T also gives
+          # codesign/security explicit allow.
           security import "$CERT_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
             -T /usr/bin/codesign \
-            -T /usr/bin/security
+            -T /usr/bin/security \
+            -T /usr/bin/productbuild
 
+          # Allow the imported private key to be used without prompting (needed
+          # for codesign in non-interactive CI).
           security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            -S apple-tool:,apple:,codesign:,productbuild: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
 
-          # Put our keychain first in the search list so codesign finds the cert.
-          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
+          # Diagnostics
+          echo "=== Search list ==="
+          security list-keychains -d user
+          echo "=== All identities in build keychain ==="
+          security find-identity "$KEYCHAIN_PATH"
+          echo "=== Valid codesigning identities (system-wide search) ==="
+          security find-identity -v -p codesigning
 
-          # Sanity check that the identity is available.
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-
-          rm "$CERT_PATH"
+          rm -f "$CERT_PATH"
 
       - name: Build and upload to release
         uses: tauri-apps/tauri-action@v0
