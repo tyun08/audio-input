@@ -597,6 +597,7 @@
       {retryableSessionId}
       {retrying}
       {transcriptionSuccessFlash}
+      successFlashDurationMs={TRANSCRIPTION_SUCCESS_FLASH_MS}
       on:retry={handleRetry}
       on:dismiss={handleDismiss}
       on:clipboardCopy={handleClipboardCopy}

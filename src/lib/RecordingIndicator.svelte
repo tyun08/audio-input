@@ -12,6 +12,8 @@
   export let retrying = false;
   /** After inject succeeds: brief green check (idle + flash). */
   export let transcriptionSuccessFlash = false;
+  /** Total ms the success flash will be shown — drives the countdown bar. */
+  export let successFlashDurationMs = 5000;
 
   const dispatch = createEventDispatcher<{
     retry: void;
@@ -214,6 +216,14 @@
         {$t("hud.copy_manually")}
       </button>
     </div>
+    <!-- Auto-dismiss countdown: bar shrinks from right to left over the
+         configured duration. CSS animation restarts whenever this block
+         is mounted (i.e., each time transcriptionSuccessFlash toggles true). -->
+    <div
+      class="success-countdown"
+      style="--countdown-duration: {successFlashDurationMs}ms"
+      aria-hidden="true"
+    ></div>
   {:else}
     <svg class="mic-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-label="Ready">
       <rect
@@ -341,6 +351,33 @@
 
   .btn.success-btn:hover:not(:disabled) {
     background: rgba(62, 207, 142, 0.28);
+  }
+
+  /* Auto-dismiss countdown bar — shrinks right-to-left over the configured
+     duration. GPU-accelerated via transform: scaleX (cheaper than width). */
+  .success-countdown {
+    height: 2px;
+    width: 100%;
+    background: rgba(62, 207, 142, 0.85);
+    border-radius: 1px;
+    transform-origin: left center;
+    animation: success-countdown-shrink var(--countdown-duration, 5000ms) linear forwards;
+  }
+  @keyframes success-countdown-shrink {
+    from {
+      transform: scaleX(1);
+      opacity: 0.85;
+    }
+    to {
+      transform: scaleX(0);
+      opacity: 0.4;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .success-countdown {
+      animation: none;
+      transform: scaleX(0);
+    }
   }
 
   /* Retry panel */
