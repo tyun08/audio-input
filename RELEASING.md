@@ -5,10 +5,12 @@ How code lands in users' hands. **Read this before tagging anything.**
 ## Branches
 
 - `main` — protected, always shippable. Tags on `main` produce public releases.
-- `development` — daily work branch. Everything starts here.
-- `feat/<short-name>` or `fix/<short-name>` — optional per-feature branches; merge into `development` first.
+- `development` — daily work branch. Short-lived fixes / features that can ship in the next routine release. Should stay close to `main`; merge to `main` whenever a release is cut.
+- `feat/<short-name>` or `fix/<short-name>` — per-feature branches off `development`. Merge back into `development` when done.
+- `develop-<topic>` — **long-lived parallel feature branches** for work that will span many weeks and shouldn't block `development`'s rapid integration loop. Currently active:
+  - **`develop-imk`** — InputMethodKit integration (see [`docs/IMK_PLAN.md`](docs/IMK_PLAN.md)). Rebase onto `main` periodically to absorb shipped fixes; merge to `main` only when a phase is complete + smoke-tested via the test-release workflow.
 
-The "tag from main, develop on development" pattern keeps `main`'s history a list of shipped versions and keeps half-broken WIP off the public release timeline.
+The "tag from main, develop on development, isolate big features on develop-*" pattern keeps `main`'s history a list of shipped versions, keeps half-broken WIP off the public release timeline, and stops multi-week features from sitting on `development` and blocking small fixes from shipping.
 
 ## Day-to-day
 
@@ -20,6 +22,38 @@ git push origin development
 ```
 
 Push to `development` triggers the regular `Tests` workflow (unit tests, lint, integration tests). It does **not** create a release.
+
+## Long-lived feature branches (`develop-*`)
+
+Use a `develop-<topic>` branch when:
+
+- The feature will take more than a release cycle to finish
+- Landing it half-done on `development` would block routine fixes from shipping
+- The work has its own test suite / infra (e.g. a separate Swift package, a new daemon)
+
+Example: `develop-imk` carries the InputMethodKit integration. It's branched off `main`, has its own Swift package under `imk-helper/`, and accumulates Phase 2 → Phase 5 of `docs/IMK_PLAN.md` independently of whatever's shipping out of `development`.
+
+**Per-week maintenance on a `develop-*` branch:**
+
+```bash
+git checkout develop-imk
+git fetch origin
+git rebase origin/main      # absorb any shipped fixes; git auto-skips
+                            # commits that already landed via cherry-pick
+git push --force-with-lease origin develop-imk
+```
+
+**Shipping a phase from a `develop-*` branch:**
+
+1. Smoke-test via the test-release workflow (see next section). Pick the `develop-imk` branch in the "Run workflow" dialog.
+2. Once green, rebase one more time onto current `main`.
+3. Fast-forward `main`:
+   ```bash
+   git checkout main
+   git merge --ff-only develop-imk   # or merge -X theirs if convergent commits exist
+   ```
+4. Bump version + tag like any other release (see "Shipping a real release").
+5. The `develop-*` branch stays alive — Phase N+1 picks up from `main`'s new tip.
 
 ## Verifying a build before release
 
