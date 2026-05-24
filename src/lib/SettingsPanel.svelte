@@ -924,6 +924,12 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
     transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  /* Track is 44px, knob 20px, 3px padding each side → 18px travel.
+     Without this the knob stayed at left:3px even when .toggle.on was
+     set, so toggles only read as "off / on" via background color. */
+  .toggle.on .toggle-knob {
+    transform: translateX(18px);
+  }
 
   /* Save / action row */
   .action-row {

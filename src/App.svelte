@@ -73,6 +73,11 @@
   let screenshotContextEnabled = false;
   let showIdleHud = false;
   let sentHudTimeoutSecs = 5;
+  // Guard so the reactive showIdleHud → syncWindow trigger below doesn't
+  // fire during the initial fetch (when showIdleHud transitions from its
+  // declared `false` to whatever the backend stored). Only react to user
+  // toggles after onMount has finished hydrating.
+  let appHydrated = false;
 
   // Audio waveform — rolling buffer of recent RMS levels (0..1) for the HUD
   const WAVEFORM_BAR_COUNT = 20;
@@ -417,7 +422,21 @@
         await resizeTo(AX_W, AX_H);
       } catch {}
     }
+
+    // From here on, treat showIdleHud changes as user-initiated and
+    // re-derive the window state immediately (see reactive block below).
+    appHydrated = true;
   });
+
+  // The HUD's visibility while idle is controlled by showIdleHud, which
+  // gets two-way-bound from SettingsPanel. Without this trigger, toggling
+  // the setting only takes visible effect after the next state-change /
+  // listener fired syncWindow() — so users would toggle and see nothing
+  // change until they recorded once. (Issue #45.)
+  $: if (appHydrated) {
+    showIdleHud;
+    syncWindow();
+  }
 
   onDestroy(() => {
     clearSuccessFlashTimer();
