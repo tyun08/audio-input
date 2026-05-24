@@ -57,6 +57,13 @@ git commit -m "RELEASE 0.4.X"
 git push origin main
 git tag -a v0.4.X -m "Release 0.4.X"
 git push origin v0.4.X
+
+# 4. CRITICAL: sync development back to main so the next round of dev
+#    work doesn't diverge. Without this, your next merge --ff-only will
+#    fail because main has the RELEASE commit that development lacks.
+git checkout development
+git merge --ff-only main
+git push origin development
 ```
 
 The push of `v0.4.X` triggers `release.yml`, which:
