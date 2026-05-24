@@ -72,6 +72,13 @@ Test-release runs **never** touch the Homebrew tap and **never** publish to GitH
 
 ## Shipping a real release
 
+> ⚠️ **NEVER use the GitHub web UI's "Draft a new release" button.** It
+> creates the release object before the workflow runs, then the workflow's
+> `create-release` step makes a SECOND release for the same tag (GitHub
+> allows it). Artifacts split between the two; the homebrew tap update
+> looks at the wrong one. This is exactly how v0.4.11 broke. The workflow
+> now fails fast if a release already exists for the tag — don't bypass it.
+
 Once `development` is verified:
 
 ```bash

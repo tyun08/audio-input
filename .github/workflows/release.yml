@@ -33,9 +33,53 @@ jobs:
           fi
           echo "Tag commit is on main — proceeding."
 
+      - name: Refuse if a release already exists for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Catches the failure mode where someone went to the web UI
+          # and clicked "Draft a new release" with this tag. That creates
+          # the release object BEFORE the workflow runs, then our
+          # create-release step adds a SECOND release for the same tag —
+          # GitHub allows it, but artifacts then split across the two and
+          # update-cask downloads from the wrong one.
+          if gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::A release for ${GITHUB_REF_NAME} already exists. Did you use the web UI to create it? Only tag pushes should create releases. Delete the existing release and re-push the tag."
+            exit 1
+          fi
+          echo "No pre-existing release for ${GITHUB_REF_NAME} — safe to proceed."
+
       - name: Extract version
         id: meta
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify source version matches tag
+        run: |
+          # If the tag is v0.5.0 but package.json / Cargo.toml / tauri.conf.json
+          # still say 0.4.x, the binary will be misbranded — internal version
+          # string says 0.4.x but tauri-action labels artifacts 0.5.0.
+          # Catches the case where someone tagged without running the
+          # version-bump commit from RELEASING.md.
+          TAG_V="${GITHUB_REF_NAME#v}"
+          # Allow grep-style match; jq would be cleaner but jq isn't on
+          # ubuntu-latest without setup. sed extracts the version field.
+          PKG_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
+          CARGO_V=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -1)
+          TAURI_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
+          echo "tag:                ${TAG_V}"
+          echo "package.json:       ${PKG_V}"
+          echo "Cargo.toml:         ${CARGO_V}"
+          echo "tauri.conf.json:    ${TAURI_V}"
+          fail=0
+          [ "${TAG_V}" = "${PKG_V}" ] || { echo "::error::package.json version (${PKG_V}) does not match tag (${TAG_V})"; fail=1; }
+          [ "${TAG_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match tag (${TAG_V})"; fail=1; }
+          [ "${TAG_V}" = "${TAURI_V}" ] || { echo "::error::tauri.conf.json version (${TAURI_V}) does not match tag (${TAG_V})"; fail=1; }
+          if [ "${fail}" -eq 1 ]; then
+            echo ""
+            echo "::error::Bump the version in package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json + commit, THEN tag — see RELEASING.md."
+            exit 1
+          fi
+          echo "All version fields match the tag — proceeding."
 
       - name: Generate release notes
         id: notes
