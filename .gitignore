@@ -16,7 +16,11 @@ rust_out
 
 *.pyc
 .python-version
-imk-helper/
+
+# Swift build artifacts inside imk-helper/ (sources ARE committed)
+imk-helper/.build/
+imk-helper/.swiftpm/
+imk-helper/Package.resolved
 
 # Editor / AI assistant scratch directories
 .claude/

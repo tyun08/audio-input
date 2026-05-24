@@ -22,11 +22,12 @@ tauri-plugin-process = "2"
 cpal = "0.15"
 hound = "3.5"
 reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "native-tls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+thiserror = "1"
 dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -39,6 +40,9 @@ image = { version = "0.24", default-features = false, features = ["jpeg"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
 block = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 enigo = "0.2"
