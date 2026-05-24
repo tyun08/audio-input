@@ -67,11 +67,17 @@ pub struct LiteLLMClient {
     api_base: String,
     api_key: String,
     model: String,
+    provider_label: String,
     client: reqwest::Client,
 }
 
 impl LiteLLMClient {
-    pub fn new(api_base: String, api_key: String, model: String) -> Self {
+    pub fn new(
+        api_base: String,
+        api_key: String,
+        model: String,
+        provider_label: String,
+    ) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -81,6 +87,7 @@ impl LiteLLMClient {
             api_base,
             api_key,
             model,
+            provider_label,
             client,
         }
     }
@@ -93,8 +100,9 @@ impl LiteLLMClient {
         }
 
         info!(
-            "Sending {} bytes to LiteLLM ({}) for transcription",
+            "Sending {} bytes to {} ({}) for transcription",
             wav_bytes.len(),
+            self.provider_label,
             self.model
         );
 
@@ -121,7 +129,7 @@ impl LiteLLMClient {
             .multipart(form)
             .send()
             .await
-            .context("LiteLLM API request failed")?;
+            .with_context(|| format!("{} API request failed", self.provider_label))?;
 
         let status = resp.status();
         let body = resp.text().await.context("Failed to read response")?;
@@ -130,7 +138,7 @@ impl LiteLLMClient {
             let err_msg = serde_json::from_str::<ApiError>(&body)
                 .map(|e| e.error.message)
                 .unwrap_or_else(|_| format!("HTTP {}: {}", status, body));
-            bail!("LiteLLM API error: {}", err_msg);
+            bail!("{} API error: {}", self.provider_label, err_msg);
         }
 
         let result: TranscriptionResponse =
