@@ -333,9 +333,20 @@ jobs:
           VERSION=${{ steps.sha.outputs.version }}
           SHA_ARM=${{ steps.sha.outputs.sha256_arm }}
           SHA_INTEL=${{ steps.sha.outputs.sha256_intel }}
-          sed -i "s/version \".*\"/version \"${VERSION}\"/" tap/Casks/audio-input.rb
-          sed -i "0,/sha256 \".*\"/{s/sha256 \".*\"/sha256 \"${SHA_ARM}\"/}" tap/Casks/audio-input.rb
-          sed -i "0,/sha256 \".*\"/{!s/sha256 \".*\"/sha256 \"${SHA_INTEL}\"/}" tap/Casks/audio-input.rb
+          # Cask has per-arch blocks: on_arm do ... end / on_intel do ... end.
+          # Use block-scoped addresses so each arch gets its own version + sha
+          # updated independently. The previous "0,/sha256/{!s/.../}" hack
+          # silently no-op'd in GNU sed and shipped a stale intel sha.
+          sed -i "/on_arm do/,/^  end$/ {
+            s/version \".*\"/version \"${VERSION}\"/
+            s/sha256 \".*\"/sha256 \"${SHA_ARM}\"/
+          }" tap/Casks/audio-input.rb
+          sed -i "/on_intel do/,/^  end$/ {
+            s/version \".*\"/version \"${VERSION}\"/
+            s/sha256 \".*\"/sha256 \"${SHA_INTEL}\"/
+          }" tap/Casks/audio-input.rb
+          echo "=== Updated cask ==="
+          head -16 tap/Casks/audio-input.rb
 
       - name: Commit and push
         run: |
