@@ -1,11 +1,21 @@
 use std::sync::{Arc, Mutex};
 use tauri::{
     image::Image,
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter as _, Manager, Runtime,
 };
-use tracing::info;
+use tracing::{info, warn};
+
+/// Prefix used on menu item IDs in the "Recent transcriptions" submenu.
+/// The suffix is the history entry id, which the event handler looks up.
+const RECENT_ID_PREFIX: &str = "history-copy:";
+
+/// Number of recent completed transcriptions to surface in the tray submenu.
+const RECENT_MAX: usize = 8;
+
+/// Max chars to display per submenu item (full text remains on the clipboard).
+const RECENT_PREVIEW_CHARS: usize = 48;
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let polish_enabled = app
@@ -84,6 +94,13 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                     }
                 }
             }
+            other if other.starts_with(RECENT_ID_PREFIX) => {
+                let id = &other[RECENT_ID_PREFIX.len()..];
+                let ok = copy_history_entry_to_clipboard(app, id);
+                if ok {
+                    let _ = app.emit("history-copied", id);
+                }
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -114,6 +131,12 @@ pub fn build_tray_menu<R: Runtime>(
         None::<&str>,
     )?;
     let sep1 = PredefinedMenuItem::separator(app)?;
+
+    // "Recent transcriptions" submenu — click to copy that entry's text back
+    // to the clipboard. Useful when an auto-paste silently dropped the text.
+    let recent = build_recent_submenu(app)?;
+
+    let sep2 = PredefinedMenuItem::separator(app)?;
     let polish = CheckMenuItem::with_id(
         app,
         "toggle-polish",
@@ -122,23 +145,151 @@ pub fn build_tray_menu<R: Runtime>(
         polish_enabled,
         None::<&str>,
     )?;
-    let sep2 = PredefinedMenuItem::separator(app)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
-    let sep3 = PredefinedMenuItem::separator(app)?;
+    let sep4 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
     #[cfg(debug_assertions)]
     let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
 
-    let mut items: Vec<&dyn tauri::menu::IsMenuItem<R>> =
-        vec![&last, &sep1, &polish, &sep2, &settings, &open_log];
+    let mut items: Vec<&dyn IsMenuItem<R>> = vec![
+        &last, &sep1, &recent, &sep2, &polish, &sep3, &settings, &open_log,
+    ];
     #[cfg(debug_assertions)]
     items.push(&devtools);
-    items.push(&sep3);
+    items.push(&sep4);
     items.push(&quit);
 
     Menu::with_items(app, &items)
+}
+
+/// Builds the "Recent ▸" submenu. Picks the most recent N successfully-
+/// completed history entries, with the newest first. Each item's ID encodes
+/// the history id so the menu-event handler can resolve back to the text.
+fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Submenu<R>> {
+    use crate::history::{HistoryState, HistoryStatus};
+
+    let mut recent: Vec<(String, String)> = Vec::new(); // (id, preview)
+    if let Some(state) = app.try_state::<HistoryState>() {
+        if let Ok(store) = state.lock() {
+            // entries are stored chronologically; iterate newest-first.
+            for entry in store.entries().iter().rev() {
+                if entry.status != HistoryStatus::Completed {
+                    continue;
+                }
+                let text = if !entry.polished_text.is_empty() {
+                    &entry.polished_text
+                } else {
+                    &entry.raw_text
+                };
+                if text.is_empty() {
+                    continue;
+                }
+                recent.push((entry.id.clone(), preview_text(text)));
+                if recent.len() >= RECENT_MAX {
+                    break;
+                }
+            }
+        }
+    }
+
+    let builder = tauri::menu::SubmenuBuilder::with_id(app, "recent-submenu", "Recent");
+    if recent.is_empty() {
+        let empty = MenuItem::with_id(app, "recent-empty", "(no history yet)", false, None::<&str>)?;
+        builder.item(&empty).build()
+    } else {
+        let mut items: Vec<MenuItem<R>> = Vec::with_capacity(recent.len());
+        for (id, preview) in &recent {
+            let item_id = format!("{RECENT_ID_PREFIX}{id}");
+            items.push(MenuItem::with_id(app, &item_id, preview, true, None::<&str>)?);
+        }
+        let mut b = builder;
+        for it in &items {
+            b = b.item(it);
+        }
+        b.build()
+    }
+}
+
+/// Truncate transcription text for tray display: collapse whitespace, cap to
+/// RECENT_PREVIEW_CHARS, append "…" when cut.
+fn preview_text(s: &str) -> String {
+    let collapsed: String = s
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let chars: Vec<char> = collapsed.chars().collect();
+    if chars.len() > RECENT_PREVIEW_CHARS {
+        let mut out: String = chars[..RECENT_PREVIEW_CHARS].iter().collect();
+        out.push('…');
+        out
+    } else {
+        collapsed
+    }
+}
+
+/// Look up a history entry by id and copy its text to the system clipboard.
+/// Returns true on success. Called from the tray menu event handler when the
+/// user clicks an item in the "Recent" submenu.
+pub fn copy_history_entry_to_clipboard<R: Runtime>(app: &AppHandle<R>, id: &str) -> bool {
+    use crate::history::{HistoryState, HistoryStatus};
+
+    let state = match app.try_state::<HistoryState>() {
+        Some(s) => s,
+        None => {
+            warn!("history state not available");
+            return false;
+        }
+    };
+    let store = match state.lock() {
+        Ok(s) => s,
+        Err(_) => {
+            warn!("history state lock poisoned");
+            return false;
+        }
+    };
+    let entry = match store.get(id) {
+        Some(e) if e.status == HistoryStatus::Completed => e,
+        _ => {
+            warn!("history entry {id} not found or not completed");
+            return false;
+        }
+    };
+    let text = if !entry.polished_text.is_empty() {
+        entry.polished_text.clone()
+    } else {
+        entry.raw_text.clone()
+    };
+    drop(store);
+
+    match arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
+        Ok(()) => {
+            info!("Copied history entry {id} to clipboard via tray");
+            true
+        }
+        Err(e) => {
+            warn!("clipboard copy failed: {e}");
+            false
+        }
+    }
+}
+
+/// Rebuilds the tray menu so the "Recent" submenu picks up newly-added
+/// history entries. Cheap — call after each successful transcription.
+pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) {
+    let Some(tray) = app.tray_by_id("main-tray") else {
+        return;
+    };
+    let polish_enabled = app
+        .state::<Arc<Mutex<crate::config::AppConfig>>>()
+        .lock()
+        .map(|cfg| cfg.polish_enabled)
+        .unwrap_or(true);
+    if let Ok(menu) = build_tray_menu(app, polish_enabled) {
+        let _ = tray.set_menu(Some(menu));
+    }
 }
 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {

@@ -342,6 +342,8 @@ async fn run_transcription_pipeline<R: Runtime>(
     }
 
     crate::tray::set_tray_last_result(app, &text);
+    // Pick up the just-completed history entry in the "Recent" submenu.
+    crate::tray::refresh_tray_menu(app);
 
     let _ = app.emit("transcription-result", &text);
     match inject_text(&text).await {
