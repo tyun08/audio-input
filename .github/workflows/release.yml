@@ -188,6 +188,14 @@ jobs:
           VERSION=${{ needs.create-release.outputs.version }}
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
 
+      - name: Install WiX Toolset (for MSI bundling)
+        shell: pwsh
+        run: |
+          # windows-latest no longer ships WiX preinstalled. tauri's MSI bundler
+          # needs candle.exe + light.exe (WiX v3) on PATH. NSIS is pulled in by
+          # tauri itself on first build.
+          choco install --no-progress -y wixtoolset
+
       - name: Build and upload to release
         uses: tauri-apps/tauri-action@v0
         env:
