@@ -216,7 +216,10 @@ jobs:
   # which always resolves to the freshest published release.
   publish-updater-manifest:
     needs: [create-release, build-macos, build-windows]
-    if: ${{ needs.build-macos.result == 'success' }}
+    # always() so a failing build-windows doesn't skip the macOS-only manifest.
+    # The script tolerates missing platforms (only includes ones whose .sig
+    # was found in the release).
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
