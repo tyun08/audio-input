@@ -40,6 +40,15 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             "settings" => {
                 show_settings_window(app);
             }
+            "check-updates" => {
+                // Frontend owns the updater UX (dialog → download → relaunch).
+                // Make sure the main window is visible so the dialog has a host.
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+                let _ = app.emit("check-for-updates", ());
+            }
             #[cfg(debug_assertions)]
             "devtools" => {
                 if let Some(win) = app.get_webview_window("main") {
@@ -148,6 +157,8 @@ pub fn build_tray_menu<R: Runtime>(
     let sep3 = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let open_log = MenuItem::with_id(app, "open-log", "Open Log File", true, None::<&str>)?;
+    let check_updates =
+        MenuItem::with_id(app, "check-updates", "Check for Updates…", true, None::<&str>)?;
     let sep4 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
@@ -155,7 +166,15 @@ pub fn build_tray_menu<R: Runtime>(
     let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
 
     let mut items: Vec<&dyn IsMenuItem<R>> = vec![
-        &last, &sep1, &recent, &sep2, &polish, &sep3, &settings, &open_log,
+        &last,
+        &sep1,
+        &recent,
+        &sep2,
+        &polish,
+        &sep3,
+        &settings,
+        &open_log,
+        &check_updates,
     ];
     #[cfg(debug_assertions)]
     items.push(&devtools);

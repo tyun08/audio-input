@@ -19,6 +19,10 @@
     "core:window:allow-set-resizable",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "core:event:allow-emit"
+    "core:event:allow-emit",
+    "updater:default",
+    "dialog:default",
+    "core:app:allow-version",
+    "process:default"
   ]
 }

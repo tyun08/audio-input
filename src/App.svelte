@@ -49,6 +49,7 @@
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
   import { t } from "./lib/i18n";
+  import { checkForUpdates } from "./lib/updater";
 
   let appState: AppState = "idle";
   let errorMsg = "";
@@ -302,6 +303,21 @@
           await syncWindow();
         })
       );
+
+      // Tray-triggered explicit update check (user clicked "Check for
+      // Updates…"). Shows a dialog regardless of outcome.
+      unlisten.push(
+        await appApi.listen("check-for-updates", async () => {
+          await checkForUpdates(false);
+        })
+      );
+
+      // Background check on launch: silent so the user isn't bothered if
+      // they're already current. Defer 5s so we don't compete with the
+      // first-paint critical path or trigger TCC dialogs during onboarding.
+      setTimeout(() => {
+        checkForUpdates(true).catch(() => {});
+      }, 5000);
 
       unlisten.push(
         await appApi.listen("accessibility-missing", async () => {

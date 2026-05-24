@@ -153,6 +153,11 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Updater signing — tauri-action signs the .app.tar.gz / .msi.zip
+          # update artifacts with this private key. Public key lives in
+          # tauri.conf.json so the app verifies the signature on download.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release-id }}
           args: ${{ matrix.args }}
@@ -200,8 +205,82 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release-id }}
+
+  # Build the updater manifest (latest.json) and upload it to the release so
+  # the tauri-plugin-updater endpoint can find it. App pings:
+  #   https://github.com/tyun08/audio-input/releases/latest/download/latest.json
+  # which always resolves to the freshest published release.
+  publish-updater-manifest:
+    needs: [create-release, build-macos, build-windows]
+    if: ${{ needs.build-macos.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signature files from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/sigs
+          gh release download v${{ needs.create-release.outputs.version }} \
+            --repo tyun08/audio-input \
+            --pattern "*.sig" \
+            --dir /tmp/sigs || true
+          ls -la /tmp/sigs
+
+      - name: Generate latest.json
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          set -e
+          BASE="https://github.com/tyun08/audio-input/releases/download/v${VERSION}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Helper: read sig file by glob; output empty string if missing so
+          # we can fall back to a partial-platform manifest. tauri-plugin-updater
+          # ignores platforms whose signature/url are missing.
+          read_sig() {
+            local f=$(ls /tmp/sigs/$1 2>/dev/null | head -1)
+            [ -n "$f" ] && cat "$f" | tr -d '\n' || echo ""
+          }
+
+          SIG_ARM=$(read_sig "*aarch64.app.tar.gz.sig")
+          SIG_INTEL=$(read_sig "*x64.app.tar.gz.sig")
+          SIG_WIN_NSIS=$(read_sig "*x64-setup.nsis.zip.sig")
+
+          # Build manifest. Only include platforms with both a sig and a URL.
+          PLATFORMS="{}"
+          if [ -n "$SIG_ARM" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_ARM" --arg u "${BASE}/Audio.Input_${VERSION}_aarch64.app.tar.gz" \
+              '. + {"darwin-aarch64": {signature: $s, url: $u}}')
+          fi
+          if [ -n "$SIG_INTEL" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_INTEL" --arg u "${BASE}/Audio.Input_${VERSION}_x64.app.tar.gz" \
+              '. + {"darwin-x86_64": {signature: $s, url: $u}}')
+          fi
+          if [ -n "$SIG_WIN_NSIS" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_WIN_NSIS" --arg u "${BASE}/Audio.Input_${VERSION}_x64-setup.nsis.zip" \
+              '. + {"windows-x86_64": {signature: $s, url: $u}}')
+          fi
+
+          jq -n --arg v "$VERSION" --arg d "$DATE" --arg n "See https://github.com/tyun08/audio-input/releases/tag/v${VERSION} for the full release notes." --argjson p "$PLATFORMS" \
+            '{version: $v, notes: $n, pub_date: $d, platforms: $p}' > latest.json
+
+          echo "=== latest.json ==="
+          cat latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v${{ needs.create-release.outputs.version }} latest.json \
+            --repo tyun08/audio-input \
+            --clobber
 
   update-cask:
     needs: [create-release, build-macos]
