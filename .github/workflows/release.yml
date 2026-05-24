@@ -272,13 +272,18 @@ jobs:
           SIG_WIN=$(read_sig "*x64-setup.exe.sig")
 
           # Build manifest. Only include platforms with both a sig and a URL.
+          # NOTE on filename quirks: Tauri's macOS updater bundle is named
+          # without the version suffix (e.g. Audio.Input_aarch64.app.tar.gz),
+          # but the Windows NSIS installer DOES include the version. Don't
+          # "fix" these into a uniform pattern — they come from tauri-action
+          # and must match the actual asset names on the release.
           PLATFORMS="{}"
           if [ -n "$SIG_ARM" ]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_ARM" --arg u "${BASE}/Audio.Input_${VERSION}_aarch64.app.tar.gz" \
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_ARM" --arg u "${BASE}/Audio.Input_aarch64.app.tar.gz" \
               '. + {"darwin-aarch64": {signature: $s, url: $u}}')
           fi
           if [ -n "$SIG_INTEL" ]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_INTEL" --arg u "${BASE}/Audio.Input_${VERSION}_x64.app.tar.gz" \
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_INTEL" --arg u "${BASE}/Audio.Input_x64.app.tar.gz" \
               '. + {"darwin-x86_64": {signature: $s, url: $u}}')
           fi
           if [ -n "$SIG_WIN" ]; then
