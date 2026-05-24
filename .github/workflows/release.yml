@@ -21,6 +21,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify tag is on main
+        run: |
+          # A tag should only ship if its commit is reachable from main —
+          # otherwise we'd be shipping WIP from a feature branch. Fetch
+          # origin/main and confirm the tagged commit is an ancestor.
+          git fetch origin main --quiet
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main. Refusing to release. Merge to main and retag."
+            exit 1
+          fi
+          echo "Tag commit is on main — proceeding."
+
       - name: Extract version
         id: meta
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -254,7 +266,10 @@ jobs:
 
           SIG_ARM=$(read_sig "*aarch64.app.tar.gz.sig")
           SIG_INTEL=$(read_sig "*x64.app.tar.gz.sig")
-          SIG_WIN_NSIS=$(read_sig "*x64-setup.nsis.zip.sig")
+          # Tauri v2 signs the NSIS installer .exe directly (no .zip wrapper).
+          # The updater downloads + executes the .exe; its signature is what
+          # ships in latest.json.
+          SIG_WIN=$(read_sig "*x64-setup.exe.sig")
 
           # Build manifest. Only include platforms with both a sig and a URL.
           PLATFORMS="{}"
@@ -266,8 +281,8 @@ jobs:
             PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_INTEL" --arg u "${BASE}/Audio.Input_${VERSION}_x64.app.tar.gz" \
               '. + {"darwin-x86_64": {signature: $s, url: $u}}')
           fi
-          if [ -n "$SIG_WIN_NSIS" ]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_WIN_NSIS" --arg u "${BASE}/Audio.Input_${VERSION}_x64-setup.nsis.zip" \
+          if [ -n "$SIG_WIN" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_WIN" --arg u "${BASE}/Audio.Input_${VERSION}_x64-setup.exe" \
               '. + {"windows-x86_64": {signature: $s, url: $u}}')
           fi
 

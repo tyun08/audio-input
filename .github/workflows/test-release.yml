@@ -1,0 +1,186 @@
+name: Test Release (manual)
+
+# Manual smoke-test for the release pipeline. Builds + signs + notarizes the
+# selected branch and uploads to a GitHub *prerelease* tagged with the run
+# number. Does NOT update the Homebrew tap and does NOT publish a public
+# release.
+#
+# Trigger from the Actions tab → "Test Release (manual)" → "Run workflow",
+# pick the branch (typically `development`). Use this to verify CI changes
+# before bumping the real version and pushing a vX.Y.Z tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_release:
+        description: "Keep the prerelease after the run finishes (default: delete it)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: write
+
+jobs:
+  create-prerelease:
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.create.outputs.result }}
+      tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose prerelease tag
+        id: meta
+        run: |
+          # testbuild-<branch>-<short-sha>-<run-number> — uniquely identifies
+          # the run while staying outside the strict semver pattern that
+          # triggers the real release workflow.
+          BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          TAG="testbuild-${BRANCH}-${SHORT_SHA}-${GITHUB_RUN_NUMBER}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Composed tag: ${TAG}"
+
+      - name: Create draft prerelease
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = "${{ steps.meta.outputs.tag }}";
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: `[TEST] ${tag}`,
+              body: `Smoke-test build from \`${context.ref}\` @ \`${context.sha.substring(0,7)}\`. **Not for production use — will be auto-deleted unless \`keep_release=true\`.**`,
+              draft: true,
+              prerelease: true,
+            });
+            return data.id;
+          result-encoding: string
+
+  build-macos:
+    needs: create-prerelease
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - args: '--target aarch64-apple-darwin'
+          - args: '--target x86_64-apple-darwin'
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productbuild: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          rm -f "$CERT_PATH"
+
+      - name: Build and upload to prerelease
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-prerelease.outputs.release-id }}
+          args: ${{ matrix.args }}
+
+  build-windows:
+    needs: create-prerelease
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: choco install --no-progress -y wixtoolset
+
+      - name: Build and upload to prerelease
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-prerelease.outputs.release-id }}
+
+  cleanup:
+    needs: [create-prerelease, build-macos, build-windows]
+    if: ${{ always() && inputs.keep_release != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete test prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Auto-cleanup unless the user opted in to keep the artifacts.
+          # Failed builds get cleaned up too — the run log has the failure
+          # detail and the binaries weren't going to be usable anyway.
+          gh release delete "${{ needs.create-prerelease.outputs.tag }}" \
+            --repo tyun08/audio-input --yes --cleanup-tag || true
