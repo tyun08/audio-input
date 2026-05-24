@@ -162,10 +162,20 @@ pub fn build_tray_menu<R: Runtime>(
     let sep4 = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
+    // Disabled info row at the top — version is pulled from CARGO_PKG_VERSION
+    // at compile time so it's always accurate. Lets the user confirm which
+    // build is installed after an in-app update or brew upgrade. (#75)
+    let version_label = format!("Audio Input v{}", env!("CARGO_PKG_VERSION"));
+    let version_item =
+        MenuItem::with_id(app, "version-info", &version_label, false, None::<&str>)?;
+    let sep_top = PredefinedMenuItem::separator(app)?;
+
     #[cfg(debug_assertions)]
     let devtools = MenuItem::with_id(app, "devtools", "Open DevTools", true, None::<&str>)?;
 
     let mut items: Vec<&dyn IsMenuItem<R>> = vec![
+        &version_item,
+        &sep_top,
         &last,
         &sep1,
         &recent,

@@ -2,9 +2,19 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { getVersion } from "@tauri-apps/api/app";
   import { providers, getDefaultConfig, getProvider } from "./providers";
   import { t, locale } from "./i18n";
   import FieldSelect from "./FieldSelect.svelte";
+
+  // Surfaced in the panel footer so users can confirm which build is
+  // installed (#75) — useful after a brew upgrade / in-app updater run.
+  let appVersion = "";
+  getVersion()
+    .then((v) => {
+      appVersion = v;
+    })
+    .catch(() => {});
 
   const dispatch = createEventDispatcher();
 
@@ -618,6 +628,12 @@
       {/if}
     </main>
   </div>
+
+  {#if appVersion}
+    <footer class="settings-footer" aria-label="Version">
+      Audio Input v{appVersion}
+    </footer>
+  {/if}
 </div>
 
 <style>
@@ -929,6 +945,20 @@
      set, so toggles only read as "off / on" via background color. */
   .toggle.on .toggle-knob {
     transform: translateX(18px);
+  }
+
+  /* Version footer — small italic line at the bottom of every Settings
+     tab. Pulled from tauri's getVersion() so it's always accurate. (#75) */
+  .settings-footer {
+    flex-shrink: 0;
+    padding: 8px 16px 10px;
+    text-align: right;
+    font-size: 10px;
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.32);
+    letter-spacing: 0.02em;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    user-select: text;
   }
 
   /* Save / action row */
