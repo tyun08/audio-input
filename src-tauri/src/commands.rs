@@ -439,6 +439,7 @@ async fn transcribe_with_provider(
                 crate::transcription::litellm::DEFAULT_API_BASE.to_string(),
                 api_key.to_string(),
                 model,
+                "OpenAI".to_string(),
             )
             .transcribe(wav_bytes)
             .await
@@ -467,9 +468,14 @@ async fn transcribe_with_provider(
                 .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
             let model = config["model"].as_str().unwrap_or("whisper-1").to_string();
             info!("LiteLLM api_base: {}, model: {}", api_base, model);
-            LiteLLMClient::new(api_base.to_string(), api_key.to_string(), model)
-                .transcribe(wav_bytes)
-                .await
+            LiteLLMClient::new(
+                api_base.to_string(),
+                api_key.to_string(),
+                model,
+                "LiteLLM".to_string(),
+            )
+            .transcribe(wav_bytes)
+            .await
         }
         other => anyhow::bail!("Unsupported provider: {}", other),
     }
