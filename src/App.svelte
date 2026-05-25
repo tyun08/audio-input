@@ -67,12 +67,12 @@
   let retrying = false;
 
   // Settings data
-  let polishEnabled = true;
+  let polishEnabled = false;
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
   let showIdleHud = false;
-  let sentHudTimeoutSecs = 5;
+  let sentHudTimeoutSecs = 0;
   // Guard so the reactive showIdleHud → syncWindow trigger below doesn't
   // fire during the initial fetch (when showIdleHud transitions from its
   // declared `false` to whatever the backend stored). Only react to user
@@ -90,9 +90,9 @@
   let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
 
   function normalizeSentHudTimeoutSecs(value: unknown): number {
-    return typeof value === "number" && Number.isFinite(value) && value >= 1
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
       ? Math.min(Math.floor(value), 30)
-      : 5;
+      : 0;
   }
 
   function clearSuccessFlashTimer() {
@@ -217,7 +217,7 @@
         startMicPoll();
       }
 
-      polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
+      polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => false);
       // NOTE: do NOT enumerate audio devices on startup — cpal's
       // host.input_devices() triggers macOS to show the microphone TCC dialog,
       // which surprises the user before they've reached the onboarding step.
@@ -285,6 +285,7 @@
 
       unlisten.push(
         await appApi.listen("transcription-success", async () => {
+          if (TRANSCRIPTION_SUCCESS_FLASH_MS === 0) return;
           clearSuccessFlashTimer();
           transcriptionSuccessFlash = true;
           await syncWindow();

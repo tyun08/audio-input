@@ -16,7 +16,7 @@ Free alternative to [SuperWhisper](https://superwhisper.com).
 
 **macOS**
 ```bash
-brew install --cask tonyyun/tap/audio-input
+brew install --cask tyun08/tap/audio-input
 ```
 Or grab the `.dmg` from [Releases](../../releases). First launch: right-click → Open to bypass Gatekeeper.
 
