@@ -56,7 +56,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.sent_hud_timeout": "Sent HUD Duration",
-    "settings.sent_hud_timeout_desc": "Seconds the 'Sent ✓' HUD stays visible (0 = disabled, max 30)",
+    "settings.sent_hud_timeout_desc":
+      "Seconds the 'Sent ✓' HUD stays visible (0 = disabled, max 30)",
     "settings.language": "Language",
 
     // Settings nav tabs
