@@ -74,6 +74,24 @@ These are two **independent** issues that look related but aren't:
 
 In the chosen design, **nothing pushes a tag** — the tag is created by GitHub's REST API when the release is published. The trigger is the commit push, not a tag push, so these distinctions don't apply.
 
+### Side effect of using `GITHUB_TOKEN` for the bump push
+
+The `auto-bump-version` workflow uses `secrets.GITHUB_TOKEN` to push the `RELEASE X.Y.Z` commit to the PR's head branch. The same anti-recursion rule that blocks tag pushes from triggering workflows **also blocks commit pushes from triggering PR-level workflows** (tests, lint, typecheck on `pull_request: synchronize`). The diff is mechanical — a version-string edit and a Cargo.lock entry — so leaving it un-tested is acceptable today. **A future check that depends on the bump commit being CI-validated would silently miss it.** If that becomes a real concern, switch the auto-bump workflow to a PAT (or a GitHub App) and the synchronize event will fire normally.
+
+## Known failure modes
+
+### Squash-merge / merge-commit silently breaks the trigger
+
+`release.yml`'s gate is `startsWith(github.event.head_commit.message, 'RELEASE ')`. "Squash and merge" sets the head commit subject to the PR title (default `Release X.Y.Z (#N)` — lowercase `Release`, parens around the PR number), and "Create a merge commit" sets it to `Merge pull request #N ...`. Both **silently** skip the workflow — no error, no release. **Mitigation: disable squash + merge-commit at the repo level** (Settings → General → Pull Requests), leaving only "Rebase and merge" available. `RELEASING.md` calls this out, but enforcement at the settings layer is the real fix.
+
+### Two release PRs open at once
+
+Both `auto-bump-version` runs compute `NEXT` against `origin/main`, so they produce the same target version. First PR to merge releases `0.4.12` cleanly. Second PR's head still carries `RELEASE 0.4.12`; merging it fires `release.yml`, which fails at the "Refuse if a release already exists" guard. The error message is accurate but not helpful for diagnosis. **Recovery**: on the still-open PR, push any new commit (or close/reopen) — `auto-bump-version` re-runs against the new `origin/main`, bumps to `0.4.13`, amends. Then merge as normal.
+
+### Cargo.lock drift mid-build
+
+`release.yml`'s "Verify source files match commit-message version" step checks `Cargo.toml` but **not** `Cargo.lock`. If a contributor manually bumped `Cargo.toml` without running `cargo update --workspace`, Cargo.lock's `audio-input` entry would be stale; `tauri-action`'s build would either silently update Cargo.lock (producing an undeclared file change in CI) or fail. `scripts/bump-version.sh` post-bump verification catches this for the auto-bump path; manual edits are still vulnerable.
+
 ## Key files
 
 | File | Purpose |

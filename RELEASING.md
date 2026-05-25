@@ -97,10 +97,18 @@ What happens automatically when the PR opens:
 
 ```bash
 # 2. Review the PR (including the auto-added RELEASE commit). Merge it.
-#    Merge must be FAST-FORWARD — set the repo's PR merge style to "Rebase
-#    and merge" or use `gh pr merge --rebase` so main's history stays linear.
+#    Merge MUST preserve the `RELEASE X.Y.Z` commit subject on main.
 gh pr merge <pr-number> --rebase --delete-branch=false
 ```
+
+> ⚠️ **Use "Rebase and merge" only.** "Squash and merge" rewrites the
+> commit subject to the PR title (default: `Release X.Y.Z (#N)` — note
+> the case + parens), and "Create a merge commit" produces a `Merge
+> pull request #N ...` subject. Both silently break the `release.yml`
+> trigger — the workflow skips, no error surfaces, no release ships.
+> The safest fix is to disable squash + merge-commit in the repo
+> settings (Settings → General → Pull Requests) so only rebase is
+> available.
 
 The push to `main` triggers `release.yml` because the head commit is `RELEASE X.Y.Z`. The workflow:
 
@@ -156,19 +164,27 @@ What's already happened by the time a failure surfaces:
 - `build-macos` / `build-windows` may have uploaded some artifacts to the draft
 - `update-cask` not yet → release not published, Homebrew tap NOT updated, **no `vX.Y.Z` tag exists in git**
 
-Clean up:
+Clean up — **prefer the forward path** (bump to the next patch + new RELEASE commit). Force-pushing `main` rewrites shared history; reserve it for the rare case where the failure is genuinely transient (e.g. notarytool flake) AND no one else has pulled the broken commit yet.
+
 ```bash
-# Delete the draft release. No tag exists yet (the publish step is what creates
-# the tag), so --cleanup-tag is a no-op but harmless to include.
+# 1. Delete the draft release. No tag exists yet (the publish step creates
+#    the tag), so --cleanup-tag is a no-op here but harmless to include.
 gh release delete v0.4.X --yes --cleanup-tag
 
-# Then either re-trigger by pushing a no-op commit to main (won't release —
-# subject must be "RELEASE X.Y.Z"), or amend the RELEASE commit and push again:
-git commit --amend --no-edit
-git push --force-with-lease origin main
+# 2. Forward path (default): land a NEW RELEASE commit for the next patch.
+#    No history rewriting; safe for shared branches.
+npm run release:bump 0.4.Y         # Y = X + 1
+git commit -am "RELEASE 0.4.Y"
+git push origin main               # release.yml fires fresh
+
+# Escape hatch (only for genuinely transient infra failures): re-trigger
+# the same version by force-pushing an amended HEAD. Rewrites main's tip —
+# coordinate with anyone else on the team first.
+#   git commit --amend --no-edit
+#   git push --force-with-lease origin main
 ```
 
-If the failure was AFTER publish (update-cask failed), the tag DOES exist. Use `gh release delete v0.4.X --yes --cleanup-tag` to drop both, then retry from a fresh RELEASE commit (bump the patch).
+If the failure was AFTER publish (update-cask failed), the `vX.Y.Z` tag DOES exist. Use `gh release delete v0.4.X --yes --cleanup-tag` to drop both the release and the tag, then take the forward path above.
 
 If `update-cask` runs but with a bad sha (e.g., a sed bug in the workflow), patch the cask manually in `tyun08/homebrew-tap` to unblock brew users while you fix the workflow.
 
