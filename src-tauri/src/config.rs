@@ -25,7 +25,7 @@ fn default_max_history() -> usize {
 }
 
 fn default_sent_hud_timeout_secs() -> u32 {
-    5
+    0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -190,7 +190,7 @@
 
   async function handleSentHudTimeoutChange(e: Event) {
     const raw = parseInt((e.target as HTMLInputElement).value, 10);
-    const next = Number.isFinite(raw) && raw >= 1 ? Math.min(raw, 30) : 1;
+    const next = Number.isFinite(raw) && raw >= 0 ? Math.min(raw, 30) : 0;
     sentHudTimeoutSecs = next;
     await invoke("save_sent_hud_timeout_secs", { secs: next });
   }
@@ -616,7 +616,7 @@
             </div>
             <input
               type="number"
-              min="1"
+              min="0"
               max="30"
               class="row-input mono"
               style="max-width: 70px;"
