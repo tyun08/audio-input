@@ -1,6 +1,6 @@
 # Releasing
 
-How code lands in users' hands. **Read this before tagging anything.**
+How code lands in users' hands. **Read this before tagging anything.** For the *why* behind the flow (trigger choice, token semantics, alternatives considered), see [`docs/release-flow-decisions.md`](docs/release-flow-decisions.md).
 
 ## Branches
 
