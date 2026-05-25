@@ -10,7 +10,7 @@ fn default_provider() -> String {
 }
 
 fn default_polish_enabled() -> bool {
-    true
+    false
 }
 
 fn default_shortcut() -> String {
@@ -68,7 +68,7 @@ impl Default for AppConfig {
         AppConfig {
             provider: default_provider(),
             provider_configs: HashMap::new(),
-            polish_enabled: true,
+            polish_enabled: false,
             preferred_device: None,
             shortcut: default_shortcut(),
             onboarding_completed: false,

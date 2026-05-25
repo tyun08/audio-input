@@ -18,7 +18,7 @@
 
   const dispatch = createEventDispatcher();
 
-  export let polishEnabled: boolean = true;
+  export let polishEnabled: boolean = false;
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;

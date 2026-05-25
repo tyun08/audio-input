@@ -67,7 +67,7 @@
   let retrying = false;
 
   // Settings data
-  let polishEnabled = true;
+  let polishEnabled = false;
   let audioDevices: string[] = [];
   let autostartEnabled = false;
   let screenshotContextEnabled = false;
@@ -214,7 +214,7 @@
         startMicPoll();
       }
 
-      polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => true);
+      polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => false);
       // NOTE: do NOT enumerate audio devices on startup — cpal's
       // host.input_devices() triggers macOS to show the microphone TCC dialog,
       // which surprises the user before they've reached the onboarding step.
