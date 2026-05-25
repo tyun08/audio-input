@@ -1,6 +1,6 @@
 # Releasing
 
-How code lands in users' hands. **Read this before tagging anything.**
+How code lands in users' hands. **Read this before tagging anything.** For the *why* behind the flow (trigger choice, token semantics, alternatives considered), see [`docs/release-flow-decisions.md`](docs/release-flow-decisions.md).
 
 ## Branches
 
@@ -106,67 +106,112 @@ Test-release runs **never** touch the Homebrew tap and **never** publish to GitH
 > looks at the wrong one. This is exactly how v0.4.11 broke. The workflow
 > now fails fast if a release already exists for the tag — don't bypass it.
 
-Once `development` is verified:
+Once `development` is verified, the release is two human actions: open the PR, then merge it. Version-bumping, tagging, building, publishing, and tap-updating all happen in CI.
 
 ```bash
-# 1. Merge to main
-git checkout main
-git pull
-git merge --ff-only development   # fast-forward only — no merge commits on main
-git push origin main
+# 1. Open a PR from development → main.
+gh pr create --base main --head development --title "Release X.Y.Z" --body ""
+# (Or use the GitHub web UI.)
+```
 
-# 2. Bump version in 3 files: package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json
-# Make sure all three match. Then refresh Cargo.lock:
-( cd src-tauri && cargo build --quiet )
+What happens automatically when the PR opens:
 
-# 3. Commit + tag + push
-git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-git commit -m "RELEASE 0.4.X"
-git push origin main
-git tag -a v0.4.X -m "Release 0.4.X"
-git push origin v0.4.X
+- The `auto-bump-version` workflow reads the current version on `main`, decides the next version, runs `scripts/bump-version.sh`, and pushes a `RELEASE X.Y.Z` commit to the head of `development`. The PR now has that commit on top.
+- Default bump is **patch** (`0.4.11 → 0.4.12`). To change the bump kind, add a label to the PR:
+  - `release:minor` → `0.4.11 → 0.5.0`
+  - `release:major` → `0.4.11 → 1.0.0`
+  - Changing the label re-runs the workflow and amends the bump commit.
 
-# 4. CRITICAL: sync development back to main so the next round of dev
-#    work doesn't diverge. Without this, your next merge --ff-only will
-#    fail because main has the RELEASE commit that development lacks.
+```bash
+# 2. Review the PR (including the auto-added RELEASE commit). Merge it.
+#    Merge MUST preserve the `RELEASE X.Y.Z` commit subject on main.
+gh pr merge <pr-number> --rebase --delete-branch=false
+```
+
+> ⚠️ **Use "Rebase and merge" only.** "Squash and merge" rewrites the
+> commit subject to the PR title (default: `Release X.Y.Z (#N)` — note
+> the case + parens), and "Create a merge commit" produces a `Merge
+> pull request #N ...` subject. Both silently break the `release.yml`
+> trigger — the workflow skips, no error surfaces, no release ships.
+> The safest fix is to disable squash + merge-commit in the repo
+> settings (Settings → General → Pull Requests) so only rebase is
+> available.
+
+The push to `main` triggers `release.yml` because the head commit is `RELEASE X.Y.Z`. The workflow:
+
+1. Extracts the version from the commit message
+2. Verifies source files (package.json / Cargo.toml / tauri.conf.json) all agree on that version
+3. Creates a draft GitHub release pinned to that commit via `target_commitish`
+4. Builds + signs + notarizes macOS arm/x86_64 (Developer ID: Jingtao Yun / V8RQ99X6H4)
+5. Builds + bundles Windows MSI + NSIS (WiX installed via choco)
+6. Generates `latest.json` (updater manifest) and uploads it to the release
+7. Publishes the release — **this is when the `vX.Y.Z` tag is actually created**, pointing at the RELEASE commit
+8. Updates the Homebrew tap (`tyun08/homebrew-tap` → `Casks/audio-input.rb`) with new URLs + SHA256s
+
+```bash
+# 3. CRITICAL: sync development back to main so the next round of dev
+#    work doesn't diverge. (The PR merge already updated main; this just
+#    pulls main's RELEASE commit back into development.)
 git checkout development
-git merge --ff-only main
+git pull --ff-only origin main
 git push origin development
 ```
 
-The push of `v0.4.X` triggers `release.yml`, which:
-
-1. Creates a draft GitHub release
-2. Builds + signs + notarizes macOS arm/x86_64 (Developer ID: Jingtao Yun / V8RQ99X6H4)
-3. Builds + bundles Windows MSI + NSIS (WiX installed via choco)
-4. Generates `latest.json` (updater manifest) and uploads to the release
-5. Publishes the release (lifts the draft flag)
-6. Updates the Homebrew tap (`tyun08/homebrew-tap` → `Casks/audio-input.rb`) with new URLs + SHA256s
-
 Pipeline takes ~15 min. Watch via `gh run watch <id>`.
 
-## Tag pattern is strict
+### Manual / emergency release
 
-`release.yml` only fires for tags matching `v[0-9]+.[0-9]+.[0-9]+` (strict semver, three parts, no suffix). So `v0.4.9-beta`, `v0.4.9-rc1`, `testbuild-anything` all do **not** trigger the production pipeline. That's the safety net — accidentally tagged WIP won't ship.
+If the auto-bump workflow is broken, you can still ship by hand:
+
+```bash
+git checkout main && git pull
+git merge --ff-only development
+npm run release:bump 0.4.X
+git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git commit -m "RELEASE 0.4.X"
+git push origin main           # triggers release.yml the same way
+```
+
+Same flow, just done locally instead of via the PR workflow.
+
+## What triggers a release
+
+`release.yml` runs on every push to `main`, but the job is gated by:
+
+```yaml
+if: startsWith(github.event.head_commit.message, 'RELEASE ')
+```
+
+So only commits whose subject is `RELEASE X.Y.Z` cut a release. Anything else (docs, CI, content) merges to `main` silently. The version is parsed out of the commit message; if it doesn't match strict semver (`MAJOR.MINOR.PATCH`) the workflow fails fast. This replaces the old "push a `vX.Y.Z` tag" trigger.
 
 ## If the pipeline fails mid-release
 
 What's already happened by the time a failure surfaces:
-- `create-release` succeeded → there's a draft release for the tag
-- `build-macos` / `build-windows` may have uploaded some artifacts
-- `update-cask` not yet → Homebrew tap NOT updated
+- `create-release` succeeded → there's a draft release object for `vX.Y.Z` (no git tag yet — the tag is only created on publish)
+- `build-macos` / `build-windows` may have uploaded some artifacts to the draft
+- `update-cask` not yet → release not published, Homebrew tap NOT updated, **no `vX.Y.Z` tag exists in git**
 
-Clean up:
+Clean up — **prefer the forward path** (bump to the next patch + new RELEASE commit). Force-pushing `main` rewrites shared history; reserve it for the rare case where the failure is genuinely transient (e.g. notarytool flake) AND no one else has pulled the broken commit yet.
+
 ```bash
-# Delete the draft release + tag
+# 1. Delete the draft release. No tag exists yet (the publish step creates
+#    the tag), so --cleanup-tag is a no-op here but harmless to include.
 gh release delete v0.4.X --yes --cleanup-tag
 
-# Or, if the tag was on the wrong commit, delete + retag
-git push origin :refs/tags/v0.4.X
-git tag -d v0.4.X
-git tag -a v0.4.X -m "Release 0.4.X"   # ON THE RIGHT COMMIT
-git push origin v0.4.X
+# 2. Forward path (default): land a NEW RELEASE commit for the next patch.
+#    No history rewriting; safe for shared branches.
+npm run release:bump 0.4.Y         # Y = X + 1
+git commit -am "RELEASE 0.4.Y"
+git push origin main               # release.yml fires fresh
+
+# Escape hatch (only for genuinely transient infra failures): re-trigger
+# the same version by force-pushing an amended HEAD. Rewrites main's tip —
+# coordinate with anyone else on the team first.
+#   git commit --amend --no-edit
+#   git push --force-with-lease origin main
 ```
+
+If the failure was AFTER publish (update-cask failed), the `vX.Y.Z` tag DOES exist. Use `gh release delete v0.4.X --yes --cleanup-tag` to drop both the release and the tag, then take the forward path above.
 
 If `update-cask` runs but with a bad sha (e.g., a sed bug in the workflow), patch the cask manually in `tyun08/homebrew-tap` to unblock brew users while you fix the workflow.
 
