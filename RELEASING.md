@@ -55,6 +55,33 @@ git push --force-with-lease origin develop-imk
 4. Bump version + tag like any other release (see "Shipping a real release").
 5. The `develop-*` branch stays alive — Phase N+1 picks up from `main`'s new tip.
 
+## Shipping a beta / RC
+
+Use this when you want testers to download a real signed build before it lands on `main`.
+
+```bash
+# 1. Bump version in all three files to the TARGET version (e.g. 0.4.11)
+#    package.json  ·  src-tauri/Cargo.toml  ·  src-tauri/tauri.conf.json
+( cd src-tauri && cargo build --quiet )   # refresh Cargo.lock
+git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+git commit -m "chore: bump version to 0.4.11 for beta"
+git push
+
+# 2. Tag with the pre-release suffix and push
+git tag v0.4.11-beta.1
+git push origin v0.4.11-beta.1
+```
+
+The `beta-release.yml` workflow fires and:
+- Builds + signs + notarizes macOS arm/x86_64 + Windows
+- Creates a **persistent** GitHub Prerelease at `v0.4.11-beta.1`
+- Uploads `latest-beta.json` to the release (for a future beta-channel updater)
+- Does **not** update the Homebrew tap
+
+For a follow-up beta, bump just the suffix: `v0.4.11-beta.2`. For a release candidate, use `v0.4.11-rc.1`.
+
+When the beta is good, ship normally from `main` (see "Shipping a real release"). The `v0.4.11-beta.*` prerelease stays visible on the Releases page so testers can see the changelog history.
+
 ## Verifying a build before release
 
 When you've staged changes that touch the release pipeline (workflow YAML, entitlements, bundle config, signing, updater, etc.), don't just tag a real version — smoke-test first.
