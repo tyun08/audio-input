@@ -28,6 +28,10 @@ fn default_sent_hud_timeout_secs() -> u32 {
     5
 }
 
+fn default_locale() -> String {
+    "en".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_provider")]
@@ -51,6 +55,8 @@ pub struct AppConfig {
     pub max_history: usize,
     #[serde(default = "default_sent_hud_timeout_secs")]
     pub sent_hud_timeout_secs: u32,
+    #[serde(default = "default_locale")]
+    pub locale: String,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -76,6 +82,7 @@ impl Default for AppConfig {
             show_idle_hud: false,
             max_history: default_max_history(),
             sent_hud_timeout_secs: default_sent_hud_timeout_secs(),
+            locale: default_locale(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),
