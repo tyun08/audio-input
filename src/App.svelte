@@ -64,6 +64,7 @@
   let polishFailed = false;
   let shortcutConflict = "";
   let retryableSessionId: string | null = null;
+  let transcriptionMode = "dictate";
   let retrying = false;
 
   // Settings data
@@ -230,6 +231,9 @@
       sentHudTimeoutSecs = normalizeSentHudTimeoutSecs(
         await appApi.invoke<unknown>("get_sent_hud_timeout_secs").catch(() => 5)
       );
+      transcriptionMode = await appApi
+        .invoke<string>("get_transcription_mode")
+        .catch(() => "dictate");
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -360,6 +364,12 @@
       unlisten.push(
         await appApi.listen<boolean>("polish-changed", (e) => {
           polishEnabled = e.payload;
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen<string>("mode-changed", (e) => {
+          transcriptionMode = e.payload;
         })
       );
 
@@ -526,6 +536,12 @@
     await clearInjectionFailed();
   }
 
+  async function toggleMode() {
+    transcriptionMode = await appApi
+      .invoke<string>("toggle_transcription_mode")
+      .catch(() => transcriptionMode);
+  }
+
   async function handleSuccessCopy() {
     if (lastTranscription) {
       await navigator.clipboard.writeText(lastTranscription).catch(() => {});
@@ -641,6 +657,8 @@
       on:clipboardCopy={handleClipboardCopy}
       on:clipboardDismiss={handleClipboardDismiss}
       on:successCopy={handleSuccessCopy}
+      {transcriptionMode}
+      on:modeToggle={toggleMode}
     />
   {/if}
 </div>

@@ -8,7 +8,7 @@ use crate::{
     history::{HistoryEntry, HistoryState},
     input::inject_text,
     screenshot::capture_primary_screen,
-    state::{AppState, ScreenshotState, SharedState},
+    state::{AppState, ScreenshotState, SharedMode, SharedState, TranscriptionMode},
     transcription::{
         gemini, polish, vertex, GeminiClient, GroqClient, LiteLLMClient, VertexClient,
     },
@@ -97,13 +97,18 @@ async fn start_recording<R: Runtime>(
             let _ = app.emit("state-change", "recording");
             info!("State → Recording");
 
-            let screenshot_context_enabled = {
+            let needs_screenshot = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
-                let enabled = config.lock().unwrap().screenshot_context_enabled;
-                enabled
+                let cfg = config.lock().unwrap();
+                let screenshot_context_enabled = cfg.screenshot_context_enabled;
+                let is_smart_compose = app
+                    .try_state::<SharedMode>()
+                    .map(|m| *m.lock().unwrap() == TranscriptionMode::SmartCompose)
+                    .unwrap_or(false);
+                screenshot_context_enabled || is_smart_compose
             };
             let ss = app.state::<ScreenshotState>().inner().clone();
-            if screenshot_context_enabled {
+            if needs_screenshot {
                 tokio::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     tokio::task::spawn_blocking(move || {
@@ -261,7 +266,7 @@ async fn run_transcription_pipeline<R: Runtime>(
     wav_bytes: Vec<u8>,
     session_id: String,
 ) {
-    let (provider, pcfg, polish_enabled) = read_provider_config(app);
+    let (provider, pcfg, polish_enabled, transcription_mode) = read_provider_config(app);
 
     info!("Using provider: {}", provider);
 
@@ -303,31 +308,43 @@ async fn run_transcription_pipeline<R: Runtime>(
         return;
     }
 
-    // Polish
+    // Polish / Smart Compose
+    let screenshot = {
+        let screenshot_state = app.state::<ScreenshotState>();
+        let shot = screenshot_state.lock().unwrap().take();
+        shot
+    };
+
     let mut polish_failed = false;
-    let text = if polish_enabled {
-        let screenshot = {
-            let screenshot_state = app.state::<ScreenshotState>();
-            let shot = screenshot_state.lock().unwrap().take();
-            shot
-        };
-        info!(
-            "Polish enabled, calling LLM polish (screenshot context: {})...",
-            if screenshot.is_some() { "yes" } else { "no" }
-        );
-        let (polished, failed) =
-            polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
-        polish_failed = failed;
-        if failed {
-            let _ = app.emit("polish-failed", ());
+    let text = match transcription_mode {
+        TranscriptionMode::SmartCompose => {
+            info!(
+                "Smart Compose mode (screenshot context: {})...",
+                if screenshot.is_some() { "yes" } else { "no" }
+            );
+            let (composed, failed) =
+                smart_compose_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref())
+                    .await;
+            polish_failed = failed;
+            if failed {
+                let _ = app.emit("polish-failed", ());
+            }
+            composed
         }
-        polished
-    } else {
-        {
-            let screenshot_state = app.state::<ScreenshotState>();
-            screenshot_state.lock().unwrap().take();
+        TranscriptionMode::Dictate if polish_enabled => {
+            info!(
+                "Dictate mode + polish (screenshot context: {})...",
+                if screenshot.is_some() { "yes" } else { "no" }
+            );
+            let (polished, failed) =
+                polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+            polish_failed = failed;
+            if failed {
+                let _ = app.emit("polish-failed", ());
+            }
+            polished
         }
-        raw_text.clone()
+        TranscriptionMode::Dictate => raw_text.clone(),
     };
 
     if !session_id.is_empty() {
@@ -370,7 +387,9 @@ async fn run_transcription_pipeline<R: Runtime>(
     info!("State → Idle");
 }
 
-fn read_provider_config<R: Runtime>(app: &AppHandle<R>) -> (String, serde_json::Value, bool) {
+fn read_provider_config<R: Runtime>(
+    app: &AppHandle<R>,
+) -> (String, serde_json::Value, bool, TranscriptionMode) {
     let config = app.state::<Arc<Mutex<AppConfig>>>();
     let cfg = config.lock().unwrap();
     let p = cfg.provider.clone();
@@ -382,7 +401,11 @@ fn read_provider_config<R: Runtime>(app: &AppHandle<R>) -> (String, serde_json::
             }
         }
     }
-    (p, pc, cfg.polish_enabled)
+    let mode = app
+        .try_state::<SharedMode>()
+        .map(|m| m.lock().unwrap().clone())
+        .unwrap_or_default();
+    (p, pc, cfg.polish_enabled, mode)
 }
 
 // ---------------------------------------------------------------------------
@@ -478,6 +501,61 @@ async fn transcribe_with_provider(
             .await
         }
         other => anyhow::bail!("Unsupported provider: {}", other),
+    }
+}
+
+async fn smart_compose_with_provider(
+    provider: &str,
+    config: &serde_json::Value,
+    text: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    match provider {
+        "groq" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            polish::smart_compose_text(text, api_key, screenshot).await
+        }
+        "vertex_ai" => {
+            let project_id = config["project_id"].as_str().unwrap_or("");
+            let location = config["location"].as_str().unwrap_or("us-central1");
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            vertex::smart_compose_text_vertex(text, project_id, location, model, screenshot).await
+        }
+        "openai" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                return (text.to_string(), true);
+            }
+            crate::transcription::litellm::smart_compose_text_litellm(
+                text,
+                crate::transcription::litellm::DEFAULT_API_BASE,
+                api_key,
+                screenshot,
+            )
+            .await
+        }
+        "gemini" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                return (text.to_string(), true);
+            }
+            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
+            gemini::smart_compose_text_gemini(text, api_key, model, screenshot).await
+        }
+        "litellm" => {
+            let api_key = config["api_key"].as_str().unwrap_or("");
+            if api_key.is_empty() {
+                return (text.to_string(), true);
+            }
+            let api_base = config["api_base"]
+                .as_str()
+                .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
+            crate::transcription::litellm::smart_compose_text_litellm(
+                text, api_base, api_key, screenshot,
+            )
+            .await
+        }
+        _ => (text.to_string(), true),
     }
 }
 
@@ -1213,3 +1291,34 @@ pub async fn save_locale(
     crate::tray::refresh_tray_menu(&app);
     Ok(())
 }
+
+// --- Transcription mode --------------------------------------------------
+
+#[tauri::command]
+pub fn get_transcription_mode(mode: tauri::State<'_, SharedMode>) -> String {
+    mode.lock().unwrap().to_string()
+}
+
+#[tauri::command]
+pub async fn toggle_transcription_mode(
+    app: AppHandle,
+    mode: tauri::State<'_, SharedMode>,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<String, String> {
+    let new_mode = {
+        let mut m = mode.lock().unwrap();
+        *m = m.toggle();
+        m.clone()
+    };
+    // Persist to config
+    {
+        let mut cfg = config.lock().unwrap();
+        cfg.transcription_mode = new_mode.clone();
+        AppConfig::save(&app, &cfg).map_err(|e| e.to_string())?;
+    }
+    info!("Transcription mode: {}", new_mode);
+    let _ = app.emit("mode-changed", new_mode.to_string());
+    crate::tray::refresh_tray_menu(&app);
+    Ok(new_mode.to_string())
+}
+

@@ -321,6 +321,139 @@ pub(crate) fn parse_polish_response(body: &str) -> anyhow::Result<String> {
     Ok(polished)
 }
 
+pub(crate) const SYSTEM_PROMPT_SMART_COMPOSE: &str =
+    "You are an intelligent writing assistant. \
+    The user has spoken into a voice-to-text tool while looking at the screen shown in the image. \
+    Your job is to transform their raw speech into polished, paste-ready text that fits the \
+    context visible on screen. \
+    Rules: \
+    1) Match the language shown on screen (e.g., if an English email is open, write in English \
+       even if the user spoke in another language or a mix). \
+    2) Match the register and tone of the destination (formal email -> formal prose, \
+       chat message -> casual tone, code comment -> terse technical language). \
+    3) Strip meta-commentary (filler words like um, uh, phrases like \
+       \'I want to say\', \'please write\', \'type this\') -- output only the final composed text. \
+    4) If no screenshot is available, still clean up the speech and produce fluent prose \
+       matching the apparent intent. \
+    Output only the final composed text. No explanations, no prefaces, no markup.";
+
+/// Smart-compose a transcription using the Groq API.
+/// Always tries vision model first if screenshot is available.
+/// Returns `(text, failed)`.
+pub async fn smart_compose_text(text: &str, api_key: &str, screenshot: Option<&str>) -> (String, bool) {
+    let max_tokens = compute_max_tokens(text.chars().count() * 4);
+
+    if let Some(img_data) = screenshot {
+        info!("Smart Compose: using vision model with screenshot context");
+        match try_smart_compose_vision(text, api_key, img_data, 0.2, max_tokens).await {
+            Ok(result) if !result.is_empty() => {
+                info!("Smart Compose vision complete");
+                return (result, false);
+            }
+            Ok(_) => warn!("Smart Compose vision returned empty, falling back to text-only"),
+            Err(e) => warn!("Smart Compose vision failed: {}, falling back to text-only", e),
+        }
+    }
+
+    match try_smart_compose_text_only(text, api_key, PRIMARY_MODEL, 0.2, max_tokens).await {
+        Ok(result) if !result.is_empty() => {
+            info!("Smart Compose text-only complete");
+            (result, false)
+        }
+        Ok(_) | Err(_) => {
+            warn!("Smart Compose failed, returning original text");
+            (text.to_string(), true)
+        }
+    }
+}
+
+async fn try_smart_compose_vision(
+    text: &str,
+    api_key: &str,
+    screenshot_data_url: &str,
+    temperature: f32,
+    max_tokens: u32,
+) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()?;
+
+    let user_content = MessageContent::Parts(vec![
+        ContentPart::ImageUrl {
+            image_url: ImageUrlContent {
+                url: screenshot_data_url.to_string(),
+            },
+        },
+        ContentPart::Text {
+            text: format!(
+                "The above screenshot shows the screen the user was looking at when they spoke.
+
+                 Raw speech transcription to transform:
+<<<SPEECH
+{}
+SPEECH>>>",
+                text
+            ),
+        },
+    ]);
+
+    let request = ChatRequest {
+        model: VISION_MODEL.to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: MessageContent::Text(SYSTEM_PROMPT_SMART_COMPOSE.to_string()),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_content,
+            },
+        ],
+        temperature,
+        max_tokens,
+    };
+
+    send_request(&client, api_key, request).await
+}
+
+async fn try_smart_compose_text_only(
+    text: &str,
+    api_key: &str,
+    model: &str,
+    temperature: f32,
+    max_tokens: u32,
+) -> anyhow::Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()?;
+
+    let user_content = format!(
+        "Raw speech transcription to transform:
+<<<SPEECH
+{}
+SPEECH>>>",
+        text
+    );
+
+    let request = ChatRequest {
+        model: model.to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: MessageContent::Text(SYSTEM_PROMPT_SMART_COMPOSE.to_string()),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text(user_content),
+            },
+        ],
+        temperature,
+        max_tokens,
+    };
+
+    send_request(&client, api_key, request).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

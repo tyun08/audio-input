@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{parse_polish_response, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
+use super::polish::{parse_polish_response, SYSTEM_PROMPT_SMART_COMPOSE, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
 
 pub const DEFAULT_API_BASE: &str = "https://api.openai.com/v1";
 const DEFAULT_POLISH_MODEL: &str = "gpt-4o-mini";
@@ -367,4 +367,70 @@ async fn send_chat_request(
     }
 
     parse_polish_response(&body)
+}
+
+pub async fn smart_compose_text_litellm(
+    text: &str,
+    api_base: &str,
+    api_key: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+    let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
+    let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
+
+    if let Some(img_data) = screenshot {
+        let user_content = MessageContent::Parts(vec![
+            ContentPart::ImageUrl {
+                image_url: ImageUrlContent { url: img_data.to_string() },
+            },
+            ContentPart::Text {
+                text: format!(
+                    "The above screenshot shows the screen the user was looking at when they spoke.\n\n                     Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+                ),
+            },
+        ]);
+        let request = ChatRequest {
+            model: DEFAULT_POLISH_MODEL.to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: MessageContent::Text(SYSTEM_PROMPT_SMART_COMPOSE.to_string()),
+                },
+                ChatMessage { role: "user".to_string(), content: user_content },
+            ],
+            temperature: 0.2,
+            max_tokens,
+        };
+        if let Ok(result) = send_chat_request(&client, &url, api_key, &request).await {
+            if !result.is_empty() { return (result, false); }
+        }
+    }
+
+    // Text-only fallback
+    let user_content = format!(
+        "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+    );
+    let request = ChatRequest {
+        model: DEFAULT_POLISH_MODEL.to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: MessageContent::Text(SYSTEM_PROMPT_SMART_COMPOSE.to_string()),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text(user_content),
+            },
+        ],
+        temperature: 0.2,
+        max_tokens,
+    };
+    match send_chat_request(&client, &url, api_key, &request).await {
+        Ok(r) if !r.is_empty() => (r, false),
+        _ => (text.to_string(), true),
+    }
 }

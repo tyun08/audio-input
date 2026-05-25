@@ -4,7 +4,7 @@ use reqwest::Client;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
+use super::polish::{SYSTEM_PROMPT_SMART_COMPOSE, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
 
 pub const DEFAULT_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -266,4 +266,54 @@ async fn send_gemini_request(
     }
 
     Ok(text)
+}
+
+pub async fn smart_compose_text_gemini(
+    text: &str,
+    api_key: &str,
+    model: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+    let url = generate_content_url(model);
+    let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
+
+    if let Some(img_data) = screenshot {
+        if let Some((_mime, base64_data)) = parse_data_url(img_data) {
+            let body = serde_json::json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [
+                        { "inlineData": { "mimeType": "image/png", "data": base64_data } },
+                        { "text": format!(
+                            "The above screenshot shows the screen the user was looking at when they spoke.\n\n                             Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+                        )}
+                    ]
+                }],
+                "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+                "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
+            });
+            if let Ok(result) = send_gemini_request(&client, &url, api_key, &body).await {
+                if !result.is_empty() {
+                    return (result, false);
+                }
+            }
+        }
+    }
+
+    // Text-only fallback
+    let body = serde_json::json!({
+        "contents": [{ "role": "user", "parts": [{ "text": format!(
+            "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+        )}] }],
+        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+        "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
+    });
+    match send_gemini_request(&client, &url, api_key, &body).await {
+        Ok(r) if !r.is_empty() => (r, false),
+        _ => (text.to_string(), true),
+    }
 }

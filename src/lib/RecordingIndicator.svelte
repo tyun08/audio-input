@@ -14,6 +14,8 @@
   export let transcriptionSuccessFlash = false;
   /** Total ms the success flash will be shown — drives the countdown bar. */
   export let successFlashDurationMs = 5000;
+  /** Current transcription mode: "dictate" | "smart_compose" */
+  export let transcriptionMode: string = "dictate";
 
   const dispatch = createEventDispatcher<{
     retry: void;
@@ -48,6 +50,11 @@
   function handleSuccessCopy(e: MouseEvent) {
     e.stopPropagation();
     dispatch("successCopy");
+  }
+
+  function handleModeToggle(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("modeToggle");
   }
 
   let seconds = 0;
@@ -148,7 +155,7 @@
     <span class="label red">{fmt(seconds)}</span>
   {:else if state === "processing"}
     <div class="spinner"></div>
-    <span class="label blue">{$t("hud.transcribing")}</span>
+    <span class="label blue">{transcriptionMode === "smart_compose" ? $t("hud.composing") : $t("hud.transcribing")}</span>
   {:else if state === "error"}
     <div class="err-dot"></div>
     <span class="label red">{errorMsg || $t("hud.error")}</span>
@@ -261,6 +268,17 @@
       />
     </svg>
     <span class="label muted">{$t("hud.idle")}</span>
+    <div class="mode-sep" aria-hidden="true"></div>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <button
+      class="mode-pill"
+      class:smart={transcriptionMode === "smart_compose"}
+      title={$t("hud.mode.toggle_hint")}
+      on:click={handleModeToggle}
+      aria-label="{$t('hud.mode.toggle_hint')}: {transcriptionMode === 'smart_compose' ? $t('hud.mode.smart_compose') : $t('hud.mode.dictate')}"
+    >
+      {transcriptionMode === "smart_compose" ? $t("hud.mode.smart_compose") : $t("hud.mode.dictate")}
+    </button>
   {/if}
 </div>
 
@@ -652,5 +670,45 @@
   }
   .label.muted {
     color: rgba(255, 255, 255, 0.4);
+  }
+  /* Mode separator + pill */
+  .mode-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  .mode-pill {
+    padding: 2px 7px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+
+  .mode-pill:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .mode-pill.smart {
+    background: rgba(139, 92, 246, 0.18);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: rgba(196, 181, 253, 0.9);
+  }
+
+  .mode-pill.smart:hover {
+    background: rgba(139, 92, 246, 0.28);
+    border-color: rgba(139, 92, 246, 0.55);
+    color: rgba(221, 214, 254, 0.98);
   }
 </style>

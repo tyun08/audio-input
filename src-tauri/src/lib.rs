@@ -20,7 +20,7 @@ use audio::Recorder;
 use commands::RecorderState;
 use config::AppConfig;
 use history::{history_dir, new_history_state};
-use state::{new_screenshot_state, new_shared_state};
+use state::{new_screenshot_state, new_shared_mode, new_shared_state};
 
 use std::sync::{Arc, Mutex};
 use tauri::{Listener as _, Manager};
@@ -141,7 +141,11 @@ pub fn run() {
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
             let max_history = config.max_history;
+            let initial_mode = config.transcription_mode.clone();
             app.manage(Arc::new(Mutex::new(config)));
+
+            // Init transcription mode
+            app.manage(new_shared_mode(initial_mode));
 
             // Init shared state
             let shared_state = new_shared_state();
@@ -321,6 +325,8 @@ pub fn run() {
             commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
+            commands::get_transcription_mode,
+            commands::toggle_transcription_mode,
         ])
         .run(tauri::generate_context!())
         .expect("Failed to start Tauri application");

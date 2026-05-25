@@ -57,6 +57,8 @@ pub struct AppConfig {
     pub sent_hud_timeout_secs: u32,
     #[serde(default = "default_locale")]
     pub locale: String,
+    #[serde(default)]
+    pub transcription_mode: crate::state::TranscriptionMode,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -83,6 +85,7 @@ impl Default for AppConfig {
             max_history: default_max_history(),
             sent_hud_timeout_secs: default_sent_hud_timeout_secs(),
             locale: default_locale(),
+            transcription_mode: crate::state::TranscriptionMode::default(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),

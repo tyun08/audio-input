@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
+use super::polish::{SYSTEM_PROMPT_SMART_COMPOSE, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
 
 #[derive(Deserialize)]
 struct TokenResponse {
@@ -400,5 +400,87 @@ fn get_adc_path() -> Result<std::path::PathBuf> {
             .join(".config")
             .join("gcloud")
             .join("application_default_credentials.json"))
+    }
+}
+
+pub async fn smart_compose_text_vertex(
+    text: &str,
+    project_id: &str,
+    location: &str,
+    model: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    let access_token = match get_access_token().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!("Vertex smart compose: could not get access token: {}", e);
+            return (text.to_string(), true);
+        }
+    };
+    let client = Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+    let url = format!(
+        "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
+        loc = location, proj = project_id,
+    );
+    let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
+
+    if let Some(img_data) = screenshot {
+        if let Some(base64_data) = img_data.split(',').nth(1) {
+            let body = serde_json::json!({
+                "contents": [{
+                    "role": "user",
+                    "parts": [
+                        { "inlineData": { "mimeType": "image/png", "data": base64_data } },
+                        { "text": format!(
+                            "The above screenshot shows the screen the user was looking at when they spoke.\n\n                             Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+                        )}
+                    ]
+                }],
+                "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+                "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
+            });
+            let resp = client.post(&url)
+                .bearer_auth(&access_token)
+                .json(&body)
+                .send()
+                .await;
+            if let Ok(r) = resp {
+                if let Ok(body_str) = r.text().await {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                        if let Some(t) = v["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                            let s = t.trim().to_string();
+                            if !s.is_empty() { return (s, false); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Text-only fallback
+    let body = serde_json::json!({
+        "contents": [{ "role": "user", "parts": [{ "text": format!(
+            "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+        )}] }],
+        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+        "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
+    });
+    let resp = client.post(&url).bearer_auth(&access_token).json(&body).send().await;
+    match resp {
+        Ok(r) => {
+            if let Ok(body_str) = r.text().await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                    if let Some(t) = v["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                        let s = t.trim().to_string();
+                        if !s.is_empty() { return (s, false); }
+                    }
+                }
+            }
+            (text.to_string(), true)
+        }
+        Err(_) => (text.to_string(), true),
     }
 }

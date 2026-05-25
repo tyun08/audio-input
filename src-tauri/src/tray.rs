@@ -22,6 +22,7 @@ struct TrayStrings {
     recent: &'static str,
     no_history_yet: &'static str,
     ai_polish: &'static str,
+    smart_compose: &'static str,
     settings: &'static str,
     open_log: &'static str,
     check_updates: &'static str,
@@ -37,6 +38,7 @@ const STRINGS_EN: TrayStrings = TrayStrings {
     recent: "Recent",
     no_history_yet: "(no history yet)",
     ai_polish: "AI Polish",
+    smart_compose: "Smart Compose",
     settings: "Settings…",
     open_log: "Open Log File",
     check_updates: "Check for Updates…",
@@ -52,6 +54,7 @@ const STRINGS_ZH: TrayStrings = TrayStrings {
     recent: "最近转录",
     no_history_yet: "（暂无历史记录）",
     ai_polish: "AI 润色",
+    smart_compose: "智能撰写",
     settings: "设置…",
     open_log: "打开日志文件",
     check_updates: "检查更新…",
@@ -68,13 +71,14 @@ fn strings_for_locale(locale: &str) -> &'static TrayStrings {
 
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
-    let (polish_enabled, locale) = {
+    let (polish_enabled, smart_compose_active, locale) = {
         let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
         let cfg = config_state.lock().unwrap();
-        (cfg.polish_enabled, cfg.locale.clone())
+        let sc_active = cfg.transcription_mode == crate::state::TranscriptionMode::SmartCompose;
+        (cfg.polish_enabled, sc_active, cfg.locale.clone())
     };
 
-    let menu = build_tray_menu(app, polish_enabled, &locale)?;
+    let menu = build_tray_menu(app, polish_enabled, smart_compose_active, &locale)?;
 
     let s = strings_for_locale(&locale);
     TrayIconBuilder::with_id("main-tray")
@@ -136,10 +140,10 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             }
             "toggle-polish" => {
                 let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
-                let (new_enabled, locale) = {
+                let new_enabled = {
                     let mut cfg = config_state.lock().unwrap();
                     cfg.polish_enabled = !cfg.polish_enabled;
-                    (cfg.polish_enabled, cfg.locale.clone())
+                    cfg.polish_enabled
                 };
                 {
                     let cfg = config_state.lock().unwrap();
@@ -147,12 +151,26 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 }
                 info!("AI polish: {}", if new_enabled { "on" } else { "off" });
                 let _ = app.emit("polish-changed", new_enabled);
-                // Rebuild menu to refresh check state
-                if let Some(tray) = app.tray_by_id("main-tray") {
-                    if let Ok(menu) = build_tray_menu(app, new_enabled, &locale) {
-                        let _ = tray.set_menu(Some(menu));
-                    }
+                refresh_tray_menu(app);
+            }
+            "toggle-mode" => {
+                use crate::state::{SharedMode, TranscriptionMode};
+                let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
+                let new_mode = if let Some(mode_state) = app.try_state::<SharedMode>() {
+                    let mut m = mode_state.lock().unwrap();
+                    *m = m.toggle();
+                    m.clone()
+                } else {
+                    TranscriptionMode::default()
+                };
+                {
+                    let mut cfg = config_state.lock().unwrap();
+                    cfg.transcription_mode = new_mode.clone();
+                    let _ = crate::config::AppConfig::save(app, &cfg);
                 }
+                info!("Transcription mode via tray: {}", new_mode);
+                let _ = app.emit("mode-changed", new_mode.to_string());
+                refresh_tray_menu(app);
             }
             other if other.starts_with(RECENT_ID_PREFIX) => {
                 let id = &other[RECENT_ID_PREFIX.len()..];
@@ -182,6 +200,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 pub fn build_tray_menu<R: Runtime>(
     app: &AppHandle<R>,
     polish_enabled: bool,
+    smart_compose_active: bool,
     locale: &str,
 ) -> tauri::Result<Menu<R>> {
     let s = strings_for_locale(locale);
@@ -206,6 +225,14 @@ pub fn build_tray_menu<R: Runtime>(
         s.ai_polish,
         true,
         polish_enabled,
+        None::<&str>,
+    )?;
+    let smart_compose = CheckMenuItem::with_id(
+        app,
+        "toggle-mode",
+        s.smart_compose,
+        true,
+        smart_compose_active,
         None::<&str>,
     )?;
     let sep3 = PredefinedMenuItem::separator(app)?;
@@ -235,6 +262,7 @@ pub fn build_tray_menu<R: Runtime>(
         &recent,
         &sep2,
         &polish,
+        &smart_compose,
         &sep3,
         &settings,
         &open_log,
@@ -366,13 +394,16 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) {
     let Some(tray) = app.tray_by_id("main-tray") else {
         return;
     };
-    let (polish_enabled, locale) = app
+    let (polish_enabled, smart_compose_active, locale) = app
         .state::<Arc<Mutex<crate::config::AppConfig>>>()
         .lock()
-        .map(|cfg| (cfg.polish_enabled, cfg.locale.clone()))
-        .unwrap_or((true, "en".to_string()));
+        .map(|cfg| {
+            let sc_active = cfg.transcription_mode == crate::state::TranscriptionMode::SmartCompose;
+            (cfg.polish_enabled, sc_active, cfg.locale.clone())
+        })
+        .unwrap_or((true, false, "en".to_string()));
     let s = strings_for_locale(&locale);
-    if let Ok(menu) = build_tray_menu(app, polish_enabled, &locale) {
+    if let Ok(menu) = build_tray_menu(app, polish_enabled, smart_compose_active, &locale) {
         let _ = tray.set_menu(Some(menu));
     }
     let _ = tray.set_tooltip(Some(s.tooltip_idle));
