@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "release:bump": "bash scripts/bump-version.sh",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint src",

@@ -2,13 +2,15 @@ name: Release
 
 on:
   push:
-    tags:
-      # Strict semver only — prevents test tags like v0.4.5-test from triggering
-      # a production release + homebrew tap update.
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+    branches:
+      - main
 
 jobs:
   create-release:
+    # Only RELEASE commits ship a release. Everything else on main (docs, ci,
+    # follow-up fixes) merges silently. See RELEASING.md for the flow that
+    # generates these commits via the auto-bump-version workflow on PR open.
+    if: startsWith(github.event.head_commit.message, 'RELEASE ')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,65 +23,64 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify tag is on main
+      - name: Extract version from commit message
+        id: meta
         run: |
-          # A tag should only ship if its commit is reachable from main —
-          # otherwise we'd be shipping WIP from a feature branch. Fetch
-          # origin/main and confirm the tagged commit is an ancestor.
-          git fetch origin main --quiet
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
-            echo "::error::Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on main. Refusing to release. Merge to main and retag."
+          # Subject line must be exactly: RELEASE <semver>
+          # Strict regex — rejects "RELEASE 0.4.10-beta", "RELEASE  0.4.10"
+          # (double space), trailing chars, etc. Keeps the tag pattern strict
+          # the same way the old `tags: v[0-9]+.[0-9]+.[0-9]+` filter did.
+          MSG=$(git log -1 --pretty=%s)
+          if [[ ! "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Commit message '$MSG' is not a strict 'RELEASE X.Y.Z' release commit."
             exit 1
           fi
-          echo "Tag commit is on main — proceeding."
+          VERSION="${BASH_REMATCH[1]}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
 
-      - name: Refuse if a release already exists for this tag
+      - name: Refuse if a release already exists for this version
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Catches the failure mode where someone went to the web UI
-          # and clicked "Draft a new release" with this tag. That creates
-          # the release object BEFORE the workflow runs, then our
-          # create-release step adds a SECOND release for the same tag —
-          # GitHub allows it, but artifacts then split across the two and
-          # update-cask downloads from the wrong one.
-          if gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "::error::A release for ${GITHUB_REF_NAME} already exists. Did you use the web UI to create it? Only tag pushes should create releases. Delete the existing release and re-push the tag."
+          # Catches the case where v0.4.X was already released (perhaps a
+          # previous failed run that got recovered manually) but main got
+          # another "RELEASE 0.4.X" commit. Without this, we'd create a
+          # SECOND GitHub release for the same tag — artifacts split, the
+          # homebrew tap update looks at the wrong one. This is exactly how
+          # v0.4.11 broke historically.
+          TAG="v${{ steps.meta.outputs.version }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists. Bump to a new version (see RELEASING.md) or delete the existing release if it was a failed run."
             exit 1
           fi
-          echo "No pre-existing release for ${GITHUB_REF_NAME} — safe to proceed."
+          echo "No pre-existing release for $TAG — safe to proceed."
 
-      - name: Extract version
-        id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Verify source version matches tag
+      - name: Verify source files match commit-message version
         run: |
-          # If the tag is v0.5.0 but package.json / Cargo.toml / tauri.conf.json
-          # still say 0.4.x, the binary will be misbranded — internal version
-          # string says 0.4.x but tauri-action labels artifacts 0.5.0.
-          # Catches the case where someone tagged without running the
-          # version-bump commit from RELEASING.md.
-          TAG_V="${GITHUB_REF_NAME#v}"
-          # Allow grep-style match; jq would be cleaner but jq isn't on
-          # ubuntu-latest without setup. sed extracts the version field.
+          # Defense in depth: scripts/bump-version.sh and the auto-bump
+          # workflow should have already synced these. If somehow they're
+          # out of sync (manual commit that hand-edited the message?), the
+          # binary would be misbranded — internal version string says
+          # 0.4.x but tauri-action labels artifacts as 0.5.0.
+          REL_V="${{ steps.meta.outputs.version }}"
           PKG_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
           CARGO_V=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -1)
           TAURI_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
-          echo "tag:                ${TAG_V}"
+          echo "commit-msg:         ${REL_V}"
           echo "package.json:       ${PKG_V}"
           echo "Cargo.toml:         ${CARGO_V}"
           echo "tauri.conf.json:    ${TAURI_V}"
           fail=0
-          [ "${TAG_V}" = "${PKG_V}" ] || { echo "::error::package.json version (${PKG_V}) does not match tag (${TAG_V})"; fail=1; }
-          [ "${TAG_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match tag (${TAG_V})"; fail=1; }
-          [ "${TAG_V}" = "${TAURI_V}" ] || { echo "::error::tauri.conf.json version (${TAURI_V}) does not match tag (${TAG_V})"; fail=1; }
+          [ "${REL_V}" = "${PKG_V}" ]   || { echo "::error::package.json version (${PKG_V}) does not match commit-msg (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match commit-msg (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${TAURI_V}" ] || { echo "::error::tauri.conf.json version (${TAURI_V}) does not match commit-msg (${REL_V})"; fail=1; }
           if [ "${fail}" -eq 1 ]; then
             echo ""
-            echo "::error::Bump the version in package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json + commit, THEN tag — see RELEASING.md."
+            echo "::error::Run 'npm run release:bump ${REL_V}' and amend the commit — see RELEASING.md."
             exit 1
           fi
-          echo "All version fields match the tag — proceeding."
+          echo "All version fields match the commit-msg — proceeding."
 
       - name: Generate release notes
         id: notes
@@ -97,13 +98,22 @@ jobs:
       - name: Create draft release
         id: create
         uses: actions/github-script@v7
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         with:
           script: |
+            const tag = `v${process.env.VERSION}`;
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: context.ref.replace('refs/tags/', ''),
-              name: `Audio Input ${context.ref.replace('refs/tags/', '')}`,
+              tag_name: tag,
+              name: `Audio Input ${tag}`,
+              // Pin the eventual tag to THIS commit, not whatever main's HEAD
+              // happens to be when the release is published. Without this,
+              // a follow-up commit landing on main mid-build would cause
+              // the tag to point at the wrong commit when update-cask
+              // flips draft → public.
+              target_commitish: context.sha,
               body: `${{ steps.notes.outputs.body }}`,
               draft: true,
             });
@@ -143,9 +153,12 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Sync version from tag into tauri.conf.json
+      - name: Sync version into tauri.conf.json
         shell: bash
         run: |
+          # Defense in depth — create-release already verified that source
+          # files match the release version, but tauri-action reads from
+          # tauri.conf.json so any drift would mis-label artifacts.
           VERSION=${{ needs.create-release.outputs.version }}
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
 
@@ -243,9 +256,12 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Sync version from tag into tauri.conf.json
+      - name: Sync version into tauri.conf.json
         shell: bash
         run: |
+          # Defense in depth — create-release already verified that source
+          # files match the release version, but tauri-action reads from
+          # tauri.conf.json so any drift would mis-label artifacts.
           VERSION=${{ needs.create-release.outputs.version }}
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
 

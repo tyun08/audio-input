@@ -71,7 +71,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
     "settings.sent_hud_timeout": "Sent HUD Duration",
-    "settings.sent_hud_timeout_desc": "Seconds the 'Sent ✓' HUD stays visible (1–30)",
+    "settings.sent_hud_timeout_desc":
+      "Seconds the 'Sent ✓' HUD stays visible (0 = disabled, max 30)",
     "settings.language": "Language",
 
     // Settings nav tabs
@@ -198,7 +199,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.show_idle_hud": "显示待机指示器",
     "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
     "settings.sent_hud_timeout": "「已发送」HUD 持续时间",
-    "settings.sent_hud_timeout_desc": "「已写入 ✓」HUD 显示秒数（1–30）",
+    "settings.sent_hud_timeout_desc": "「已写入 ✓」HUD 显示秒数（0 = 关闭，最多 30）",
     "settings.language": "语言",
 
     // Settings nav tabs

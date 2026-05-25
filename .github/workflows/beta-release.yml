@@ -1,0 +1,272 @@
+name: Beta Release
+
+# Fires on tags matching v<semver>-beta.<N> or v<semver>-rc.<N>.
+# Builds, signs, notarizes, and publishes a persistent GitHub Prerelease.
+# Does NOT require the tag to be on main and does NOT update the Homebrew tap.
+#
+# Usage:
+#   git tag v0.4.11-beta.1
+#   git push origin v0.4.11-beta.1
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+
+jobs:
+  create-prerelease:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create.outputs.result }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: meta
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify base version matches sources
+        # For v0.4.11-beta.1, check that sources say 0.4.11 (ignoring the pre-release suffix).
+        # This catches tagging before bumping version files.
+        run: |
+          TAG_V="${GITHUB_REF_NAME#v}"
+          BASE_V="${TAG_V%%-*}"   # strip -beta.N / -rc.N
+          PKG_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
+          CARGO_V=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -1)
+          echo "tag base: ${BASE_V}  package.json: ${PKG_V}  Cargo.toml: ${CARGO_V}"
+          fail=0
+          [ "${BASE_V}" = "${PKG_V}" ] || { echo "::error::package.json version (${PKG_V}) does not match tag base (${BASE_V})"; fail=1; }
+          [ "${BASE_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match tag base (${BASE_V})"; fail=1; }
+          [ "${fail}" -eq 1 ] && exit 1 || echo "Version check passed."
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          RANGE="${PREV:+${PREV}..HEAD}"
+          RANGE="${RANGE:-HEAD}"
+          {
+            echo "body<<EOF"
+            echo "⚠️ **Pre-release — not for production use.** Download and test, then report issues."
+            echo ""
+            git log $RANGE --pretty=format:"- %s" | grep -v "^- Merge " | grep -v "^- docs:" | head -30
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Prerelease
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Audio Input ${tag}`,
+              body: `${{ steps.notes.outputs.body }}`,
+              draft: true,
+              prerelease: true,
+            });
+            return data.id;
+          result-encoding: string
+
+  build-macos:
+    needs: create-prerelease
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - args: '--target aarch64-apple-darwin'
+          - args: '--target x86_64-apple-darwin'
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Patch tauri.conf.json with full pre-release version
+        shell: bash
+        run: |
+          VERSION=${{ needs.create-prerelease.outputs.version }}
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
+
+      - name: Import Apple Developer ID certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign:,productbuild: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          rm -f "$CERT_PATH"
+
+      - name: Build and upload to prerelease
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-prerelease.outputs.release-id }}
+          args: ${{ matrix.args }}
+
+  build-windows:
+    needs: create-prerelease
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Patch tauri.conf.json with full pre-release version
+        shell: bash
+        run: |
+          VERSION=${{ needs.create-prerelease.outputs.version }}
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: choco install --no-progress -y wixtoolset
+
+      - name: Build and upload to prerelease
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-prerelease.outputs.release-id }}
+
+  publish:
+    needs: [create-prerelease, build-macos, build-windows]
+    # Always publish once macOS builds succeed; Windows failure is non-blocking.
+    if: ${{ always() && needs.build-macos.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signature files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/sigs
+          gh release download "v${{ needs.create-prerelease.outputs.version }}" \
+            --repo tyun08/audio-input \
+            --pattern "*.sig" \
+            --dir /tmp/sigs || true
+          ls -la /tmp/sigs
+
+      - name: Generate latest-beta.json
+        env:
+          VERSION: ${{ needs.create-prerelease.outputs.version }}
+        run: |
+          set -e
+          BASE="https://github.com/tyun08/audio-input/releases/download/v${VERSION}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          read_sig() {
+            local f=$(ls /tmp/sigs/$1 2>/dev/null | head -1)
+            [ -n "$f" ] && cat "$f" | tr -d '\n' || echo ""
+          }
+
+          SIG_ARM=$(read_sig "*aarch64.app.tar.gz.sig")
+          SIG_INTEL=$(read_sig "*x64.app.tar.gz.sig")
+          SIG_WIN=$(read_sig "*x64-setup.exe.sig")
+
+          PLATFORMS="{}"
+          if [ -n "$SIG_ARM" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_ARM" --arg u "${BASE}/Audio.Input_aarch64.app.tar.gz" \
+              '. + {"darwin-aarch64": {signature: $s, url: $u}}')
+          fi
+          if [ -n "$SIG_INTEL" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_INTEL" --arg u "${BASE}/Audio.Input_x64.app.tar.gz" \
+              '. + {"darwin-x86_64": {signature: $s, url: $u}}')
+          fi
+          if [ -n "$SIG_WIN" ]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq --arg s "$SIG_WIN" --arg u "${BASE}/Audio.Input_${VERSION}_x64-setup.exe" \
+              '. + {"windows-x86_64": {signature: $s, url: $u}}')
+          fi
+
+          jq -n \
+            --arg v "$VERSION" \
+            --arg d "$DATE" \
+            --arg n "Beta release — see https://github.com/tyun08/audio-input/releases/tag/v${VERSION}" \
+            --argjson p "$PLATFORMS" \
+            '{version: $v, notes: $n, pub_date: $d, platforms: $p}' > latest-beta.json
+
+          echo "=== latest-beta.json ==="
+          cat latest-beta.json
+
+      - name: Upload latest-beta.json and publish prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ needs.create-prerelease.outputs.version }}" latest-beta.json \
+            --repo tyun08/audio-input --clobber
+          gh release edit "v${{ needs.create-prerelease.outputs.version }}" \
+            --draft=false \
+            --repo tyun08/audio-input
