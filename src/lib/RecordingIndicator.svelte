@@ -7,6 +7,8 @@
   export let errorMsg = "";
   export let injectionFailed = false;
   export let polishFailed = false;
+  export let composeContextStatus: "idle" | "capturing" | "ready" | "failed" = "idle";
+  export let composeError = "";
   export let audioLevels: number[] = [];
   export let retryableSessionId: string | null = null;
   export let retrying = false;
@@ -14,6 +16,8 @@
   export let transcriptionSuccessFlash = false;
   /** Total ms the success flash will be shown — drives the countdown bar. */
   export let successFlashDurationMs = 5000;
+  /** Current transcription mode: "dictate" | "smart_compose" */
+  export let transcriptionMode: string = "dictate";
 
   const dispatch = createEventDispatcher<{
     retry: void;
@@ -21,9 +25,16 @@
     clipboardCopy: void;
     clipboardDismiss: void;
     successCopy: void;
+    composeDismiss: void;
+    modeToggle: void;
   }>();
 
   $: showRetry = state === "error" && !!retryableSessionId;
+  $: showComposeAlert =
+    transcriptionMode === "smart_compose" &&
+    state !== "recording" &&
+    (composeContextStatus === "failed" || !!composeError);
+  $: composeFailed = composeError === "__compose_failed__";
 
   function handleRetry(e: MouseEvent) {
     e.stopPropagation();
@@ -48,6 +59,16 @@
   function handleSuccessCopy(e: MouseEvent) {
     e.stopPropagation();
     dispatch("successCopy");
+  }
+
+  function handleComposeDismiss(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("composeDismiss");
+  }
+
+  function handleModeToggle(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("modeToggle");
   }
 
   let seconds = 0;
@@ -102,6 +123,16 @@
   class:injection={injectionFailed && !showRetry}
   class:retry={showRetry}
   class:success={transcriptionSuccessFlash}
+  class:compose-alert={showComposeAlert}
+  class:context-ready={state === "recording" &&
+    transcriptionMode === "smart_compose" &&
+    composeContextStatus === "ready"}
+  class:smart-idle={state === "idle" &&
+    transcriptionMode === "smart_compose" &&
+    !injectionFailed &&
+    !polishFailed &&
+    !showComposeAlert &&
+    !transcriptionSuccessFlash}
   on:mousedown={handleMousedown}
 >
   {#if showRetry}
@@ -135,6 +166,45 @@
       </button>
       <button class="btn" on:click={handleDismiss} disabled={retrying}>{$t("hud.dismiss")}</button>
     </div>
+  {:else if showComposeAlert}
+    <div class="compose-alert-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect
+          x="4"
+          y="6"
+          width="16"
+          height="12"
+          rx="2.5"
+          stroke="rgba(251,191,36,0.92)"
+          stroke-width="1.8"
+        />
+        <path
+          d="M8 6l1.2-2h5.6L16 6M9 12h6"
+          stroke="rgba(251,191,36,0.92)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <div class="compose-alert-text">
+        <p class="compose-alert-title">
+          {composeFailed ? $t("hud.compose_failed") : $t("hud.context_failed")}
+        </p>
+        <p class="compose-alert-msg">
+          {#if composeFailed}
+            {$t("hud.compose_failed_detail")}
+          {:else if composeError}
+            {composeError}
+          {:else}
+            {$t("hud.context_failed_detail")}
+          {/if}
+        </p>
+      </div>
+    </div>
+    <div class="compose-alert-actions">
+      <button class="btn amber-btn" on:click={handleComposeDismiss}>
+        {$t("hud.dismiss")}
+      </button>
+    </div>
   {:else if state === "recording"}
     <div class="dot-wrap">
       <div class="ring"></div>
@@ -145,10 +215,32 @@
         <div class="wave-bar" style="height: {barHeight(level)}px"></div>
       {/each}
     </div>
-    <span class="label red">{fmt(seconds)}</span>
+    {#if transcriptionMode === "smart_compose"}
+      <div class="compose-recording-meta">
+        <span class="label red">{fmt(seconds)}</span>
+        <span
+          class="context-chip"
+          class:capturing={composeContextStatus === "capturing"}
+          class:ready={composeContextStatus === "ready"}
+          class:failed={composeContextStatus === "failed"}
+        >
+          {#if composeContextStatus === "ready"}
+            {$t("hud.context_ready")}
+          {:else if composeContextStatus === "failed"}
+            {$t("hud.context_failed")}
+          {:else}
+            {$t("hud.context_capturing")}
+          {/if}
+        </span>
+      </div>
+    {:else}
+      <span class="label red">{fmt(seconds)}</span>
+    {/if}
   {:else if state === "processing"}
     <div class="spinner"></div>
-    <span class="label blue">{$t("hud.transcribing")}</span>
+    <span class="label blue"
+      >{transcriptionMode === "smart_compose" ? $t("hud.composing") : $t("hud.transcribing")}</span
+    >
   {:else if state === "error"}
     <div class="err-dot"></div>
     <span class="label red">{errorMsg || $t("hud.error")}</span>
@@ -225,42 +317,90 @@
       aria-hidden="true"
     ></div>
   {:else}
-    <svg class="mic-idle" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-label="Ready">
-      <rect
-        x="9"
-        y="2"
-        width="6"
-        height="11"
-        rx="3"
-        stroke="rgba(255,255,255,0.55)"
-        stroke-width="1.8"
-      />
-      <path
-        d="M5 11a7 7 0 0 0 14 0"
-        stroke="rgba(255,255,255,0.55)"
-        stroke-width="1.8"
-        stroke-linecap="round"
-      />
-      <line
-        x1="12"
-        y1="18"
-        x2="12"
-        y2="22"
-        stroke="rgba(255,255,255,0.55)"
-        stroke-width="1.8"
-        stroke-linecap="round"
-      />
-      <line
-        x1="9"
-        y1="22"
-        x2="15"
-        y2="22"
-        stroke="rgba(255,255,255,0.55)"
-        stroke-width="1.8"
-        stroke-linecap="round"
-      />
-    </svg>
-    <span class="label muted">{$t("hud.idle")}</span>
+    {#if transcriptionMode === "smart_compose"}
+      <svg
+        class="compose-idle"
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-label="Smart Compose ready"
+      >
+        <path
+          d="M4 6.5h12a3 3 0 0 1 3 3V17H7a3 3 0 0 1-3-3V6.5z"
+          stroke="rgba(196,181,253,0.9)"
+          stroke-width="1.8"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M7 10h7M7 13.5h4.5M17.2 18.2l3.9-3.9"
+          stroke="rgba(196,181,253,0.9)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+        <path d="M20.2 13.2l1.6 1.6-1.2 1.2-1.6-1.6 1.2-1.2z" fill="rgba(196,181,253,0.9)" />
+      </svg>
+      <span class="label compose">{$t("hud.smart_ready")}</span>
+    {:else}
+      <svg
+        class="mic-idle"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-label="Ready"
+      >
+        <rect
+          x="9"
+          y="2"
+          width="6"
+          height="11"
+          rx="3"
+          stroke="rgba(255,255,255,0.55)"
+          stroke-width="1.8"
+        />
+        <path
+          d="M5 11a7 7 0 0 0 14 0"
+          stroke="rgba(255,255,255,0.55)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+        <line
+          x1="12"
+          y1="18"
+          x2="12"
+          y2="22"
+          stroke="rgba(255,255,255,0.55)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+        <line
+          x1="9"
+          y1="22"
+          x2="15"
+          y2="22"
+          stroke="rgba(255,255,255,0.55)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <span class="label muted">{$t("hud.idle")}</span>
+    {/if}
+    <div class="mode-sep" aria-hidden="true"></div>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <button
+      class="mode-pill"
+      class:smart={transcriptionMode === "smart_compose"}
+      title={$t("hud.mode.toggle_hint")}
+      on:click={handleModeToggle}
+      aria-label="{$t('hud.mode.toggle_hint')}: {transcriptionMode === 'smart_compose'
+        ? $t('hud.mode.smart_compose')
+        : $t('hud.mode.dictate')}"
+    >
+      {transcriptionMode === "smart_compose"
+        ? $t("hud.mode.smart_compose")
+        : $t("hud.mode.dictate")}
+    </button>
   {/if}
 </div>
 
@@ -306,6 +446,11 @@
     border-color: rgba(62, 207, 142, 0.45);
     background: rgba(28, 40, 34, 0.96);
     white-space: normal;
+  }
+
+  .hud.smart-idle {
+    border-color: rgba(139, 92, 246, 0.34);
+    background: rgba(34, 30, 44, 0.96);
   }
 
   .check-icon {
@@ -407,6 +552,71 @@
     background: rgba(26, 24, 18, 0.96);
     border-color: rgba(251, 191, 36, 0.4);
     white-space: normal;
+  }
+
+  .hud.compose-alert {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    height: 100px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: rgba(30, 25, 18, 0.96);
+    border-color: rgba(251, 191, 36, 0.44);
+    white-space: normal;
+  }
+
+  .hud.context-ready {
+    border-color: rgba(139, 92, 246, 0.58);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.06) inset,
+      0 0 0 1px rgba(196, 181, 253, 0.18),
+      0 0 24px rgba(139, 92, 246, 0.16);
+    animation: context-flash 0.42s ease-out;
+  }
+
+  @keyframes context-flash {
+    0% {
+      filter: brightness(1.45);
+    }
+    100% {
+      filter: brightness(1);
+    }
+  }
+
+  .compose-alert-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .compose-alert-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .compose-alert-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(251, 191, 36, 0.95);
+    margin: 0;
+  }
+
+  .compose-alert-msg {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.58);
+    margin: 0;
+    line-height: 1.35;
+  }
+
+  .compose-alert-actions {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .injection-head {
@@ -603,6 +813,32 @@
     min-height: 2px;
   }
 
+  .compose-recording-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 96px;
+  }
+
+  .context-chip {
+    color: rgba(255, 255, 255, 0.46);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .context-chip.capturing {
+    color: rgba(196, 181, 253, 0.72);
+  }
+
+  .context-chip.ready {
+    color: rgba(190, 242, 210, 0.95);
+  }
+
+  .context-chip.failed {
+    color: rgba(251, 191, 36, 0.92);
+  }
+
   /* Spinner */
   .spinner {
     width: 14px;
@@ -628,8 +864,9 @@
     flex-shrink: 0;
   }
 
-  /* Idle mic icon */
-  .mic-idle {
+  /* Idle icons */
+  .mic-idle,
+  .compose-idle {
     flex-shrink: 0;
   }
 
@@ -652,5 +889,51 @@
   }
   .label.muted {
     color: rgba(255, 255, 255, 0.4);
+  }
+  .label.compose {
+    color: rgba(196, 181, 253, 0.88);
+  }
+  /* Mode separator + pill */
+  .mode-sep {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  .mode-pill {
+    padding: 2px 7px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition:
+      background 0.12s,
+      border-color 0.12s,
+      color 0.12s;
+    white-space: nowrap;
+    line-height: 1.4;
+  }
+
+  .mode-pill:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .mode-pill.smart {
+    background: rgba(139, 92, 246, 0.18);
+    border-color: rgba(139, 92, 246, 0.4);
+    color: rgba(196, 181, 253, 0.9);
+  }
+
+  .mode-pill.smart:hover {
+    background: rgba(139, 92, 246, 0.28);
+    border-color: rgba(139, 92, 246, 0.55);
+    color: rgba(221, 214, 254, 0.98);
   }
 </style>

@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{parse_polish_response, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
+use super::polish::parse_polish_response;
 
 pub const DEFAULT_API_BASE: &str = "https://api.openai.com/v1";
-const DEFAULT_POLISH_MODEL: &str = "gpt-4o-mini";
+pub(crate) const DEFAULT_POLISH_MODEL: &str = "gpt-4o-mini";
 
 // --- Transcription response structs ---
 
@@ -72,12 +72,7 @@ pub struct LiteLLMClient {
 }
 
 impl LiteLLMClient {
-    pub fn new(
-        api_base: String,
-        api_key: String,
-        model: String,
-        provider_label: String,
-    ) -> Self {
+    pub fn new(api_base: String, api_key: String, model: String, provider_label: String) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -159,6 +154,9 @@ pub async fn polish_text_litellm(
     text: &str,
     api_base: &str,
     api_key: &str,
+    model: &str,
+    vision_model: &str,
+    prompt: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
     let base = api_base.trim_end_matches('/');
@@ -183,7 +181,16 @@ pub async fn polish_text_litellm(
     if let Some(img_data) = screenshot {
         info!("Using vision model for LiteLLM polish (screenshot context attached)");
         match try_polish_vision(
-            &client, &url, api_key, text, img_data, 0.1, false, max_tokens,
+            &client,
+            &url,
+            api_key,
+            text,
+            vision_model,
+            prompt,
+            img_data,
+            0.1,
+            false,
+            max_tokens,
         )
         .await
         {
@@ -198,7 +205,16 @@ pub async fn polish_text_litellm(
                     threshold
                 );
                 if let Ok(p) = try_polish_vision(
-                    &client, &url, api_key, text, img_data, 0.3, true, max_tokens,
+                    &client,
+                    &url,
+                    api_key,
+                    text,
+                    vision_model,
+                    prompt,
+                    img_data,
+                    0.3,
+                    true,
+                    max_tokens,
                 )
                 .await
                 {
@@ -218,7 +234,11 @@ pub async fn polish_text_litellm(
     }
 
     // Text-only path
-    match try_polish_text(&client, &url, api_key, text, 0.1, false, max_tokens).await {
+    match try_polish_text(
+        &client, &url, api_key, text, model, prompt, 0.1, false, max_tokens,
+    )
+    .await
+    {
         Ok(polished) if polished.chars().count() >= threshold => {
             info!("LiteLLM text polish complete");
             (polished, false)
@@ -229,7 +249,11 @@ pub async fn polish_text_litellm(
                 short.chars().count(),
                 threshold
             );
-            match try_polish_text(&client, &url, api_key, text, 0.3, true, max_tokens).await {
+            match try_polish_text(
+                &client, &url, api_key, text, model, prompt, 0.3, true, max_tokens,
+            )
+            .await
+            {
                 Ok(p) if p.chars().count() >= threshold => (p, false),
                 Ok(_) | Err(_) => {
                     warn!("LiteLLM polish retry still failed, returning original text");
@@ -239,7 +263,11 @@ pub async fn polish_text_litellm(
         }
         Err(e) => {
             warn!("LiteLLM polish failed: {}, retrying", e);
-            match try_polish_text(&client, &url, api_key, text, 0.3, true, max_tokens).await {
+            match try_polish_text(
+                &client, &url, api_key, text, model, prompt, 0.3, true, max_tokens,
+            )
+            .await
+            {
                 Ok(p) if p.chars().count() >= threshold => (p, false),
                 Ok(_) | Err(_) => {
                     warn!("LiteLLM polish retry failed, returning original text");
@@ -258,6 +286,8 @@ async fn try_polish_vision(
     url: &str,
     api_key: &str,
     text: &str,
+    model: &str,
+    prompt: &str,
     screenshot_data_url: &str,
     temperature: f32,
     with_completeness_hint: bool,
@@ -287,11 +317,11 @@ async fn try_polish_vision(
     ]);
 
     let request = ChatRequest {
-        model: DEFAULT_POLISH_MODEL.to_string(),
+        model: model.to_string(),
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: MessageContent::Text(SYSTEM_PROMPT_VISION.to_string()),
+                content: MessageContent::Text(prompt.to_string()),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -305,11 +335,14 @@ async fn try_polish_vision(
     send_chat_request(client, url, api_key, &request).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn try_polish_text(
     client: &reqwest::Client,
     url: &str,
     api_key: &str,
     text: &str,
+    model: &str,
+    prompt: &str,
     temperature: f32,
     with_completeness_hint: bool,
     max_tokens: u32,
@@ -324,11 +357,11 @@ async fn try_polish_text(
     };
 
     let request = ChatRequest {
-        model: DEFAULT_POLISH_MODEL.to_string(),
+        model: model.to_string(),
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: MessageContent::Text(SYSTEM_PROMPT_TEXT.to_string()),
+                content: MessageContent::Text(prompt.to_string()),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -367,4 +400,81 @@ async fn send_chat_request(
     }
 
     parse_polish_response(&body)
+}
+
+pub async fn smart_compose_text_litellm(
+    text: &str,
+    api_base: &str,
+    api_key: &str,
+    model: &str,
+    vision_model: &str,
+    prompt: &str,
+    screenshot: Option<&str>,
+) -> (String, bool) {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+    let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
+    let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
+
+    if let Some(img_data) = screenshot {
+        let user_content = MessageContent::Parts(vec![
+            ContentPart::ImageUrl {
+                image_url: ImageUrlContent { url: img_data.to_string() },
+            },
+            ContentPart::Text {
+                text: format!(
+                    "The above screenshot shows the screen the user was looking at when they spoke.\n\n                     Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
+                ),
+            },
+        ]);
+        let request = ChatRequest {
+            model: vision_model.to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: MessageContent::Text(prompt.to_string()),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: user_content,
+                },
+            ],
+            temperature: 0.2,
+            max_tokens,
+        };
+        if let Ok(result) = send_chat_request(&client, &url, api_key, &request).await {
+            if !result.is_empty() {
+                return (result, false);
+            }
+        }
+        warn!("LiteLLM Smart Compose vision failed or returned empty");
+        return (String::new(), true);
+    }
+
+    // Text-only fallback
+    let user_content = format!(
+        "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>",
+        text
+    );
+    let request = ChatRequest {
+        model: model.to_string(),
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: MessageContent::Text(prompt.to_string()),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: MessageContent::Text(user_content),
+            },
+        ],
+        temperature: 0.2,
+        max_tokens,
+    };
+    match send_chat_request(&client, &url, api_key, &request).await {
+        Ok(r) if !r.is_empty() => (r, false),
+        _ => (text.to_string(), true),
+    }
 }

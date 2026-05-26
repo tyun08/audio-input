@@ -15,12 +15,8 @@ test.describe("Settings Panel", () => {
     await openSettings(page);
 
     // Transcription section should be active (contains voice service selector)
-    await expect(page.locator(".nav-item.active")).toContainText(
-      "Transcription"
-    );
-    await expect(page.locator(".row-label").first()).toContainText(
-      "Voice Service"
-    );
+    await expect(page.locator(".nav-item.active")).toContainText("Transcription");
+    await expect(page.locator(".row-label").first()).toContainText("Voice Service");
   });
 
   test("navigates to general section", async ({ page }) => {
@@ -43,6 +39,45 @@ test.describe("Settings Panel", () => {
 
     await expect(page.locator(".nav-item.active")).toContainText("Advanced");
     await expect(page.locator(".content")).toContainText("Screenshot Context");
+  });
+
+  test("shows AI action model and prompt controls", async ({ page }) => {
+    await page.setViewportSize({ width: 620, height: 480 });
+    await loadApp(page);
+    await openSettings(page);
+
+    await page.getByRole("button", { name: /AI Actions/i }).click();
+
+    await expect(page.locator(".nav-item.active")).toContainText("AI Actions");
+    await expect(page.locator(".content")).toContainText("AI Polish");
+    await expect(page.locator(".content")).toContainText("Smart Compose");
+    await expect(page.locator(".content")).toContainText("Text Model");
+    await expect(page.locator(".content")).toContainText("Vision Model");
+    await expect(page.locator(".prompt-textarea").first()).toHaveValue(
+      /transcription cleanup assistant/
+    );
+    await expect(page.locator(".row-input.mono").first()).toHaveValue("openai/gpt-oss-20b");
+
+    await expect
+      .poll(async () => {
+        return page.locator(".content").evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+      })
+      .toBe(true);
+    await expect
+      .poll(async () => {
+        return page.locator(".ai-group").evaluate((el) => el.scrollHeight <= el.clientHeight + 1);
+      })
+      .toBe(true);
+
+    await page.locator(".ai-action-tabs").getByRole("button", { name: "Smart Compose" }).click();
+    await expect(page.locator(".prompt-textarea").first()).toHaveValue(
+      /intelligent writing assistant/
+    );
+    await expect
+      .poll(async () => {
+        return page.locator(".ai-group").evaluate((el) => el.scrollHeight <= el.clientHeight + 1);
+      })
+      .toBe(true);
   });
 
   test("displays Groq provider by default", async ({ page }) => {
@@ -120,9 +155,9 @@ test.describe("Settings Panel", () => {
     await page.getByRole("button", { name: /Save/i }).click();
 
     // Should show "Saved" feedback
-    await expect(
-      page.getByRole("button", { name: /Saved|Saving/i })
-    ).toBeVisible({ timeout: 3000 });
+    await expect(page.getByRole("button", { name: /Saved|Saving/i })).toBeVisible({
+      timeout: 3000,
+    });
   });
 
   test("closes settings panel on close button", async ({ page }) => {
@@ -138,9 +173,7 @@ test.describe("Settings Panel", () => {
     await expect(page.locator(".hud")).toBeVisible();
   });
 
-  test("shows recording status pill when app is recording and settings opens", async ({
-    page,
-  }) => {
+  test("shows recording status pill when app is recording and settings opens", async ({ page }) => {
     // Pre-set app state to "recording" so the settings panel opens in that state.
     // (When a state-change event fires while settings is open, the panel closes;
     // the pill is visible when settings is already open with the recording state.)
@@ -149,9 +182,7 @@ test.describe("Settings Panel", () => {
       const style = document.createElement("style");
       style.textContent =
         "html, body, #app, .container { height: 100vh !important; min-height: 100vh !important; }";
-      document.addEventListener("DOMContentLoaded", () =>
-        document.head.appendChild(style)
-      );
+      document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
       // Override app state to "recording" before the app loads
       (window as any).__tauriMockOverrides = { get_app_state: "recording" };
     });
@@ -169,9 +200,7 @@ test.describe("Settings Panel", () => {
     });
 
     await expect(page.locator(".status-pill.recording")).toBeVisible();
-    await expect(page.locator(".status-pill.recording")).toContainText(
-      "Recording"
-    );
+    await expect(page.locator(".status-pill.recording")).toContainText("Recording");
   });
 
   test("toggles AI polish setting", async ({ page }) => {

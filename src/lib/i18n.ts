@@ -1,4 +1,5 @@
 import { writable, derived } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 
 export type Locale = "en" | "zh";
 
@@ -17,7 +18,21 @@ export const locale = writable<Locale>(stored || "en");
 
 locale.subscribe((v) => {
   if (typeof localStorage !== "undefined") localStorage.setItem("app-locale", v);
+  // Sync locale to backend so the native tray menu is also translated.
+  invoke("save_locale", { locale: v }).catch(() => {});
 });
+
+/** Call once on app start to load persisted locale from the backend config. */
+export async function initLocale(): Promise<void> {
+  try {
+    const backendLocale = await invoke<string>("get_locale");
+    if (backendLocale === "zh" || backendLocale === "en") {
+      locale.set(backendLocale as Locale);
+    }
+  } catch {
+    // Backend not available yet; localStorage fallback is already set.
+  }
+}
 
 const messages: Record<Locale, Record<string, string>> = {
   en: {
@@ -42,6 +57,20 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.saved": "Saved",
     "settings.polish": "AI Polish",
     "settings.polish_desc": "Auto-punctuate and fix typos",
+    "settings.ai.desc":
+      "AI Polish and Smart Compose reuse your provider credentials, but each can use its own model and prompt.",
+    "settings.ai.polish": "AI Polish",
+    "settings.ai.smart_compose": "Smart Compose",
+    "settings.ai.service": "Service",
+    "settings.ai.service_desc": "Uses the same saved API key/base/project for that provider",
+    "settings.ai.same_provider": "Same as Transcription ({0})",
+    "settings.ai.text_model": "Text Model",
+    "settings.ai.text_model_desc": "Used by text-only AI actions; Smart Compose requires vision",
+    "settings.ai.vision_model": "Vision Model",
+    "settings.ai.vision_model_desc": "Used when screenshot context is attached",
+    "settings.ai.prompt": "Prompt",
+    "settings.ai.prompt_desc": "System prompt sent before the spoken text",
+    "settings.ai.reset_prompt": "Reset",
     "settings.mic": "Microphone",
     "settings.mic_default": "System Default",
     "settings.shortcut": "Global Shortcut",
@@ -62,6 +91,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // Settings nav tabs
     "settings.nav.transcription": "Transcription",
+    "settings.nav.ai": "AI Actions",
     "settings.nav.general": "General",
     "settings.nav.advanced": "Advanced",
     "settings.nav.history": "History",
@@ -113,6 +143,13 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // HUD (RecordingIndicator)
     "hud.idle": "Ready",
+    "hud.smart_ready": "Ready to compose",
+    "hud.context_capturing": "Capturing screen…",
+    "hud.context_ready": "Screen captured",
+    "hud.context_failed": "Screen capture failed",
+    "hud.context_failed_detail": "Smart Compose needs screen context. No text was inserted.",
+    "hud.compose_failed": "Compose failed",
+    "hud.compose_failed_detail": "Smart Compose failed. No raw transcript was inserted.",
     "hud.transcribing": "Transcribing…",
     "hud.error": "Error",
     "hud.copied": "Copied — ⌘V to paste",
@@ -144,6 +181,12 @@ const messages: Record<Locale, Record<string, string>> = {
     "history.failed_unknown": "(Transcription failed — no error text)",
     "history.failed_hint":
       "Failed attempts are kept here with the error message so you can retry from Settings → History.",
+
+    // Transcription mode
+    "hud.composing": "Composing…",
+    "hud.mode.dictate": "Dictate",
+    "hud.mode.smart_compose": "Smart Compose",
+    "hud.mode.toggle_hint": "Click to switch mode",
   },
 
   zh: {
@@ -165,6 +208,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.saved": "已保存",
     "settings.polish": "AI 润色",
     "settings.polish_desc": "自动添加标点、修正错字",
+    "settings.ai.desc": "AI 润色和智能撰写会复用已有 provider 凭证，但可以分别设置模型和提示词。",
+    "settings.ai.polish": "AI 润色",
+    "settings.ai.smart_compose": "智能撰写",
+    "settings.ai.service": "服务",
+    "settings.ai.service_desc": "复用该 provider 已保存的 API Key、Base URL 或项目配置",
+    "settings.ai.same_provider": "跟随转录服务（{0}）",
+    "settings.ai.text_model": "文本模型",
+    "settings.ai.text_model_desc": "文本类 AI 功能使用；智能撰写必须使用视觉模型",
+    "settings.ai.vision_model": "视觉模型",
+    "settings.ai.vision_model_desc": "附带截图上下文时使用",
+    "settings.ai.prompt": "提示词",
+    "settings.ai.prompt_desc": "发送语音文本前使用的 system prompt",
+    "settings.ai.reset_prompt": "重置",
     "settings.mic": "麦克风",
     "settings.mic_default": "系统默认",
     "settings.shortcut": "全局快捷键",
@@ -183,6 +239,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // Settings nav tabs
     "settings.nav.transcription": "转录",
+    "settings.nav.ai": "AI 功能",
     "settings.nav.general": "通用",
     "settings.nav.advanced": "高级",
     "settings.nav.history": "历史",
@@ -229,6 +286,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.finish": "开始使用",
 
     "hud.idle": "就绪",
+    "hud.smart_ready": "撰写就绪",
+    "hud.context_capturing": "正在截图…",
+    "hud.context_ready": "截图已捕获",
+    "hud.context_failed": "截图失败",
+    "hud.context_failed_detail": "智能撰写需要屏幕上下文，本次不会写入文字。",
+    "hud.compose_failed": "撰写失败",
+    "hud.compose_failed_detail": "智能撰写失败，本次不会写入原始转录。",
     "hud.transcribing": "转录中…",
     "hud.error": "错误",
     "hud.copied": "已复制 — ⌘V 粘贴",
@@ -258,6 +322,12 @@ const messages: Record<Locale, Record<string, string>> = {
     "history.max_desc": "最近 N 次的音频会保存在本地以供重试。",
     "history.failed_unknown": "（转录失败 — 无错误详情）",
     "history.failed_hint": "失败记录会保留在此并显示错误信息，可在 设置 → 历史 中重试。",
+
+    // Transcription mode
+    "hud.composing": "智能撰写中…",
+    "hud.mode.dictate": "听写",
+    "hud.mode.smart_compose": "智能撰写",
+    "hud.mode.toggle_hint": "点击切换模式",
   },
 };
 

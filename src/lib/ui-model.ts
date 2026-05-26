@@ -25,6 +25,7 @@ export interface UiModelState {
   appState: AppState;
   injectionFailed: boolean;
   polishFailed: boolean;
+  composeAlert?: boolean;
   showIdleHud?: boolean;
   /** Brief checkmark after inject succeeds (typed into focused app). */
   transcriptionSuccessFlash?: boolean;
@@ -115,13 +116,13 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
 
   const hasRetry = state.appState === "error" && Boolean(state.retryableSessionId);
   const hudW =
-    hasRetry || state.injectionFailed
+    hasRetry || state.injectionFailed || state.composeAlert
       ? HUD_RETRY_W
       : Boolean(state.transcriptionSuccessFlash)
         ? HUD_ALERT_W
         : HUD_W;
   const hudH =
-    hasRetry || state.injectionFailed
+    hasRetry || state.injectionFailed || state.composeAlert
       ? HUD_RETRY_H
       : Boolean(state.transcriptionSuccessFlash)
         ? HUD_ALERT_H
@@ -139,6 +140,7 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
       state.appState !== "idle" ||
       state.injectionFailed ||
       state.polishFailed ||
+      Boolean(state.composeAlert) ||
       Boolean(state.transcriptionSuccessFlash) ||
       hasRetry ||
       Boolean(state.showIdleHud),

@@ -28,12 +28,34 @@ fn default_sent_hud_timeout_secs() -> u32 {
     0
 }
 
+fn default_locale() -> String {
+    "en".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AiActionConfig {
+    /// Empty means "use the current transcription provider".
+    #[serde(default)]
+    pub provider: String,
+    /// Empty means "use the provider/action default text model".
+    #[serde(default)]
+    pub model: String,
+    /// Empty means "use the provider/action default vision model".
+    #[serde(default)]
+    pub vision_model: String,
+    /// Empty means "use the built-in prompt for this action".
+    #[serde(default)]
+    pub prompt: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default = "default_provider")]
     pub provider: String,
     #[serde(default)]
     pub provider_configs: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub ai_action_configs: HashMap<String, AiActionConfig>,
 
     #[serde(default = "default_polish_enabled")]
     pub polish_enabled: bool,
@@ -51,6 +73,10 @@ pub struct AppConfig {
     pub max_history: usize,
     #[serde(default = "default_sent_hud_timeout_secs")]
     pub sent_hud_timeout_secs: u32,
+    #[serde(default = "default_locale")]
+    pub locale: String,
+    #[serde(default)]
+    pub transcription_mode: crate::state::TranscriptionMode,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -68,6 +94,7 @@ impl Default for AppConfig {
         AppConfig {
             provider: default_provider(),
             provider_configs: HashMap::new(),
+            ai_action_configs: HashMap::new(),
             polish_enabled: false,
             preferred_device: None,
             shortcut: default_shortcut(),
@@ -76,6 +103,8 @@ impl Default for AppConfig {
             show_idle_hud: false,
             max_history: default_max_history(),
             sent_hud_timeout_secs: default_sent_hud_timeout_secs(),
+            locale: default_locale(),
+            transcription_mode: crate::state::TranscriptionMode::default(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),
@@ -152,6 +181,14 @@ impl AppConfig {
             .get(provider)
             .cloned()
             .unwrap_or_else(|| serde_json::json!({}))
+    }
+
+    /// Helper: get an AI action's config, returning an inherited/default config if absent.
+    pub fn get_ai_action_config(&self, action: &str) -> AiActionConfig {
+        self.ai_action_configs
+            .get(action)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 

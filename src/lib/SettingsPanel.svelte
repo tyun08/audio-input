@@ -3,7 +3,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getVersion } from "@tauri-apps/api/app";
-  import { providers, getDefaultConfig, getProvider } from "./providers";
+  import { providers, getAiModelOptions, getDefaultConfig, getProvider } from "./providers";
   import { t, locale } from "./i18n";
   import FieldSelect from "./FieldSelect.svelte";
 
@@ -25,9 +25,10 @@
   export let showIdleHud: boolean = false;
   export let sentHudTimeoutSecs: number = 5;
   export let appState: string = "idle";
+  export let transcriptionMode: string = "dictate";
   export let shortcutConflict: string = "";
 
-  let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
+  let activeSection: "general" | "transcription" | "ai" | "advanced" | "history" = "transcription";
   let provider = "openai";
   let configValues: Record<string, string> = {};
   let authStatus: boolean | null = null;
@@ -37,6 +38,44 @@
   let saving = false;
   let saved = false;
   let error = "";
+
+  type AiActionKey = "polish" | "smart_compose";
+
+  type AiActionConfig = {
+    provider: string;
+    effective_provider: string;
+    model: string;
+    vision_model: string;
+    prompt: string;
+    default_model: string;
+    default_vision_model: string;
+    default_prompt: string;
+  };
+
+  type AiActionDefaults = {
+    default_model: string;
+    default_vision_model: string;
+    default_prompt: string;
+  };
+
+  const aiActions: AiActionKey[] = ["polish", "smart_compose"];
+  let activeAiAction: AiActionKey = "polish";
+
+  const emptyAiActionConfig = (): AiActionConfig => ({
+    provider: "",
+    effective_provider: provider,
+    model: "",
+    vision_model: "",
+    prompt: "",
+    default_model: "",
+    default_vision_model: "",
+    default_prompt: "",
+  });
+
+  let aiActionConfigs: Record<AiActionKey, AiActionConfig> = {
+    polish: emptyAiActionConfig(),
+    smart_compose: emptyAiActionConfig(),
+  };
 
   type HistoryEntry = {
     id: string;
@@ -59,6 +98,7 @@
   onMount(async () => {
     provider = await invoke<string>("get_provider");
     await loadProviderConfig();
+    await loadAiActionConfigs();
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
     maxHistory = await invoke<number>("get_max_history").catch(() => 100);
@@ -136,6 +176,7 @@
     provider = id;
     await invoke("save_provider", { provider: id });
     await loadProviderConfig();
+    await loadAiActionConfigs();
   }
 
   async function handleSaveConfig() {
@@ -154,6 +195,130 @@
   async function handlePolishToggle() {
     polishEnabled = !polishEnabled;
     await invoke("save_polish_enabled", { enabled: polishEnabled });
+  }
+
+  async function loadAiActionConfigs() {
+    aiActionConfigs = {
+      polish: await loadAiActionConfig("polish"),
+      smart_compose: await loadAiActionConfig("smart_compose"),
+    };
+  }
+
+  async function loadAiActionConfig(action: AiActionKey): Promise<AiActionConfig> {
+    return await invoke<AiActionConfig>("get_ai_action_config", { action }).catch(
+      emptyAiActionConfig
+    );
+  }
+
+  function aiProviderLabel(id: string): string {
+    return getProvider(id)?.name ?? id;
+  }
+
+  function aiEffectiveProvider(action: AiActionKey): string {
+    return aiActionConfigs[action].provider || provider;
+  }
+
+  function aiProviderOptions(action: AiActionKey) {
+    return [
+      {
+        value: "",
+        label: $t("settings.ai.same_provider", aiProviderLabel(provider)),
+      },
+      ...providers.map((p) => ({ value: p.id, label: p.name })),
+    ];
+  }
+
+  function modelPresetId(action: AiActionKey, type: "text" | "vision"): string {
+    return `${action}-${type}-model-presets`;
+  }
+
+  function actionLabel(action: AiActionKey): string {
+    return action === "polish" ? $t("settings.ai.polish") : $t("settings.ai.smart_compose");
+  }
+
+  async function handleAiProviderChange(action: AiActionKey, value: string) {
+    const current = aiActionConfigs[action];
+    const nextProvider = value || provider;
+    const defaults = await invoke<AiActionDefaults>("get_ai_action_defaults", {
+      action,
+      provider: nextProvider,
+    }).catch(() => ({
+      default_model: current.default_model,
+      default_vision_model: current.default_vision_model,
+      default_prompt: current.default_prompt,
+    }));
+
+    aiActionConfigs = {
+      ...aiActionConfigs,
+      [action]: {
+        ...current,
+        provider: value,
+        effective_provider: nextProvider,
+        model: current.model === current.default_model ? defaults.default_model : current.model,
+        vision_model:
+          current.vision_model === current.default_vision_model
+            ? defaults.default_vision_model
+            : current.vision_model,
+        prompt:
+          current.prompt === current.default_prompt ? defaults.default_prompt : current.prompt,
+        default_model: defaults.default_model,
+        default_vision_model: defaults.default_vision_model,
+        default_prompt: defaults.default_prompt,
+      },
+    };
+  }
+
+  function handleAiProviderSelect(action: AiActionKey, e: Event) {
+    handleAiProviderChange(action, (e.currentTarget as HTMLSelectElement).value);
+  }
+
+  function updateAiAction(action: AiActionKey, key: keyof AiActionConfig, value: string) {
+    aiActionConfigs = {
+      ...aiActionConfigs,
+      [action]: {
+        ...aiActionConfigs[action],
+        [key]: value,
+      },
+    };
+  }
+
+  function handleAiInput(action: AiActionKey, key: keyof AiActionConfig, e: Event) {
+    updateAiAction(action, key, (e.currentTarget as HTMLInputElement | HTMLTextAreaElement).value);
+  }
+
+  function resetAiPrompt(action: AiActionKey) {
+    updateAiAction(action, "prompt", aiActionConfigs[action].default_prompt);
+  }
+
+  function storedAiActionConfig(action: AiActionKey) {
+    const cfg = aiActionConfigs[action];
+    return {
+      provider: cfg.provider,
+      model: cfg.model === cfg.default_model ? "" : cfg.model,
+      vision_model: cfg.vision_model === cfg.default_vision_model ? "" : cfg.vision_model,
+      prompt: cfg.prompt === cfg.default_prompt ? "" : cfg.prompt,
+    };
+  }
+
+  async function handleSaveAiActions() {
+    saving = true;
+    error = "";
+    try {
+      await invoke("save_ai_action_config", {
+        action: "polish",
+        configValues: storedAiActionConfig("polish"),
+      });
+      await invoke("save_ai_action_config", {
+        action: "smart_compose",
+        configValues: storedAiActionConfig("smart_compose"),
+      });
+      await loadAiActionConfigs();
+      showSaved();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      saving = false;
+    }
   }
 
   async function handleDeviceChange(e: Event) {
@@ -236,7 +401,9 @@
     {#if appState === "recording"}
       <span class="status-pill recording">{$t("settings.recording")}</span>
     {:else if appState === "processing"}
-      <span class="status-pill processing">{$t("settings.transcribing")}</span>
+      <span class="status-pill processing">
+        {transcriptionMode === "smart_compose" ? $t("hud.composing") : $t("settings.transcribing")}
+      </span>
     {/if}
   </div>
 
@@ -266,6 +433,28 @@
           />
         </svg>
         {$t("settings.nav.transcription")}
+      </button>
+      <button
+        class="nav-item"
+        class:active={activeSection === "ai"}
+        on:click={() => (activeSection = "ai")}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M4 6.5h11a3 3 0 0 1 3 3v7.5H7a3 3 0 0 1-3-3V6.5z"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M7 9.5h6M7 13h4M17 18l4-4"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+          />
+          <path d="M20 13l1 1-1 1-1-1 1-1z" fill="currentColor" />
+        </svg>
+        {$t("settings.nav.ai")}
       </button>
       <button
         class="nav-item"
@@ -400,6 +589,133 @@
         {#if currentProvider?.hint}
           <p class="hint">{@html currentProvider.hint[$locale]}</p>
         {/if}
+
+        <!-- ── AI Actions ── -->
+      {:else if activeSection === "ai"}
+        <h2>{$t("settings.nav.ai")}</h2>
+        <p class="section-hint">{$t("settings.ai.desc")}</p>
+
+        <div class="ai-action-tabs" aria-label="AI action">
+          {#each aiActions as action}
+            <button
+              type="button"
+              class:active={activeAiAction === action}
+              on:click={() => (activeAiAction = action)}
+            >
+              {actionLabel(action)}
+            </button>
+          {/each}
+        </div>
+
+        <div class="group ai-group">
+          {#if activeAiAction === "polish"}
+            <div class="row ai-toggle-row">
+              <div class="row-label-stack">
+                <span class="row-label">{$t("settings.polish")}</span>
+                <span class="row-sub">{$t("settings.polish_desc")}</span>
+              </div>
+              <button
+                class="toggle"
+                class:on={polishEnabled}
+                on:click={handlePolishToggle}
+                aria-label="Toggle polish"
+              >
+                <span class="toggle-knob"></span>
+              </button>
+            </div>
+            <div class="row-sep"></div>
+          {/if}
+
+          <div class="row ai-control-row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.ai.service")}</span>
+              <span class="row-sub">{$t("settings.ai.service_desc")}</span>
+            </div>
+            <select
+              class="row-select ai-control"
+              value={aiActionConfigs[activeAiAction].provider}
+              on:change={(e) => handleAiProviderSelect(activeAiAction, e)}
+            >
+              {#each aiProviderOptions(activeAiAction) as opt}
+                <option value={opt.value}>{opt.label}</option>
+              {/each}
+            </select>
+          </div>
+          <div class="row-sep"></div>
+
+          {#if activeAiAction !== "smart_compose"}
+            <div class="row ai-control-row">
+              <div class="row-label-stack">
+                <span class="row-label">{$t("settings.ai.text_model")}</span>
+                <span class="row-sub">{$t("settings.ai.text_model_desc")}</span>
+              </div>
+              <input
+                type="text"
+                class="row-input mono ai-control"
+                list={modelPresetId(activeAiAction, "text")}
+                value={aiActionConfigs[activeAiAction].model}
+                on:input={(e) => handleAiInput(activeAiAction, "model", e)}
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <datalist id={modelPresetId(activeAiAction, "text")}>
+                {#each getAiModelOptions(aiEffectiveProvider(activeAiAction), "text") as opt}
+                  <option value={opt.value} label={opt.label}></option>
+                {/each}
+              </datalist>
+            </div>
+            <div class="row-sep"></div>
+          {/if}
+
+          <div class="row ai-control-row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.ai.vision_model")}</span>
+              <span class="row-sub">{$t("settings.ai.vision_model_desc")}</span>
+            </div>
+            <input
+              type="text"
+              class="row-input mono ai-control"
+              list={modelPresetId(activeAiAction, "vision")}
+              value={aiActionConfigs[activeAiAction].vision_model}
+              on:input={(e) => handleAiInput(activeAiAction, "vision_model", e)}
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <datalist id={modelPresetId(activeAiAction, "vision")}>
+              {#each getAiModelOptions(aiEffectiveProvider(activeAiAction), "vision") as opt}
+                <option value={opt.value} label={opt.label}></option>
+              {/each}
+            </datalist>
+          </div>
+          <div class="row-sep"></div>
+
+          <div class="prompt-block">
+            <div class="prompt-head">
+              <div class="row-label-stack">
+                <span class="row-label">{$t("settings.ai.prompt")}</span>
+                <span class="row-sub">{$t("settings.ai.prompt_desc")}</span>
+              </div>
+              <button class="apply-btn subtle" on:click={() => resetAiPrompt(activeAiAction)}>
+                {$t("settings.ai.reset_prompt")}
+              </button>
+            </div>
+            <textarea
+              class="prompt-textarea"
+              value={aiActionConfigs[activeAiAction].prompt}
+              on:input={(e) => handleAiInput(activeAiAction, "prompt", e)}
+              spellcheck="false"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="save-btn" on:click={handleSaveAiActions} disabled={saving}>
+            {saving ? $t("settings.saving") : saved ? $t("settings.saved") : $t("settings.save")}
+          </button>
+          {#if error}
+            <span class="inline-error">{error}</span>
+          {/if}
+        </div>
 
         <!-- ── General ── -->
       {:else if activeSection === "general"}
@@ -780,6 +1096,10 @@
     gap: 6px;
   }
 
+  .content > * {
+    flex-shrink: 0;
+  }
+
   .content h2 {
     font-size: 20px;
     font-weight: 700;
@@ -1034,6 +1354,123 @@
     background: rgba(255, 255, 255, 0.08);
     padding: 1px 4px;
     border-radius: 3px;
+  }
+
+  .section-hint {
+    font-size: 12px;
+    line-height: 1.45;
+    color: rgba(255, 255, 255, 0.38);
+    margin: -4px 0 8px;
+  }
+
+  .ai-action-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 2px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .ai-action-tabs button {
+    min-width: 112px;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.54);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+
+  .ai-action-tabs button:hover {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .ai-action-tabs button.active {
+    background: rgba(129, 140, 248, 0.24);
+    color: rgba(210, 211, 255, 0.95);
+  }
+
+  .ai-group {
+    margin-bottom: 8px;
+  }
+
+  .ai-toggle-row {
+    min-height: 54px;
+  }
+
+  .ai-control-row {
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 10px 16px 12px;
+  }
+
+  .ai-control-row .row-label-stack {
+    min-width: 0;
+  }
+
+  .ai-control-row .row-sub {
+    line-height: 1.35;
+  }
+
+  .ai-control {
+    width: 100%;
+    max-width: none;
+  }
+
+  .prompt-block {
+    padding: 10px 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .prompt-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .apply-btn.subtle {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .apply-btn.subtle:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .prompt-textarea {
+    width: 100%;
+    min-height: 104px;
+    max-height: 220px;
+    resize: vertical;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.18);
+    color: rgba(255, 255, 255, 0.88);
+    padding: 10px 11px;
+    outline: none;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .prompt-textarea:focus {
+    border-color: rgba(129, 140, 248, 0.55);
+    background: rgba(0, 0, 0, 0.24);
   }
 
   .warn {

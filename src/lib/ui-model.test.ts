@@ -88,6 +88,14 @@ describe("deriveUiDecision", () => {
     expect(decision.shouldShowWindow).toBe(true);
   });
 
+  it("compose alert uses taller HUD and stays visible", () => {
+    const decision = deriveUiDecision(baseState({ composeAlert: true }));
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window.w).toBe(300);
+    expect(decision.window.h).toBe(108);
+  });
+
   it("transcription success flash keeps HUD visible while idle", () => {
     const decision = deriveUiDecision(baseState({ transcriptionSuccessFlash: true }));
     expect(decision.view).toBe("hud");
