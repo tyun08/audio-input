@@ -28,6 +28,8 @@ export interface ProviderDef {
   tagline: L;
   icon: string; // SVG inner content for a 24×24 viewBox
   fields: ProviderField[];
+  aiTextModels?: { default: string; options: { value: string; label: string }[] };
+  aiVisionModels?: { default: string; options: { value: string; label: string }[] };
   /** IPC command that returns boolean — called with `{ provider: id }` */
   authCheck?: string;
   authOkText?: L;
@@ -70,6 +72,20 @@ export const providers: ProviderDef[] = [
         ],
       },
     ],
+    aiTextModels: {
+      default: "openai/gpt-oss-20b",
+      options: [
+        { value: "openai/gpt-oss-20b", label: "GPT OSS 20B" },
+        { value: "openai/gpt-oss-120b", label: "GPT OSS 120B" },
+        { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile" },
+      ],
+    },
+    aiVisionModels: {
+      default: "meta-llama/llama-4-scout-17b-16e-instruct",
+      options: [
+        { value: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout Vision" },
+      ],
+    },
     hint: l(
       'Get one free at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>',
       '在 <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a> 免费获取'
@@ -99,6 +115,20 @@ export const providers: ProviderDef[] = [
         ],
       },
     ],
+    aiTextModels: {
+      default: "gpt-4o-mini",
+      options: [
+        { value: "gpt-4o-mini", label: "GPT-4o mini" },
+        { value: "gpt-4o", label: "GPT-4o" },
+      ],
+    },
+    aiVisionModels: {
+      default: "gpt-4o-mini",
+      options: [
+        { value: "gpt-4o-mini", label: "GPT-4o mini" },
+        { value: "gpt-4o", label: "GPT-4o" },
+      ],
+    },
     hint: l(
       "Uses <code>https://api.openai.com/v1</code>. Enter an OpenAI API key and pick a transcription model.",
       "使用 <code>https://api.openai.com/v1</code>。填写 OpenAI API Key 后选择转录模型即可。"
@@ -128,6 +158,21 @@ export const providers: ProviderDef[] = [
         ],
       },
     ],
+    aiTextModels: {
+      default: "gemini-2.5-flash",
+      options: [
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+        { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      ],
+    },
+    aiVisionModels: {
+      default: "gemini-2.5-flash",
+      options: [
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      ],
+    },
     hint: l(
       'Uses the Gemini API directly. Create an API key in <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.',
       '直接使用 Gemini API。可在 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a> 创建 API Key。'
@@ -165,6 +210,22 @@ export const providers: ProviderDef[] = [
         ],
       },
     ],
+    aiTextModels: {
+      default: "gemini-2.5-flash",
+      options: [
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+        { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      ],
+    },
+    aiVisionModels: {
+      default: "gemini-2.5-flash",
+      options: [
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+        { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      ],
+    },
     authCheck: "check_provider_status",
     authOkText: l("gcloud credentials ready", "gcloud 凭证已就绪"),
     authFailText: l("gcloud credentials not found", "未检测到 gcloud 凭证"),
@@ -201,6 +262,14 @@ export const providers: ProviderDef[] = [
         mono: true,
       },
     ],
+    aiTextModels: {
+      default: "gpt-4o-mini",
+      options: [{ value: "gpt-4o-mini", label: "gpt-4o-mini" }],
+    },
+    aiVisionModels: {
+      default: "gpt-4o-mini",
+      options: [{ value: "gpt-4o-mini", label: "gpt-4o-mini" }],
+    },
     hint: l(
       "For a self-hosted LiteLLM proxy or any custom OpenAI-compatible endpoint. Enter your own API base URL, API key, and model name.",
       "用于自建 LiteLLM Proxy 或其它自定义 OpenAI 兼容端点。请填写自己的 API Base URL、API Key 和模型名。"
@@ -210,6 +279,16 @@ export const providers: ProviderDef[] = [
 
 export function getProvider(id: string): ProviderDef | undefined {
   return providers.find((p) => p.id === id);
+}
+
+export function getAiModelOptions(
+  providerId: string,
+  type: "text" | "vision"
+): { value: string; label: string }[] {
+  const provider = getProvider(providerId);
+  return (
+    (type === "vision" ? provider?.aiVisionModels?.options : provider?.aiTextModels?.options) ?? []
+  );
 }
 
 /** Group fields so adjacent `half` fields share one row. */

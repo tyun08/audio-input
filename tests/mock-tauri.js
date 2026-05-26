@@ -12,8 +12,7 @@
   "use strict";
 
   window.__TAURI_INTERNALS__ = window.__TAURI_INTERNALS__ || {};
-  window.__TAURI_EVENT_PLUGIN_INTERNALS__ =
-    window.__TAURI_EVENT_PLUGIN_INTERNALS__ || {};
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__ = window.__TAURI_EVENT_PLUGIN_INTERNALS__ || {};
 
   // ── Window metadata (required by getCurrentWindow()) ─────────────────────
   window.__TAURI_INTERNALS__.metadata = {
@@ -26,9 +25,14 @@
 
   function transformCallback(fn, once) {
     const id = window.crypto.getRandomValues(new Uint32Array(1))[0];
-    callbacks.set(id, once
-      ? function (data) { callbacks.delete(id); fn && fn(data); }
-      : fn
+    callbacks.set(
+      id,
+      once
+        ? function (data) {
+            callbacks.delete(id);
+            fn && fn(data);
+          }
+        : fn
     );
     return id;
   }
@@ -65,6 +69,7 @@
     save_provider: null,
     save_provider_config: null,
     save_polish_enabled: null,
+    save_ai_action_config: null,
     save_preferred_device: null,
     save_shortcut: null,
     save_autostart_enabled: null,
@@ -113,16 +118,41 @@
       };
       return windowResponses[cmd] !== undefined ? windowResponses[cmd] : null;
     }
-    if (
-      cmd.startsWith("plugin:global-shortcut|") ||
-      cmd.startsWith("plugin:notification|")
-    ) {
+    if (cmd.startsWith("plugin:global-shortcut|") || cmd.startsWith("plugin:notification|")) {
       return null;
     }
 
     // Per-test override
     if (Object.prototype.hasOwnProperty.call(window.__tauriMockOverrides, cmd)) {
       return window.__tauriMockOverrides[cmd];
+    }
+
+    if (cmd === "get_ai_action_config") {
+      const smart = args && args.action === "smart_compose";
+      return {
+        provider: "",
+        effective_provider: "groq",
+        model: "openai/gpt-oss-20b",
+        vision_model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        prompt: smart
+          ? "You are an intelligent writing assistant. Output only the final composed text."
+          : "You are a transcription cleanup assistant. Output only the cleaned transcription text.",
+        default_model: "openai/gpt-oss-20b",
+        default_vision_model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        default_prompt: smart
+          ? "You are an intelligent writing assistant. Output only the final composed text."
+          : "You are a transcription cleanup assistant. Output only the cleaned transcription text.",
+      };
+    }
+    if (cmd === "get_ai_action_defaults") {
+      const smart = args && args.action === "smart_compose";
+      return {
+        default_model: "openai/gpt-oss-20b",
+        default_vision_model: "meta-llama/llama-4-scout-17b-16e-instruct",
+        default_prompt: smart
+          ? "You are an intelligent writing assistant. Output only the final composed text."
+          : "You are a transcription cleanup assistant. Output only the cleaned transcription text.",
+      };
     }
 
     // Default
@@ -141,10 +171,7 @@
   window.__TAURI_INTERNALS__.runCallback = runCallback;
   window.__TAURI_INTERNALS__.callbacks = callbacks;
 
-  window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener = function (
-    _event,
-    id
-  ) {
+  window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener = function (_event, id) {
     unregisterCallback(id);
   };
 

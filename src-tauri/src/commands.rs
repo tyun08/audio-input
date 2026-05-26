@@ -4,7 +4,7 @@ static PASTE_MONITOR: std::sync::Mutex<Option<crate::paste_monitor::PasteMonitor
 
 use crate::{
     audio::{encode_wav, Recorder},
-    config::AppConfig,
+    config::{AiActionConfig, AppConfig},
     history::{HistoryEntry, HistoryState},
     input::inject_text,
     screenshot::capture_primary_screen,
@@ -15,7 +15,10 @@ use crate::{
     tray::set_tray_icon,
 };
 use serde::Serialize;
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tracing::{error, info, warn};
 
@@ -71,7 +74,10 @@ async fn start_recording<R: Runtime>(
             msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
         };
         if mic_status == 2 || mic_status == 1 {
-            warn!("Microphone permission denied (status={}), cannot record", mic_status);
+            warn!(
+                "Microphone permission denied (status={}), cannot record",
+                mic_status
+            );
             set_tray_icon(app, "idle");
             let _ = app.emit("microphone-denied", ());
             return;
@@ -97,7 +103,7 @@ async fn start_recording<R: Runtime>(
             let _ = app.emit("state-change", "recording");
             info!("State → Recording");
 
-            let needs_screenshot = {
+            let (needs_screenshot, is_smart_compose) = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
                 let cfg = config.lock().unwrap();
                 let screenshot_context_enabled = cfg.screenshot_context_enabled;
@@ -105,24 +111,47 @@ async fn start_recording<R: Runtime>(
                     .try_state::<SharedMode>()
                     .map(|m| *m.lock().unwrap() == TranscriptionMode::SmartCompose)
                     .unwrap_or(false);
-                screenshot_context_enabled || is_smart_compose
+                (
+                    screenshot_context_enabled || is_smart_compose,
+                    is_smart_compose,
+                )
             };
             let ss = app.state::<ScreenshotState>().inner().clone();
             if needs_screenshot {
+                if is_smart_compose {
+                    let _ = app.emit("compose-context-capture-started", ());
+                }
+                let capture_generation = {
+                    let mut screenshot = ss.lock().unwrap();
+                    screenshot.begin_capture()
+                };
+                let app_for_capture = app.clone();
                 tokio::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    tokio::time::sleep(Duration::from_millis(150)).await;
                     tokio::task::spawn_blocking(move || {
                         let shot = capture_primary_screen();
                         if shot.is_some() {
-                            info!("Screenshot captured for polish context");
+                            info!("Screenshot captured for AI context");
+                            if is_smart_compose {
+                                let _ = app_for_capture.emit("compose-context-capture-ready", ());
+                            }
                         } else {
-                            info!("Screenshot capture failed, using text-only polish");
+                            info!("Screenshot capture failed");
+                            if is_smart_compose {
+                                let _ = app_for_capture.emit(
+                                    "compose-context-capture-failed",
+                                    "Screen capture failed",
+                                );
+                            }
                         }
-                        *ss.lock().unwrap() = shot;
+                        let accepted = ss.lock().unwrap().finish_capture(capture_generation, shot);
+                        if !accepted {
+                            info!("Ignoring stale screenshot capture result");
+                        }
                     });
                 });
             } else {
-                *ss.lock().unwrap() = None;
+                ss.lock().unwrap().clear();
             }
 
             // Spawn a task that periodically samples the audio buffer and
@@ -266,7 +295,8 @@ async fn run_transcription_pipeline<R: Runtime>(
     wav_bytes: Vec<u8>,
     session_id: String,
 ) {
-    let (provider, pcfg, polish_enabled, transcription_mode) = read_provider_config(app);
+    let (provider, pcfg, polish_enabled, transcription_mode, polish_action, smart_compose_action) =
+        read_provider_config(app);
 
     info!("Using provider: {}", provider);
 
@@ -309,35 +339,77 @@ async fn run_transcription_pipeline<R: Runtime>(
     }
 
     // Polish / Smart Compose
-    let screenshot = {
-        let screenshot_state = app.state::<ScreenshotState>();
-        let shot = screenshot_state.lock().unwrap().take();
-        shot
+    let is_smart_compose = transcription_mode == TranscriptionMode::SmartCompose;
+    let screenshot_wait_timeout = if is_smart_compose {
+        Duration::from_millis(2_500)
+    } else if polish_enabled {
+        Duration::from_millis(900)
+    } else {
+        Duration::from_millis(0)
     };
+    let screenshot = take_screenshot_context(app, screenshot_wait_timeout).await;
+    if is_smart_compose && screenshot.is_none() {
+        let msg = "Smart Compose requires screenshot context, but screen capture failed.";
+        warn!("{}", msg);
+        if !session_id.is_empty() {
+            if let Err(err) = history_state
+                .lock()
+                .unwrap()
+                .mark_failed(&session_id, msg.to_string())
+            {
+                warn!("Failed to update history entry {}: {}", session_id, err);
+            }
+        }
+        let _ = app.emit("compose-context-capture-failed", msg);
+        reset_to_idle(app, shared_state);
+        return;
+    }
 
     let mut polish_failed = false;
     let text = match transcription_mode {
         TranscriptionMode::SmartCompose => {
             info!(
-                "Smart Compose mode (screenshot context: {})...",
+                "Smart Compose mode via {} model={} vision_model={} (screenshot context: {})...",
+                smart_compose_action.provider,
+                smart_compose_action.model,
+                smart_compose_action.vision_model,
                 if screenshot.is_some() { "yes" } else { "no" }
             );
-            let (composed, failed) =
-                smart_compose_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref())
-                    .await;
-            polish_failed = failed;
-            if failed {
-                let _ = app.emit("polish-failed", ());
+            let (composed, failed) = smart_compose_with_provider(
+                &smart_compose_action,
+                &raw_text,
+                screenshot.as_deref(),
+            )
+            .await;
+            if failed || composed.trim().is_empty() {
+                let msg = "Smart Compose failed; no text was inserted.";
+                warn!("{}", msg);
+                if !session_id.is_empty() {
+                    if let Err(err) = history_state
+                        .lock()
+                        .unwrap()
+                        .mark_failed(&session_id, msg.to_string())
+                    {
+                        warn!("Failed to update history entry {}: {}", session_id, err);
+                    }
+                }
+                let _ = app.emit("compose-failed", msg);
+                reset_to_idle(app, shared_state);
+                return;
             }
+            polish_failed = false;
             composed
         }
         TranscriptionMode::Dictate if polish_enabled => {
             info!(
-                "Dictate mode + polish (screenshot context: {})...",
+                "Dictate mode + polish via {} model={} vision_model={} (screenshot context: {})...",
+                polish_action.provider,
+                polish_action.model,
+                polish_action.vision_model,
                 if screenshot.is_some() { "yes" } else { "no" }
             );
             let (polished, failed) =
-                polish_with_provider(&provider, &pcfg, &raw_text, screenshot.as_deref()).await;
+                polish_with_provider(&polish_action, &raw_text, screenshot.as_deref()).await;
             polish_failed = failed;
             if failed {
                 let _ = app.emit("polish-failed", ());
@@ -387,25 +459,204 @@ async fn run_transcription_pipeline<R: Runtime>(
     info!("State → Idle");
 }
 
+async fn take_screenshot_context<R: Runtime>(
+    app: &AppHandle<R>,
+    wait_timeout: Duration,
+) -> Option<String> {
+    let screenshot_state = app.state::<ScreenshotState>();
+    let deadline = Instant::now() + wait_timeout;
+
+    loop {
+        {
+            let mut screenshot = screenshot_state.lock().unwrap();
+            if !screenshot.is_capturing() {
+                return screenshot.take_ready();
+            }
+        }
+
+        if wait_timeout.is_zero() || Instant::now() >= deadline {
+            if !wait_timeout.is_zero() {
+                warn!("Timed out waiting for screenshot context");
+            }
+            return screenshot_state.lock().unwrap().cancel_capture();
+        }
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+const AI_ACTION_POLISH: &str = "polish";
+const AI_ACTION_SMART_COMPOSE: &str = "smart_compose";
+
+#[derive(Clone)]
+struct ResolvedAiActionConfig {
+    provider: String,
+    provider_config: serde_json::Value,
+    model: String,
+    vision_model: String,
+    prompt: String,
+}
+
+#[derive(Serialize)]
+pub struct AiActionConfigResponse {
+    provider: String,
+    effective_provider: String,
+    model: String,
+    vision_model: String,
+    prompt: String,
+    default_model: String,
+    default_vision_model: String,
+    default_prompt: String,
+}
+
+#[derive(Serialize)]
+pub struct AiActionDefaultsResponse {
+    default_model: String,
+    default_vision_model: String,
+    default_prompt: String,
+}
+
 fn read_provider_config<R: Runtime>(
     app: &AppHandle<R>,
-) -> (String, serde_json::Value, bool, TranscriptionMode) {
+) -> (
+    String,
+    serde_json::Value,
+    bool,
+    TranscriptionMode,
+    ResolvedAiActionConfig,
+    ResolvedAiActionConfig,
+) {
     let config = app.state::<Arc<Mutex<AppConfig>>>();
     let cfg = config.lock().unwrap();
     let p = cfg.provider.clone();
     let mut pc = cfg.get_pcfg(&p);
-    if p == "groq" {
-        if let Ok(key) = std::env::var("GROQ_API_KEY") {
-            if !key.is_empty() {
-                pc["api_key"] = serde_json::Value::String(key);
-            }
-        }
-    }
+    apply_provider_env_overrides(&p, &mut pc);
     let mode = app
         .try_state::<SharedMode>()
         .map(|m| m.lock().unwrap().clone())
         .unwrap_or_default();
-    (p, pc, cfg.polish_enabled, mode)
+    let polish_action = resolve_ai_action_config(&cfg, AI_ACTION_POLISH);
+    let smart_compose_action = resolve_ai_action_config(&cfg, AI_ACTION_SMART_COMPOSE);
+    (
+        p,
+        pc,
+        cfg.polish_enabled,
+        mode,
+        polish_action,
+        smart_compose_action,
+    )
+}
+
+fn apply_provider_env_overrides(provider: &str, config: &mut serde_json::Value) {
+    if provider == "groq" {
+        if let Ok(key) = std::env::var("GROQ_API_KEY") {
+            if !key.is_empty() {
+                config["api_key"] = serde_json::Value::String(key);
+            }
+        }
+    }
+}
+
+fn normalize_ai_action(action: &str) -> Option<&'static str> {
+    match action {
+        AI_ACTION_POLISH => Some(AI_ACTION_POLISH),
+        AI_ACTION_SMART_COMPOSE => Some(AI_ACTION_SMART_COMPOSE),
+        _ => None,
+    }
+}
+
+fn default_ai_action_values(action: &str, provider: &str) -> AiActionDefaultsResponse {
+    let (model, vision_model) = match provider {
+        "groq" => (
+            polish::DEFAULT_GROQ_TEXT_MODEL,
+            polish::DEFAULT_GROQ_VISION_MODEL,
+        ),
+        "gemini" | "vertex_ai" => ("gemini-2.5-flash", "gemini-2.5-flash"),
+        "openai" | "litellm" => (
+            crate::transcription::litellm::DEFAULT_POLISH_MODEL,
+            crate::transcription::litellm::DEFAULT_POLISH_MODEL,
+        ),
+        _ => (
+            crate::transcription::litellm::DEFAULT_POLISH_MODEL,
+            crate::transcription::litellm::DEFAULT_POLISH_MODEL,
+        ),
+    };
+    let prompt = if action == AI_ACTION_SMART_COMPOSE {
+        polish::SYSTEM_PROMPT_SMART_COMPOSE
+    } else {
+        polish::DEFAULT_POLISH_PROMPT
+    };
+
+    AiActionDefaultsResponse {
+        default_model: model.to_string(),
+        default_vision_model: vision_model.to_string(),
+        default_prompt: prompt.to_string(),
+    }
+}
+
+fn resolve_ai_action_config(cfg: &AppConfig, action: &str) -> ResolvedAiActionConfig {
+    let stored = cfg.get_ai_action_config(action);
+    let provider = if stored.provider.trim().is_empty() {
+        cfg.provider.clone()
+    } else {
+        stored.provider.trim().to_string()
+    };
+    let defaults = default_ai_action_values(action, &provider);
+    let mut provider_config = cfg.get_pcfg(&provider);
+    apply_provider_env_overrides(&provider, &mut provider_config);
+
+    ResolvedAiActionConfig {
+        provider,
+        provider_config,
+        model: if stored.model.trim().is_empty() {
+            defaults.default_model
+        } else {
+            stored.model.trim().to_string()
+        },
+        vision_model: if stored.vision_model.trim().is_empty() {
+            defaults.default_vision_model
+        } else {
+            stored.vision_model.trim().to_string()
+        },
+        prompt: if stored.prompt.trim().is_empty() {
+            defaults.default_prompt
+        } else {
+            stored.prompt
+        },
+    }
+}
+
+fn ai_action_config_response(cfg: &AppConfig, action: &str) -> AiActionConfigResponse {
+    let stored = cfg.get_ai_action_config(action);
+    let effective_provider = if stored.provider.trim().is_empty() {
+        cfg.provider.clone()
+    } else {
+        stored.provider.trim().to_string()
+    };
+    let defaults = default_ai_action_values(action, &effective_provider);
+
+    AiActionConfigResponse {
+        provider: stored.provider,
+        effective_provider,
+        model: if stored.model.trim().is_empty() {
+            defaults.default_model.clone()
+        } else {
+            stored.model.trim().to_string()
+        },
+        vision_model: if stored.vision_model.trim().is_empty() {
+            defaults.default_vision_model.clone()
+        } else {
+            stored.vision_model.trim().to_string()
+        },
+        prompt: if stored.prompt.trim().is_empty() {
+            defaults.default_prompt.clone()
+        } else {
+            stored.prompt
+        },
+        default_model: defaults.default_model,
+        default_vision_model: defaults.default_vision_model,
+        default_prompt: defaults.default_prompt,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -505,21 +756,37 @@ async fn transcribe_with_provider(
 }
 
 async fn smart_compose_with_provider(
-    provider: &str,
-    config: &serde_json::Value,
+    action: &ResolvedAiActionConfig,
     text: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
-    match provider {
+    let config = &action.provider_config;
+    match action.provider.as_str() {
         "groq" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
-            polish::smart_compose_text(text, api_key, screenshot).await
+            polish::smart_compose_text(
+                text,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "vertex_ai" => {
             let project_id = config["project_id"].as_str().unwrap_or("");
             let location = config["location"].as_str().unwrap_or("us-central1");
-            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            vertex::smart_compose_text_vertex(text, project_id, location, model, screenshot).await
+            vertex::smart_compose_text_vertex(
+                text,
+                project_id,
+                location,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "openai" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
@@ -530,6 +797,9 @@ async fn smart_compose_with_provider(
                 text,
                 crate::transcription::litellm::DEFAULT_API_BASE,
                 api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
                 screenshot,
             )
             .await
@@ -539,8 +809,15 @@ async fn smart_compose_with_provider(
             if api_key.is_empty() {
                 return (text.to_string(), true);
             }
-            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            gemini::smart_compose_text_gemini(text, api_key, model, screenshot).await
+            gemini::smart_compose_text_gemini(
+                text,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "litellm" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
@@ -551,7 +828,13 @@ async fn smart_compose_with_provider(
                 .as_str()
                 .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
             crate::transcription::litellm::smart_compose_text_litellm(
-                text, api_base, api_key, screenshot,
+                text,
+                api_base,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
             )
             .await
         }
@@ -560,21 +843,37 @@ async fn smart_compose_with_provider(
 }
 
 async fn polish_with_provider(
-    provider: &str,
-    config: &serde_json::Value,
+    action: &ResolvedAiActionConfig,
     text: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
-    match provider {
+    let config = &action.provider_config;
+    match action.provider.as_str() {
         "groq" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
-            polish::polish_text(text, api_key, screenshot).await
+            polish::polish_text(
+                text,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "vertex_ai" => {
             let project_id = config["project_id"].as_str().unwrap_or("");
             let location = config["location"].as_str().unwrap_or("us-central1");
-            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            vertex::polish_text_vertex(text, project_id, location, model, screenshot).await
+            vertex::polish_text_vertex(
+                text,
+                project_id,
+                location,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "openai" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
@@ -585,6 +884,9 @@ async fn polish_with_provider(
                 text,
                 crate::transcription::litellm::DEFAULT_API_BASE,
                 api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
                 screenshot,
             )
             .await
@@ -594,8 +896,15 @@ async fn polish_with_provider(
             if api_key.is_empty() {
                 return (text.to_string(), true);
             }
-            let model = config["model"].as_str().unwrap_or("gemini-2.5-flash");
-            gemini::polish_text_gemini(text, api_key, model, screenshot).await
+            gemini::polish_text_gemini(
+                text,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         "litellm" => {
             let api_key = config["api_key"].as_str().unwrap_or("");
@@ -605,8 +914,16 @@ async fn polish_with_provider(
             let api_base = config["api_base"]
                 .as_str()
                 .unwrap_or(crate::transcription::litellm::DEFAULT_API_BASE);
-            crate::transcription::litellm::polish_text_litellm(text, api_base, api_key, screenshot)
-                .await
+            crate::transcription::litellm::polish_text_litellm(
+                text,
+                api_base,
+                api_key,
+                &action.model,
+                &action.vision_model,
+                &action.prompt,
+                screenshot,
+            )
+            .await
         }
         _ => (text.to_string(), true),
     }
@@ -757,7 +1074,6 @@ pub async fn request_microphone_permission(app: AppHandle) {
     }
 }
 
-
 #[tauri::command]
 pub fn open_microphone_prefs() {
     #[cfg(target_os = "macos")]
@@ -847,6 +1163,54 @@ pub async fn save_polish_enabled(
     // Rebuild tray menu to sync the AI Polish checkbox and preserve current locale.
     crate::tray::refresh_tray_menu(&app);
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_ai_action_config(
+    action: String,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<AiActionConfigResponse, String> {
+    let action =
+        normalize_ai_action(&action).ok_or_else(|| format!("Unsupported AI action: {}", action))?;
+    let cfg = config.lock().unwrap();
+    Ok(ai_action_config_response(&cfg, action))
+}
+
+#[tauri::command]
+pub fn get_ai_action_defaults(
+    action: String,
+    provider: String,
+) -> Result<AiActionDefaultsResponse, String> {
+    let action =
+        normalize_ai_action(&action).ok_or_else(|| format!("Unsupported AI action: {}", action))?;
+    Ok(default_ai_action_values(action, provider.trim()))
+}
+
+#[tauri::command]
+pub async fn save_ai_action_config(
+    action: String,
+    config_values: serde_json::Value,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let action =
+        normalize_ai_action(&action).ok_or_else(|| format!("Unsupported AI action: {}", action))?;
+    let mut action_config: AiActionConfig =
+        serde_json::from_value(config_values).map_err(|e| e.to_string())?;
+    action_config.provider = action_config.provider.trim().to_string();
+    action_config.model = action_config.model.trim().to_string();
+    action_config.vision_model = action_config.vision_model.trim().to_string();
+    if action_config.prompt.trim().is_empty() {
+        action_config.prompt.clear();
+    }
+
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.ai_action_configs
+            .insert(action.to_string(), action_config);
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
 // --- Audio devices -----------------------------------------------------------
@@ -1321,4 +1685,3 @@ pub async fn toggle_transcription_mode(
     crate::tray::refresh_tray_menu(&app);
     Ok(new_mode.to_string())
 }
-

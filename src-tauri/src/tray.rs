@@ -28,6 +28,7 @@ struct TrayStrings {
     check_updates: &'static str,
     quit: &'static str,
     tooltip_idle: &'static str,
+    tooltip_smart_compose: &'static str,
     last_prefix: &'static str,
     #[cfg(debug_assertions)]
     devtools: &'static str,
@@ -44,6 +45,7 @@ const STRINGS_EN: TrayStrings = TrayStrings {
     check_updates: "Check for Updates…",
     quit: "Quit",
     tooltip_idle: "Audio Input — Click or ⌘⇧Space to record",
+    tooltip_smart_compose: "Audio Input — Smart Compose ready",
     last_prefix: "Last: ",
     #[cfg(debug_assertions)]
     devtools: "Open DevTools",
@@ -60,15 +62,19 @@ const STRINGS_ZH: TrayStrings = TrayStrings {
     check_updates: "检查更新…",
     quit: "退出",
     tooltip_idle: "Audio Input — 点击或 ⌘⇧Space 录音",
+    tooltip_smart_compose: "Audio Input — 智能撰写就绪",
     last_prefix: "最后：",
     #[cfg(debug_assertions)]
     devtools: "打开开发工具",
 };
 
 fn strings_for_locale(locale: &str) -> &'static TrayStrings {
-    if locale == "zh" { &STRINGS_ZH } else { &STRINGS_EN }
+    if locale == "zh" {
+        &STRINGS_ZH
+    } else {
+        &STRINGS_EN
+    }
 }
-
 
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let (polish_enabled, smart_compose_active, locale) = {
@@ -82,9 +88,17 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
     let s = strings_for_locale(&locale);
     TrayIconBuilder::with_id("main-tray")
-        .icon(idle_icon())
+        .icon(if smart_compose_active {
+            smart_compose_icon()
+        } else {
+            idle_icon()
+        })
         .icon_as_template(true)
-        .tooltip(s.tooltip_idle)
+        .tooltip(if smart_compose_active {
+            s.tooltip_smart_compose
+        } else {
+            s.tooltip_idle
+        })
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -247,8 +261,7 @@ pub fn build_tray_menu<R: Runtime>(
     // at compile time so it's always accurate. Lets the user confirm which
     // build is installed after an in-app update or brew upgrade. (#75)
     let version_label = format!("Audio Input v{}", env!("CARGO_PKG_VERSION"));
-    let version_item =
-        MenuItem::with_id(app, "version-info", &version_label, false, None::<&str>)?;
+    let version_item = MenuItem::with_id(app, "version-info", &version_label, false, None::<&str>)?;
     let sep_top = PredefinedMenuItem::separator(app)?;
 
     #[cfg(debug_assertions)]
@@ -279,7 +292,10 @@ pub fn build_tray_menu<R: Runtime>(
 /// Builds the "Recent ▸" submenu. Picks the most recent N successfully-
 /// completed history entries, with the newest first. Each item's ID encodes
 /// the history id so the menu-event handler can resolve back to the text.
-fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, s: &TrayStrings) -> tauri::Result<Submenu<R>> {
+fn build_recent_submenu<R: Runtime>(
+    app: &AppHandle<R>,
+    s: &TrayStrings,
+) -> tauri::Result<Submenu<R>> {
     use crate::history::{HistoryState, HistoryStatus};
 
     let mut recent: Vec<(String, String)> = Vec::new(); // (id, preview)
@@ -314,7 +330,13 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, s: &TrayStrings) -> taur
         let mut items: Vec<MenuItem<R>> = Vec::with_capacity(recent.len());
         for (id, preview) in &recent {
             let item_id = format!("{RECENT_ID_PREFIX}{id}");
-            items.push(MenuItem::with_id(app, &item_id, preview, true, None::<&str>)?);
+            items.push(MenuItem::with_id(
+                app,
+                &item_id,
+                preview,
+                true,
+                None::<&str>,
+            )?);
         }
         let mut b = builder;
         for it in &items {
@@ -327,10 +349,7 @@ fn build_recent_submenu<R: Runtime>(app: &AppHandle<R>, s: &TrayStrings) -> taur
 /// Truncate transcription text for tray display: collapse whitespace, cap to
 /// RECENT_PREVIEW_CHARS, append "…" when cut.
 fn preview_text(s: &str) -> String {
-    let collapsed: String = s
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let collapsed: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
     let chars: Vec<char> = collapsed.chars().collect();
     if chars.len() > RECENT_PREVIEW_CHARS {
         let mut out: String = chars[..RECENT_PREVIEW_CHARS].iter().collect();
@@ -406,7 +425,23 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) {
     if let Ok(menu) = build_tray_menu(app, polish_enabled, smart_compose_active, &locale) {
         let _ = tray.set_menu(Some(menu));
     }
-    let _ = tray.set_tooltip(Some(s.tooltip_idle));
+    let _ = tray.set_tooltip(Some(if smart_compose_active {
+        s.tooltip_smart_compose
+    } else {
+        s.tooltip_idle
+    }));
+    let is_idle = app
+        .try_state::<crate::state::SharedState>()
+        .and_then(|state| {
+            state
+                .lock()
+                .ok()
+                .map(|s| matches!(&*s, crate::state::AppState::Idle))
+        })
+        .unwrap_or(true);
+    if is_idle {
+        set_tray_icon(app, "idle");
+    }
 }
 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
@@ -415,7 +450,20 @@ pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
             "recording" => (recording_icon(), false),
             "processing" => (processing_icon(), false),
             "error" => (error_icon(), false),
-            _ => (idle_icon(), true),
+            _ => {
+                let smart_compose_active = app
+                    .state::<Arc<Mutex<crate::config::AppConfig>>>()
+                    .lock()
+                    .map(|cfg| {
+                        cfg.transcription_mode == crate::state::TranscriptionMode::SmartCompose
+                    })
+                    .unwrap_or(false);
+                if smart_compose_active {
+                    (smart_compose_icon(), true)
+                } else {
+                    (idle_icon(), true)
+                }
+            }
         };
         let _ = tray.set_icon(Some(icon));
         let _ = tray.set_icon_as_template(as_template);
@@ -486,6 +534,10 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
 
 fn idle_icon() -> Image<'static> {
     Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png corrupted")
+}
+fn smart_compose_icon() -> Image<'static> {
+    Image::from_bytes(include_bytes!("../icons/tray-smart-compose.png"))
+        .expect("tray-smart-compose.png corrupted")
 }
 fn recording_icon() -> Image<'static> {
     Image::from_bytes(include_bytes!("../icons/tray-recording.png"))

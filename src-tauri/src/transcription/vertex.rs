@@ -5,8 +5,6 @@ use serde::Deserialize;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{SYSTEM_PROMPT_SMART_COMPOSE, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
-
 #[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
@@ -102,6 +100,8 @@ pub async fn polish_text_vertex(
     project_id: &str,
     location: &str,
     model: &str,
+    vision_model: &str,
+    prompt: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
     let access_token = match get_access_token().await {
@@ -120,6 +120,10 @@ pub async fn polish_text_vertex(
         "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
         loc = location, proj = project_id,
     );
+    let vision_url = format!(
+        "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
+        loc = location, proj = project_id, model = vision_model,
+    );
 
     let client = Client::builder()
         .timeout(Duration::from_secs(15))
@@ -130,9 +134,10 @@ pub async fn polish_text_vertex(
         info!("Using Vertex AI vision model for polish (screenshot attached)");
         match try_vision(
             &client,
-            &url,
+            &vision_url,
             &access_token,
             text,
+            prompt,
             img_data,
             0.1,
             false,
@@ -152,9 +157,10 @@ pub async fn polish_text_vertex(
                 );
                 if let Ok(p) = try_vision(
                     &client,
-                    &url,
+                    &vision_url,
                     &access_token,
                     text,
+                    prompt,
                     img_data,
                     0.3,
                     true,
@@ -177,12 +183,34 @@ pub async fn polish_text_vertex(
         }
     }
 
-    match try_text(&client, &url, &access_token, text, 0.1, false, max_tokens).await {
+    match try_text(
+        &client,
+        &url,
+        &access_token,
+        text,
+        prompt,
+        0.1,
+        false,
+        max_tokens,
+    )
+    .await
+    {
         Ok(p) if p.chars().count() >= threshold => {
             info!("Vertex AI polish complete");
             (p, false)
         }
-        Ok(_) => match try_text(&client, &url, &access_token, text, 0.3, true, max_tokens).await {
+        Ok(_) => match try_text(
+            &client,
+            &url,
+            &access_token,
+            text,
+            prompt,
+            0.3,
+            true,
+            max_tokens,
+        )
+        .await
+        {
             Ok(p) if p.chars().count() >= threshold => (p, false),
             _ => {
                 warn!("Vertex AI polish retry failed, returning original text");
@@ -206,6 +234,7 @@ async fn try_vision(
     url: &str,
     token: &str,
     text: &str,
+    prompt: &str,
     screenshot_data_url: &str,
     temperature: f32,
     with_hint: bool,
@@ -234,7 +263,7 @@ async fn try_vision(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": parts }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_VISION }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 
@@ -246,6 +275,7 @@ async fn try_text(
     url: &str,
     token: &str,
     text: &str,
+    prompt: &str,
     temperature: f32,
     with_hint: bool,
     max_tokens: u32,
@@ -261,7 +291,7 @@ async fn try_text(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": [{ "text": user_text }] }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_TEXT }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 
@@ -408,6 +438,8 @@ pub async fn smart_compose_text_vertex(
     project_id: &str,
     location: &str,
     model: &str,
+    vision_model: &str,
+    prompt: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
     let access_token = match get_access_token().await {
@@ -425,6 +457,10 @@ pub async fn smart_compose_text_vertex(
         "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
         loc = location, proj = project_id,
     );
+    let vision_url = format!(
+        "https://{loc}-aiplatform.googleapis.com/v1/projects/{proj}/locations/{loc}/publishers/google/models/{model}:generateContent",
+        loc = location, proj = project_id, model = vision_model,
+    );
     let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
 
     if let Some(img_data) = screenshot {
@@ -439,10 +475,11 @@ pub async fn smart_compose_text_vertex(
                         )}
                     ]
                 }],
-                "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+                "systemInstruction": { "parts": [{ "text": prompt }] },
                 "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
             });
-            let resp = client.post(&url)
+            let resp = client
+                .post(&vision_url)
                 .bearer_auth(&access_token)
                 .json(&body)
                 .send()
@@ -450,14 +487,19 @@ pub async fn smart_compose_text_vertex(
             if let Ok(r) = resp {
                 if let Ok(body_str) = r.text().await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body_str) {
-                        if let Some(t) = v["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                        if let Some(t) = v["candidates"][0]["content"]["parts"][0]["text"].as_str()
+                        {
                             let s = t.trim().to_string();
-                            if !s.is_empty() { return (s, false); }
+                            if !s.is_empty() {
+                                return (s, false);
+                            }
                         }
                     }
                 }
             }
         }
+        tracing::warn!("Vertex Smart Compose vision failed or returned empty");
+        return (String::new(), true);
     }
 
     // Text-only fallback
@@ -465,17 +507,24 @@ pub async fn smart_compose_text_vertex(
         "contents": [{ "role": "user", "parts": [{ "text": format!(
             "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
         )}] }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
     });
-    let resp = client.post(&url).bearer_auth(&access_token).json(&body).send().await;
+    let resp = client
+        .post(&url)
+        .bearer_auth(&access_token)
+        .json(&body)
+        .send()
+        .await;
     match resp {
         Ok(r) => {
             if let Ok(body_str) = r.text().await {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body_str) {
                     if let Some(t) = v["candidates"][0]["content"]["parts"][0]["text"].as_str() {
                         let s = t.trim().to_string();
-                        if !s.is_empty() { return (s, false); }
+                        if !s.is_empty() {
+                            return (s, false);
+                        }
                     }
                 }
             }

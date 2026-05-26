@@ -4,8 +4,6 @@ use reqwest::Client;
 use std::time::Duration;
 use tracing::{info, warn};
 
-use super::polish::{SYSTEM_PROMPT_SMART_COMPOSE, SYSTEM_PROMPT_TEXT, SYSTEM_PROMPT_VISION};
-
 pub const DEFAULT_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 pub struct GeminiClient {
@@ -83,12 +81,15 @@ pub async fn polish_text_gemini(
     text: &str,
     api_key: &str,
     model: &str,
+    vision_model: &str,
+    prompt: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
     let original_len = text.chars().count();
     let threshold = (original_len as f64 * 0.8) as usize;
     let max_tokens = ((original_len as u32 * 3 / 2) + 256).clamp(512, 65_536);
     let url = generate_content_url(model);
+    let vision_url = generate_content_url(vision_model);
 
     let client = match Client::builder().timeout(Duration::from_secs(15)).build() {
         Ok(c) => c,
@@ -101,7 +102,15 @@ pub async fn polish_text_gemini(
     if let Some(img_data) = screenshot {
         info!("Using Gemini vision model for polish (screenshot attached)");
         match try_vision(
-            &client, &url, api_key, text, img_data, 0.1, false, max_tokens,
+            &client,
+            &vision_url,
+            api_key,
+            text,
+            prompt,
+            img_data,
+            0.1,
+            false,
+            max_tokens,
         )
         .await
         {
@@ -116,7 +125,15 @@ pub async fn polish_text_gemini(
                     threshold
                 );
                 if let Ok(p) = try_vision(
-                    &client, &url, api_key, text, img_data, 0.3, true, max_tokens,
+                    &client,
+                    &vision_url,
+                    api_key,
+                    text,
+                    prompt,
+                    img_data,
+                    0.3,
+                    true,
+                    max_tokens,
                 )
                 .await
                 {
@@ -135,18 +152,20 @@ pub async fn polish_text_gemini(
         }
     }
 
-    match try_text(&client, &url, api_key, text, 0.1, false, max_tokens).await {
+    match try_text(&client, &url, api_key, text, prompt, 0.1, false, max_tokens).await {
         Ok(p) if p.chars().count() >= threshold => {
             info!("Gemini polish complete");
             (p, false)
         }
-        Ok(_) => match try_text(&client, &url, api_key, text, 0.3, true, max_tokens).await {
-            Ok(p) if p.chars().count() >= threshold => (p, false),
-            _ => {
-                warn!("Gemini polish retry failed, returning original text");
-                (text.to_string(), true)
+        Ok(_) => {
+            match try_text(&client, &url, api_key, text, prompt, 0.3, true, max_tokens).await {
+                Ok(p) if p.chars().count() >= threshold => (p, false),
+                _ => {
+                    warn!("Gemini polish retry failed, returning original text");
+                    (text.to_string(), true)
+                }
             }
-        },
+        }
         Err(e) => {
             warn!("Gemini polish failed: {}", e);
             (text.to_string(), true)
@@ -160,6 +179,7 @@ async fn try_vision(
     url: &str,
     api_key: &str,
     text: &str,
+    prompt: &str,
     screenshot_data_url: &str,
     temperature: f32,
     with_hint: bool,
@@ -187,7 +207,7 @@ async fn try_vision(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": parts }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_VISION }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 
@@ -199,6 +219,7 @@ async fn try_text(
     url: &str,
     api_key: &str,
     text: &str,
+    prompt: &str,
     temperature: f32,
     with_hint: bool,
     max_tokens: u32,
@@ -214,7 +235,7 @@ async fn try_text(
 
     let body = serde_json::json!({
         "contents": [{ "role": "user", "parts": [{ "text": user_text }] }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_TEXT }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": temperature, "maxOutputTokens": max_tokens }
     });
 
@@ -272,6 +293,8 @@ pub async fn smart_compose_text_gemini(
     text: &str,
     api_key: &str,
     model: &str,
+    vision_model: &str,
+    prompt: &str,
     screenshot: Option<&str>,
 ) -> (String, bool) {
     let client = Client::builder()
@@ -279,6 +302,7 @@ pub async fn smart_compose_text_gemini(
         .build()
         .unwrap_or_default();
     let url = generate_content_url(model);
+    let vision_url = generate_content_url(vision_model);
     let max_tokens = ((text.chars().count() as u32 * 4) + 512).clamp(512, 65_536);
 
     if let Some(img_data) = screenshot {
@@ -293,15 +317,17 @@ pub async fn smart_compose_text_gemini(
                         )}
                     ]
                 }],
-                "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+                "systemInstruction": { "parts": [{ "text": prompt }] },
                 "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
             });
-            if let Ok(result) = send_gemini_request(&client, &url, api_key, &body).await {
+            if let Ok(result) = send_gemini_request(&client, &vision_url, api_key, &body).await {
                 if !result.is_empty() {
                     return (result, false);
                 }
             }
         }
+        warn!("Gemini Smart Compose vision failed or returned empty");
+        return (String::new(), true);
     }
 
     // Text-only fallback
@@ -309,7 +335,7 @@ pub async fn smart_compose_text_gemini(
         "contents": [{ "role": "user", "parts": [{ "text": format!(
             "Raw speech transcription to transform:\n<<<SPEECH\n{}\nSPEECH>>>", text
         )}] }],
-        "systemInstruction": { "parts": [{ "text": SYSTEM_PROMPT_SMART_COMPOSE }] },
+        "systemInstruction": { "parts": [{ "text": prompt }] },
         "generationConfig": { "temperature": 0.2, "maxOutputTokens": max_tokens }
     });
     match send_gemini_request(&client, &url, api_key, &body).await {

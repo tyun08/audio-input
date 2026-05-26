@@ -62,6 +62,8 @@
   let micPollInterval: ReturnType<typeof setInterval> | null = null;
   let showOnboarding = false;
   let polishFailed = false;
+  let composeContextStatus: "idle" | "capturing" | "ready" | "failed" = "idle";
+  let composeError = "";
   let shortcutConflict = "";
   let retryableSessionId: string | null = null;
   let transcriptionMode = "dictate";
@@ -85,10 +87,12 @@
   let audioLevels: number[] = Array(WAVEFORM_BAR_COUNT).fill(0);
 
   const POLISH_FAILURE_DISPLAY_DURATION_MS = 3000;
+  const COMPOSE_FAILURE_DISPLAY_DURATION_MS = 4500;
   $: TRANSCRIPTION_SUCCESS_FLASH_MS = sentHudTimeoutSecs * 1000;
 
   let transcriptionSuccessFlash = false;
   let successFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  let composeFailureTimer: ReturnType<typeof setTimeout> | null = null;
 
   function normalizeSentHudTimeoutSecs(value: unknown): number {
     return typeof value === "number" && Number.isFinite(value) && value >= 0
@@ -101,6 +105,57 @@
       clearTimeout(successFlashTimer);
       successFlashTimer = null;
     }
+  }
+
+  function clearComposeFailureTimer() {
+    if (composeFailureTimer !== null) {
+      clearTimeout(composeFailureTimer);
+      composeFailureTimer = null;
+    }
+  }
+
+  function playComposeContextCue(kind: "ready" | "failed") {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const gain = ctx.createGain();
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(
+        kind === "ready" ? 0.08 : 0.045,
+        ctx.currentTime + 0.01
+      );
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
+
+      const osc = ctx.createOscillator();
+      osc.type = kind === "ready" ? "triangle" : "sine";
+      osc.frequency.setValueAtTime(kind === "ready" ? 880 : 220, ctx.currentTime);
+      if (kind === "ready") {
+        osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
+      }
+      osc.connect(gain);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.18);
+      window.setTimeout(() => ctx.close().catch(() => {}), 260);
+    } catch {}
+  }
+
+  async function showComposeFailure(message = "") {
+    clearComposeFailureTimer();
+    composeContextStatus = "failed";
+    composeError = message;
+    playComposeContextCue("failed");
+    await syncWindow();
+    if (appState === "recording") return;
+    composeFailureTimer = setTimeout(async () => {
+      composeContextStatus = "idle";
+      composeError = "";
+      composeFailureTimer = null;
+      await syncWindow();
+    }, COMPOSE_FAILURE_DISPLAY_DURATION_MS);
   }
 
   const appApi = createAppApi();
@@ -148,6 +203,7 @@
       appState,
       injectionFailed,
       polishFailed,
+      composeAlert: composeContextStatus === "failed" || Boolean(composeError),
       showIdleHud,
       transcriptionSuccessFlash,
       retryableSessionId,
@@ -254,6 +310,11 @@
             retrying = false;
             clearSuccessFlashTimer();
             transcriptionSuccessFlash = false;
+            if (e.payload === "recording") {
+              clearComposeFailureTimer();
+              composeContextStatus = transcriptionMode === "smart_compose" ? "capturing" : "idle";
+              composeError = "";
+            }
             if (injectionFailed) {
               injectionFailed = false;
               appApi.invoke("stop_paste_monitor").catch(() => {});
@@ -289,6 +350,8 @@
 
       unlisten.push(
         await appApi.listen("transcription-success", async () => {
+          composeContextStatus = "idle";
+          composeError = "";
           if (TRANSCRIPTION_SUCCESS_FLASH_MS === 0) return;
           clearSuccessFlashTimer();
           transcriptionSuccessFlash = true;
@@ -371,6 +434,39 @@
       unlisten.push(
         await appApi.listen<string>("mode-changed", (e) => {
           transcriptionMode = e.payload;
+          composeContextStatus = "idle";
+          composeError = "";
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("compose-context-capture-started", async () => {
+          clearComposeFailureTimer();
+          composeContextStatus = "capturing";
+          composeError = "";
+          await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen("compose-context-capture-ready", async () => {
+          clearComposeFailureTimer();
+          composeContextStatus = "ready";
+          composeError = "";
+          playComposeContextCue("ready");
+          await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen<string>("compose-context-capture-failed", async () => {
+          await showComposeFailure("");
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen<string>("compose-failed", async () => {
+          await showComposeFailure("__compose_failed__");
         })
       );
 
@@ -454,6 +550,7 @@
 
   onDestroy(() => {
     clearSuccessFlashTimer();
+    clearComposeFailureTimer();
     stopMicPoll();
     unlisten.forEach((fn) => fn());
   });
@@ -511,6 +608,9 @@
   async function handleDismiss() {
     retryableSessionId = null;
     retrying = false;
+    composeContextStatus = "idle";
+    composeError = "";
+    clearComposeFailureTimer();
     try {
       await appApi.invoke("dismiss_error");
     } catch {
@@ -541,6 +641,16 @@
     transcriptionMode = await appApi
       .invoke<string>("toggle_transcription_mode")
       .catch(() => transcriptionMode);
+    composeContextStatus = "idle";
+    composeError = "";
+    clearComposeFailureTimer();
+  }
+
+  async function handleComposeDismiss() {
+    composeContextStatus = "idle";
+    composeError = "";
+    clearComposeFailureTimer();
+    await syncWindow();
   }
 
   async function handleSuccessCopy() {
@@ -638,6 +748,7 @@
       bind:showIdleHud
       bind:sentHudTimeoutSecs
       {appState}
+      {transcriptionMode}
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
@@ -648,6 +759,8 @@
       {errorMsg}
       {injectionFailed}
       {polishFailed}
+      {composeContextStatus}
+      {composeError}
       {audioLevels}
       {retryableSessionId}
       {retrying}
@@ -658,6 +771,7 @@
       on:clipboardCopy={handleClipboardCopy}
       on:clipboardDismiss={handleClipboardDismiss}
       on:successCopy={handleSuccessCopy}
+      on:composeDismiss={handleComposeDismiss}
       {transcriptionMode}
       on:modeToggle={toggleMode}
     />
