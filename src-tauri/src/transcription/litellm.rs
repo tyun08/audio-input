@@ -335,6 +335,7 @@ async fn try_polish_vision(
     send_chat_request(client, url, api_key, &request).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn try_polish_text(
     client: &reqwest::Client,
     url: &str,

@@ -200,6 +200,7 @@ pub async fn polish_text(
 
 // --- Internal helpers ---
 
+#[allow(clippy::too_many_arguments)]
 async fn try_polish_vision(
     text: &str,
     api_key: &str,

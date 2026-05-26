@@ -214,6 +214,7 @@ async fn try_vision(
     send_gemini_request(client, url, api_key, &body).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn try_text(
     client: &Client,
     url: &str,
