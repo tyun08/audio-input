@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HUD — RecordingIndicator Standalone</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #1c1c1e;
+        font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        gap: 28px;
+        color: #fff;
+      }
+      #controls {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 12px;
+        padding: 14px 18px;
+        max-width: 560px;
+      }
+      .control-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .control-label {
+        font-size: 11px;
+        color: rgba(255,255,255,0.45);
+        min-width: 60px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      #controls button {
+        padding: 3px 10px;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.06);
+        color: rgba(255,255,255,0.7);
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+        white-space: nowrap;
+      }
+      #controls button:hover {
+        background: rgba(255,255,255,0.12);
+        color: #fff;
+      }
+      #controls button.active {
+        background: rgba(99,130,246,0.35);
+        border-color: rgba(99,130,246,0.5);
+        color: #fff;
+      }
+      #controls input {
+        padding: 2px 6px;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 5px;
+        background: rgba(255,255,255,0.08);
+        color: #fff;
+        font-size: 12px;
+        font-family: inherit;
+      }
+      .topbar {
+        position: fixed;
+        top: 10px;
+        right: 14px;
+        display: flex;
+        gap: 8px;
+      }
+      .topbar button {
+        padding: 4px 12px;
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.07);
+        color: rgba(255,255,255,0.65);
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .topbar button:hover { background: rgba(255,255,255,0.14); }
+      hr {
+        width: 480px;
+        border: none;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <button id="toggle-lang">EN / 中文</button>
+    </div>
+    <div id="hud-root"></div>
+    <hr />
+    <div id="controls"></div>
+    <script type="module" src="/src/hud-mount.ts"></script>
+  </body>
+</html>

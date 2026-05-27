@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Settings — SettingsPanel Standalone</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background: #f2f2f7;
+        font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        gap: 14px;
+        color: #1c1c1e;
+      }
+      #settings-root {
+        width: 100%;
+        max-width: 660px;
+      }
+      .topbar {
+        display: flex;
+        gap: 8px;
+        align-self: flex-end;
+      }
+      .topbar button {
+        padding: 4px 12px;
+        border: 1px solid rgba(0,0,0,0.15);
+        border-radius: 6px;
+        background: rgba(0,0,0,0.04);
+        color: rgba(0,0,0,0.6);
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .topbar button:hover { background: rgba(0,0,0,0.08); }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <button id="sim-state">App: idle</button>
+      <button id="toggle-lang">EN / 中文</button>
+    </div>
+    <div id="settings-root"></div>
+    <script type="module" src="/src/settings-mount.ts"></script>
+  </body>
+</html>
