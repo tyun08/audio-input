@@ -1,4 +1,5 @@
 import { writable, derived } from "svelte/store";
+import { invoke } from "@tauri-apps/api/core";
 
 export type Locale = "en" | "zh";
 
@@ -8,16 +9,42 @@ export function l(en: string, zh: string): L {
   return { en, zh };
 }
 
+function systemLocale(): Locale {
+  return navigator.language?.startsWith("zh") ? "zh" : "en";
+}
+
 const stored =
   typeof localStorage !== "undefined"
     ? (localStorage.getItem("app-locale") as Locale | null)
     : null;
 
-export const locale = writable<Locale>(stored || "en");
+// Priority: user's explicit choice (localStorage) > system language > "en"
+export const locale = writable<Locale>(stored ?? systemLocale());
 
 locale.subscribe((v) => {
   if (typeof localStorage !== "undefined") localStorage.setItem("app-locale", v);
+  // Sync locale to backend so the native tray menu is also translated.
+  invoke("save_locale", { locale: v }).catch(() => {});
 });
+
+/** Call once on app start to load persisted locale from the backend config. */
+export async function initLocale(): Promise<void> {
+  try {
+    const backendLocale = await invoke<string>("get_locale");
+    if (backendLocale === "zh" || backendLocale === "en") {
+      // Only apply the backend value if the user has previously set an explicit
+      // preference (indicated by localStorage having a stored value). On first
+      // launch localStorage is empty and the backend is at its default "en", so
+      // we keep the system-detected locale instead of overwriting it.
+      const hasExplicitPreference = localStorage?.getItem("app-locale") != null;
+      if (hasExplicitPreference) {
+        locale.set(backendLocale as Locale);
+      }
+    }
+  } catch {
+    // Backend not available yet; system-detected locale already set.
+  }
+}
 
 const messages: Record<Locale, Record<string, string>> = {
   en: {

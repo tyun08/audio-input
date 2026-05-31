@@ -48,7 +48,7 @@
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
   import SettingsPanel from "./lib/SettingsPanel.svelte";
   import OnboardingFlow from "./lib/OnboardingFlow.svelte";
-  import { t } from "./lib/i18n";
+  import { t, initLocale } from "./lib/i18n";
   import { checkForUpdates } from "./lib/updater";
 
   let appState: AppState = "idle";
@@ -179,6 +179,9 @@
 
   onMount(async () => {
     try {
+      // Load persisted locale from backend config first so tray and UI match.
+      await initLocale();
+
       // Clear stale inline styles left by previous HMR cycles
       document.documentElement.removeAttribute("style");
       document.body.removeAttribute("style");
