@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   create-release:
     # Only RELEASE commits ship a release. Everything else on main (docs, ci,
     # follow-up fixes) merges silently. See RELEASING.md for the flow that
     # generates these commits via the auto-bump-version workflow on PR open.
-    if: startsWith(github.event.head_commit.message, 'RELEASE ')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'RELEASE ')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,12 +27,12 @@ jobs:
       - name: Extract version from commit message
         id: meta
         run: |
-          # Subject line must be exactly: RELEASE <semver>
-          # Strict regex — rejects "RELEASE 0.4.10-beta", "RELEASE  0.4.10"
-          # (double space), trailing chars, etc. Keeps the tag pattern strict
-          # the same way the old `tags: v[0-9]+.[0-9]+.[0-9]+` filter did.
+          # Subject line must be: RELEASE <semver>
+          # Accepts an optional " (#N)" squash-merge suffix that GitHub appends
+          # automatically (e.g. "RELEASE 0.4.12 (#89)"). Still rejects
+          # "RELEASE 0.4.10-beta", double spaces, and other malformed variants.
           MSG=$(git log -1 --pretty=%s)
-          if [[ ! "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          if [[ ! "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)(\s+\(#[0-9]+\))?$ ]]; then
             echo "::error::Commit message '$MSG' is not a strict 'RELEASE X.Y.Z' release commit."
             exit 1
           fi
