@@ -24,19 +24,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version from commit message
+      - name: Extract version
         id: meta
         run: |
-          # Subject line must be: RELEASE <semver>
+          # For push events: parse from the RELEASE commit subject.
           # Accepts an optional " (#N)" squash-merge suffix that GitHub appends
           # automatically (e.g. "RELEASE 0.4.12 (#89)"). Still rejects
           # "RELEASE 0.4.10-beta", double spaces, and other malformed variants.
+          # For workflow_dispatch (manual re-trigger after a fix commit landed on
+          # main): fall back to package.json, which the RELEASE commit already
+          # bumped to the right version.
           MSG=$(git log -1 --pretty=%s)
-          if [[ ! "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)(\s+\(#[0-9]+\))?$ ]]; then
+          if [[ "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)(\s+\(#[0-9]+\))?$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
+            echo "workflow_dispatch: using version from package.json ($VERSION)"
+          else
             echo "::error::Commit message '$MSG' is not a strict 'RELEASE X.Y.Z' release commit."
             exit 1
           fi
-          VERSION="${BASH_REMATCH[1]}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing version: $VERSION"
 
