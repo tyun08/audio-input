@@ -1,0 +1,108 @@
+name: Auto-bump version on release PRs
+
+# Runs when a PR is opened (or updated) targeting main, computes the next
+# version, runs scripts/bump-version.sh, and pushes a "RELEASE X.Y.Z" commit
+# to the PR's head branch. Removes the chance of forgetting the version bump
+# before tagging — see RELEASING.md for the full flow.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+# Cancel earlier in-flight runs for the same PR — only the latest decision
+# matters (labels can change, head can be force-pushed).
+concurrency:
+  group: auto-bump-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    # Skip PRs from forks — we can't push back to a fork's branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine next version
+        id: next
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          # Base version = whatever main currently ships. We bump from there
+          # rather than from the PR head, so re-running the workflow with a
+          # different label produces a stable, predictable next version.
+          git fetch origin main --quiet
+          BASE=$(git show origin/main:package.json | \
+            sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+          if [[ ! "$BASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not parse base version from main: '$BASE'"
+            exit 1
+          fi
+          IFS='.' read -r MAJ MIN PAT <<< "$BASE"
+
+          # Bump rule, label-driven. Default is patch.
+          if echo "$LABELS" | grep -q '"release:major"'; then
+            NEXT="$((MAJ + 1)).0.0"
+            KIND="major"
+          elif echo "$LABELS" | grep -q '"release:minor"'; then
+            NEXT="${MAJ}.$((MIN + 1)).0"
+            KIND="minor"
+          else
+            NEXT="${MAJ}.${MIN}.$((PAT + 1))"
+            KIND="patch"
+          fi
+
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "kind=$KIND" >> "$GITHUB_OUTPUT"
+          echo "main version: $BASE   →   target ($KIND): $NEXT"
+
+      - name: Decide whether to bump / amend / skip
+        id: gate
+        run: |
+          LAST_MSG=$(git log -1 --pretty=%s)
+          TARGET="RELEASE ${{ steps.next.outputs.next }}"
+          if [[ "$LAST_MSG" == "$TARGET" ]]; then
+            echo "Head is already $TARGET — nothing to do."
+            echo "action=skip" >> "$GITHUB_OUTPUT"
+          elif [[ "$LAST_MSG" =~ ^RELEASE\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # Previous run produced a RELEASE commit for a different version
+            # (label changed, base moved, etc.). Amend in place so the PR
+            # history stays clean — one RELEASE commit, force-pushed.
+            echo "Head is a stale RELEASE commit — will amend to $TARGET."
+            echo "action=amend" >> "$GITHUB_OUTPUT"
+          else
+            echo "Head is a regular commit — will add a new RELEASE commit."
+            echo "action=new" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run bump script
+        if: steps.gate.outputs.action != 'skip'
+        run: bash scripts/bump-version.sh "${{ steps.next.outputs.next }}"
+
+      - name: Commit and push to PR head
+        if: steps.gate.outputs.action != 'skip'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          if git diff --cached --quiet; then                                                                                    
+            echo "Files already at ${{ steps.next.outputs.next }} — nothing to commit."                                         
+          exit 0                                                                                                              
+          fi     
+          if [ "${{ steps.gate.outputs.action }}" = "amend" ]; then
+            git commit --amend -m "RELEASE ${{ steps.next.outputs.next }}"
+            git push --force-with-lease
+          else
+            git commit -m "RELEASE ${{ steps.next.outputs.next }}"
+            git push
+          fi

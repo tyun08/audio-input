@@ -10,7 +10,7 @@ fn default_provider() -> String {
 }
 
 fn default_polish_enabled() -> bool {
-    true
+    false
 }
 
 fn default_shortcut() -> String {
@@ -25,7 +25,11 @@ fn default_max_history() -> usize {
 }
 
 fn default_sent_hud_timeout_secs() -> u32 {
-    5
+    0
+}
+
+fn default_locale() -> String {
+    "en".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +55,8 @@ pub struct AppConfig {
     pub max_history: usize,
     #[serde(default = "default_sent_hud_timeout_secs")]
     pub sent_hud_timeout_secs: u32,
+    #[serde(default = "default_locale")]
+    pub locale: String,
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -68,7 +74,7 @@ impl Default for AppConfig {
         AppConfig {
             provider: default_provider(),
             provider_configs: HashMap::new(),
-            polish_enabled: true,
+            polish_enabled: false,
             preferred_device: None,
             shortcut: default_shortcut(),
             onboarding_completed: false,
@@ -76,6 +82,7 @@ impl Default for AppConfig {
             show_idle_hud: false,
             max_history: default_max_history(),
             sent_hud_timeout_secs: default_sent_hud_timeout_secs(),
+            locale: default_locale(),
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),

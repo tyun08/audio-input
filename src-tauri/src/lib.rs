@@ -317,6 +317,8 @@ pub fn run() {
             commands::save_sent_hud_timeout_secs,
             commands::stop_paste_monitor,
             commands::get_microphone_status,
+            commands::get_locale,
+            commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
         ])
