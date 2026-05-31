@@ -5,11 +5,24 @@ use std::sync::{Arc, Mutex};
 use tauri::{Manager, Runtime};
 use tracing::{error, info, warn};
 
-// cpal::Stream is not Send on all platforms; we control access via Mutex
-// The inner Stream is held purely for its RAII drop (stops recording).
-#[allow(dead_code)]
+// cpal::Stream is not Send on all platforms; we control access via Mutex.
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
+
+// RAII guard: dropping a SendStream always pauses the underlying cpal stream
+// first. cpal's own Drop does NOT reliably halt the input callback on
+// macOS/coreaudio — without this explicit pause the stream becomes a "zombie"
+// that keeps appending to the shared buffer (inflating recording duration and
+// causing ASR hallucination) and holds the mic open (the OS "mic in use"
+// indicator never turns off). Putting it in Drop guarantees cleanup on every
+// path: stop(), stream replacement in start(), Recorder teardown, and panics.
+impl Drop for SendStream {
+    fn drop(&mut self) {
+        if let Err(e) = self.0.pause() {
+            warn!("Failed to pause recording stream on drop: {}", e);
+        }
+    }
+}
 
 pub struct AudioData {
     pub samples: Vec<f32>,
@@ -102,6 +115,11 @@ impl Recorder {
             config.sample_format()
         );
 
+        // Defensively release any pre-existing stream so we never accumulate
+        // concurrent writers on the shared buffer. Dropping it pauses the cpal
+        // stream (see SendStream's Drop).
+        self.stream = None;
+
         let buffer = Arc::clone(&self.buffer);
         {
             let mut buf = buffer.lock().unwrap();
@@ -130,8 +148,10 @@ impl Recorder {
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
-        // Drop the stream to stop recording
-        self.stream.take();
+        // Release the stream; SendStream's Drop pauses the cpal stream, halting
+        // the input callback and releasing the mic. (cpal's own Drop is not
+        // enough on macOS/coreaudio — see SendStream's Drop impl.)
+        self.stream = None;
         info!("Recording stopped");
 
         let samples = {
