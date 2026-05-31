@@ -6,10 +6,23 @@ use tauri::{Manager, Runtime};
 use tracing::{error, info, warn};
 
 // cpal::Stream is not Send on all platforms; we control access via Mutex.
-// We must explicitly pause() the inner stream to stop it — dropping alone is
-// not reliable on macOS/coreaudio.
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
+
+// RAII guard: dropping a SendStream always pauses the underlying cpal stream
+// first. cpal's own Drop does NOT reliably halt the input callback on
+// macOS/coreaudio — without this explicit pause the stream becomes a "zombie"
+// that keeps appending to the shared buffer (inflating recording duration and
+// causing ASR hallucination) and holds the mic open (the OS "mic in use"
+// indicator never turns off). Putting it in Drop guarantees cleanup on every
+// path: stop(), stream replacement in start(), Recorder teardown, and panics.
+impl Drop for SendStream {
+    fn drop(&mut self) {
+        if let Err(e) = self.0.pause() {
+            warn!("Failed to pause recording stream on drop: {}", e);
+        }
+    }
+}
 
 pub struct AudioData {
     pub samples: Vec<f32>,
@@ -102,11 +115,10 @@ impl Recorder {
             config.sample_format()
         );
 
-        // Defensively halt any pre-existing stream so we never accumulate
-        // concurrent writers on the shared buffer (see stop() for context).
-        if let Some(stream) = self.stream.take() {
-            let _ = stream.0.pause();
-        }
+        // Defensively release any pre-existing stream so we never accumulate
+        // concurrent writers on the shared buffer. Dropping it pauses the cpal
+        // stream (see SendStream's Drop).
+        self.stream = None;
 
         let buffer = Arc::clone(&self.buffer);
         {
@@ -136,16 +148,10 @@ impl Recorder {
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
-        // Explicitly pause before dropping. On macOS/coreaudio, dropping the
-        // cpal Stream does NOT reliably halt the input callback, leaving a
-        // "zombie" stream that keeps appending to the shared buffer. Each new
-        // recording would then add another concurrent writer, inflating the
-        // captured duration linearly and eventually causing ASR hallucination.
-        if let Some(stream) = self.stream.take() {
-            if let Err(e) = stream.0.pause() {
-                warn!("Failed to pause recording stream before drop: {}", e);
-            }
-        }
+        // Release the stream; SendStream's Drop pauses the cpal stream, halting
+        // the input callback and releasing the mic. (cpal's own Drop is not
+        // enough on macOS/coreaudio — see SendStream's Drop impl.)
+        self.stream = None;
         info!("Recording stopped");
 
         let samples = {
