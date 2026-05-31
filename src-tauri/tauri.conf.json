@@ -1,6 +1,6 @@
 {
   "productName": "Audio Input",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "identifier": "com.audioinput.app",
   "build": {
     "frontendDist": "../dist",
