@@ -63,11 +63,13 @@ perl -i -0777 -pe '
   s/(\[package\][^\[]*?\nversion\s*=\s*")[^"]+(")/${1}'"$NEW"'${2}/s
 ' "$CARGO"
 
-# Refresh Cargo.lock — workspace package version is recorded there too.
-# `cargo update --workspace --offline` only rewrites the lockfile (no network,
-# no compile) and finishes in seconds; `cargo build` would re-validate the
-# whole dep graph which is overkill for a version-string bump.
-( cd src-tauri && cargo update --workspace --offline )
+# Refresh Cargo.lock — the workspace package version is recorded there too.
+# We edit it directly (same perl approach as the other files) rather than
+# running `cargo update --offline`, which still requires the crates.io registry
+# index and fails on a cold CI cache.
+perl -i -0777 -pe '
+  s/(name = "audio-input"\nversion = ")[^"]+(")/\1'"$NEW"'\2/
+' src-tauri/Cargo.lock
 
 # Sanity-check: confirm every file now reports the target version. Cheap
 # protection against future regressions in the edit logic above (the previous

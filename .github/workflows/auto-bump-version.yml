@@ -85,22 +85,6 @@ jobs:
             echo "action=new" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Setup Node
-        if: steps.gate.outputs.action != 'skip'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Setup Rust
-        if: steps.gate.outputs.action != 'skip'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust
-        if: steps.gate.outputs.action != 'skip'
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
       - name: Run bump script
         if: steps.gate.outputs.action != 'skip'
         run: bash scripts/bump-version.sh "${{ steps.next.outputs.next }}"
