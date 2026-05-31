@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{Manager, Runtime};
 use tracing::{error, info, warn};
 
-// cpal::Stream is not Send on all platforms; we control access via Mutex
-// The inner Stream is held purely for its RAII drop (stops recording).
-#[allow(dead_code)]
+// cpal::Stream is not Send on all platforms; we control access via Mutex.
+// We must explicitly pause() the inner stream to stop it — dropping alone is
+// not reliable on macOS/coreaudio.
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
 
@@ -102,6 +102,12 @@ impl Recorder {
             config.sample_format()
         );
 
+        // Defensively halt any pre-existing stream so we never accumulate
+        // concurrent writers on the shared buffer (see stop() for context).
+        if let Some(stream) = self.stream.take() {
+            let _ = stream.0.pause();
+        }
+
         let buffer = Arc::clone(&self.buffer);
         {
             let mut buf = buffer.lock().unwrap();
@@ -130,8 +136,16 @@ impl Recorder {
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
-        // Drop the stream to stop recording
-        self.stream.take();
+        // Explicitly pause before dropping. On macOS/coreaudio, dropping the
+        // cpal Stream does NOT reliably halt the input callback, leaving a
+        // "zombie" stream that keeps appending to the shared buffer. Each new
+        // recording would then add another concurrent writer, inflating the
+        // captured duration linearly and eventually causing ASR hallucination.
+        if let Some(stream) = self.stream.take() {
+            if let Err(e) = stream.0.pause() {
+                warn!("Failed to pause recording stream before drop: {}", e);
+            }
+        }
         info!("Recording stopped");
 
         let samples = {
