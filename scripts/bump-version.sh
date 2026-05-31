@@ -68,7 +68,7 @@ perl -i -0777 -pe '
 # running `cargo update --offline`, which still requires the crates.io registry
 # index and fails on a cold CI cache.
 perl -i -0777 -pe '
-  s/(name = "audio-input"\nversion = ")[^"]+(")/\1'"$NEW"'\2/
+  s/(name = "audio-input"\nversion = ")[^"]+(")/${1}'"$NEW"'${2}/
 ' src-tauri/Cargo.lock
 
 # Sanity-check: confirm every file now reports the target version. Cheap
