@@ -12,21 +12,23 @@ human: open PR development → main                       (step 1 of 2)
   │  - computes next version (patch / minor / major from labels)
   │  - runs scripts/bump-version.sh (edits 3 files + Cargo.lock)
   │  - pushes "RELEASE X.Y.Z" commit to PR head (uses GITHUB_TOKEN)
+  │    - if version files are already at X.Y.Z, the commit is empty and acts
+  │      only as a review marker; release.yml no longer depends on it
   ▼
 human: merge PR                                          (step 2 of 2)
   │
   ▼
-push to main triggers .github/workflows/release.yml
-  │  - job-level `if: startsWith(head_commit.message, 'RELEASE ')`
-  │    → non-release commits skip instantly (no runner, no rebuild)
-  │  - extract version from commit message (strict semver regex)
-  │  - verify the 3 source files agree with the commit-msg version
+push to main touching version files triggers .github/workflows/release.yml
+  │  - parse current version from package.json
+  │  - compare against the previous main commit's package.json version
+  │  - skip if version did not change; fail if it moved backwards
+  │  - verify package.json / Cargo.toml / Cargo.lock / tauri.conf.json agree
   │  - create a draft GitHub release, target_commitish pinned to the
-  │    RELEASE commit (so the eventual tag lands on the right commit
-  │    even if main moves mid-build)
+  │    merged main commit (GitHub creates the tag immediately, even for
+  │    drafts, so this fixes the tag target before any build starts)
   │  - build + sign + notarize (macOS arm + x64, Windows MSI + NSIS)
   │  - upload latest.json (updater manifest)
-  │  - publish the release → GitHub creates the vX.Y.Z tag at this point
+  │  - publish the draft release
   │  - update the homebrew tap
   ▼
 done
@@ -40,7 +42,7 @@ Two human actions, zero terminal commands required after the PR opens.
 |---|---|---|
 | Tag push triggers + human pushes tag from terminal | ❌ | One extra manual step after merge. The whole point was to remove manual steps. |
 | Tag push triggers + CI auto-pushes tag | ❌ | A CI-pushed tag using `GITHUB_TOKEN` does **not** trigger other workflows (GitHub anti-recursion). Would require a PAT secret. Not worth the secret-management overhead for a single-maintainer project. |
-| **Push to main triggers + commit-message gate** | ✅ | Fully automated, zero PAT needed. Cost: non-release pushes to main show a "Skipped" row in the Actions tab — no runner allocated, no compute spent, just one log row. |
+| **Push to main triggers + version-file gate** | ✅ | Fully automated, zero PAT needed, and independent of merge strategy. Only version-file pushes run the workflow; inside the job we release only if the semver actually changed. |
 | UI Release Tab (Draft a new release button) | ❌ | This is what broke v0.4.11. The UI creates a release object *and* pushes the tag; the tag push triggers `release.yml`, which creates a **second** release object for the same tag. Artifacts split across the two. Commit `ae8be71` added an explicit `gh release view` guard that refuses to run if a release already exists for the tag. |
 
 ## Concepts that confused us along the way
@@ -72,25 +74,29 @@ These are two **independent** issues that look related but aren't:
 | CI workflow using a PAT | personal access token | ✅ |
 | CI workflow using a GitHub App | app installation token | ✅ |
 
-In the chosen design, **nothing pushes a tag** — the tag is created by GitHub's REST API when the release is published. The trigger is the commit push, not a tag push, so these distinctions don't apply.
+In the chosen design, **nothing pushes a tag from CI via git** — GitHub's Releases API creates the tag when the release object is created. The trigger is still the commit push to `main`, not the tag creation, so the `GITHUB_TOKEN` anti-recursion distinction still doesn't affect release triggering.
 
 ### Side effect of using `GITHUB_TOKEN` for the bump push
 
-The `auto-bump-version` workflow uses `secrets.GITHUB_TOKEN` to push the `RELEASE X.Y.Z` commit to the PR's head branch. The same anti-recursion rule that blocks tag pushes from triggering workflows **also blocks commit pushes from triggering PR-level workflows** (tests, lint, typecheck on `pull_request: synchronize`). The diff is mechanical — a version-string edit and a Cargo.lock entry — so leaving it un-tested is acceptable today. **A future check that depends on the bump commit being CI-validated would silently miss it.** If that becomes a real concern, switch the auto-bump workflow to a PAT (or a GitHub App) and the synchronize event will fire normally.
+The `auto-bump-version` workflow uses `secrets.GITHUB_TOKEN` to push the `RELEASE X.Y.Z` review-marker commit to the PR's head branch. The same anti-recursion rule that blocks tag pushes from triggering workflows **also blocks commit pushes from triggering PR-level workflows** (tests, lint, typecheck on `pull_request: synchronize`). The diff is mechanical — a version-string edit and a Cargo.lock entry — so leaving it un-tested is acceptable today. **A future check that depends on the bump commit being CI-validated would silently miss it.** If that becomes a real concern, switch the auto-bump workflow to a PAT (or a GitHub App) and the synchronize event will fire normally.
 
 ## Known failure modes
 
-### Squash-merge / merge-commit silently breaks the trigger
+### Version files changed, but not as a release bump
 
-`release.yml`'s gate is `startsWith(github.event.head_commit.message, 'RELEASE ')`. "Squash and merge" sets the head commit subject to the PR title (default `Release X.Y.Z (#N)` — lowercase `Release`, parens around the PR number), and "Create a merge commit" sets it to `Merge pull request #N ...`. Both **silently** skip the workflow — no error, no release. **Mitigation: disable squash + merge-commit at the repo level** (Settings → General → Pull Requests), leaving only "Rebase and merge" available. `RELEASING.md` calls this out, but enforcement at the settings layer is the real fix.
+`release.yml` now keys off the version files instead of the main-branch head commit message. That fixes the squash/rebase/merge-commit trap, but it introduces a different invariant: pushes that touch `package.json` plus the other version files on `main` must represent an intentional release bump. The workflow compares `package.json` on the new main commit versus the previous main commit, skips if unchanged, and fails if the version moved backwards.
 
 ### Two release PRs open at once
 
-Both `auto-bump-version` runs compute `NEXT` against `origin/main`, so they produce the same target version. First PR to merge releases `0.4.12` cleanly. Second PR's head still carries `RELEASE 0.4.12`; merging it fires `release.yml`, which fails at the "Refuse if a release already exists" guard. The error message is accurate but not helpful for diagnosis. **Recovery**: on the still-open PR, push any new commit (or close/reopen) — `auto-bump-version` re-runs against the new `origin/main`, bumps to `0.4.13`, amends. Then merge as normal.
+Both `auto-bump-version` runs compute `NEXT` against `origin/main`, so they produce the same target version. First PR to merge releases `0.4.12` cleanly. Second PR still carries version `0.4.12`; merging it fires `release.yml`, which fails at the "Refuse if a release already exists" guard. The error message is accurate but not helpful for diagnosis. **Recovery**: on the still-open PR, push any new commit (or close/reopen) — `auto-bump-version` re-runs against the new `origin/main`, bumps to `0.4.13`, amends. Then merge as normal.
+
+### Release deleted, tag left behind
+
+If someone deletes a release without also deleting its tag, the repo lands in a half-deleted state: `gh release view vX.Y.Z` returns 404, but `refs/tags/vX.Y.Z` still exists. Creating a release for that same version will reuse the old tag and ignore `target_commitish`, which can attach new artifacts to the wrong commit. **Mitigation**: `release.yml` now fails fast when it sees an orphan tag. **Recovery**: delete the tag too (`git push origin :refs/tags/vX.Y.Z`) or bump to a new version.
 
 ### Cargo.lock drift mid-build
 
-`release.yml`'s "Verify source files match commit-message version" step checks `Cargo.toml` but **not** `Cargo.lock`. If a contributor manually bumped `Cargo.toml` without running `cargo update --workspace`, Cargo.lock's `audio-input` entry would be stale; `tauri-action`'s build would either silently update Cargo.lock (producing an undeclared file change in CI) or fail. `scripts/bump-version.sh` post-bump verification catches this for the auto-bump path; manual edits are still vulnerable.
+Older versions of `release.yml` checked `Cargo.toml` but **not** `Cargo.lock`. The workflow now validates `Cargo.lock` too, closing the manual-release drift gap.
 
 ## Key files
 
@@ -98,7 +104,7 @@ Both `auto-bump-version` runs compute `NEXT` against `origin/main`, so they prod
 |---|---|
 | `scripts/bump-version.sh` | Edits `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, refreshes `Cargo.lock`. Single source of truth for "bump the version in N places." Exposed as `npm run release:bump X.Y.Z` for manual use. |
 | `.github/workflows/auto-bump-version.yml` | Triggers on PR open / sync / label change targeting `main`. Pushes (or amends) a `RELEASE X.Y.Z` commit to the PR's head branch. |
-| `.github/workflows/release.yml` | Triggers on push to `main`. Gated by `startsWith(head_commit.message, 'RELEASE ')`. Does the full build → publish → tap-update pipeline. |
+| `.github/workflows/release.yml` | Triggers on pushes to `main` that touch version files. Releases only when the semver actually changed and all four version files agree. Does the full build → publish → tap-update pipeline. |
 | `RELEASING.md` | Operator-facing flow doc — what to do when shipping. |
 | This file | Decision record — why the flow is shaped this way. |
 
@@ -108,9 +114,9 @@ Both `auto-bump-version` runs compute `NEXT` against `origin/main`, so they prod
 
 ```bash
 gh pr create --base main --head development --title "Release"
-# auto-bump-version posts the RELEASE commit to the PR within ~1 min
+# auto-bump-version posts the version bump (plus RELEASE review marker) to the PR within ~1 min
 # (default: patch bump; add label `release:minor` or `release:major` to override)
-gh pr merge <pr-number> --rebase
+gh pr merge <pr-number>
 # release.yml fires on the push to main; watch with `gh run watch`
 ```
 
@@ -120,11 +126,11 @@ gh pr merge <pr-number> --rebase
 git checkout main && git pull
 git merge --ff-only development
 npm run release:bump 0.4.X
-git commit -am "RELEASE 0.4.X"
+git commit -am "chore: bump version to 0.4.X"
 git push origin main          # release.yml fires the same way
 ```
 
-Both paths produce the same `RELEASE X.Y.Z` commit on main; `release.yml` doesn't care which created it.
+Both paths produce the same version bump on main; `release.yml` doesn't care which merge strategy got it there.
 
 ## Validation after PR #86 merges
 
@@ -134,7 +140,7 @@ Things to verify before relying on the new flow for a real release:
 - Add `release:minor` label, confirm the bump amends from patch to minor
 - Add `release:major`, confirm the bump amends again
 - Close the throwaway PR without merging
-- For the next real release, watch the full pipeline; confirm `vX.Y.Z` tag points at the `RELEASE X.Y.Z` commit and the homebrew tap got the right SHAs
+- For the next real release, watch the full pipeline; confirm `vX.Y.Z` tag points at the merged main commit that introduced the version bump and the homebrew tap got the right SHAs
 
 ## Future upgrade paths
 
