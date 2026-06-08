@@ -116,7 +116,7 @@ gh pr create --base main --head development --title "Release X.Y.Z" --body ""
 
 What happens automatically when the PR opens:
 
-- The `auto-bump-version` workflow reads the current version on `main`, decides the next version, runs `scripts/bump-version.sh`, and pushes a `RELEASE X.Y.Z` commit to the head of `development`. The PR now has that commit on top.
+- The `auto-bump-version` workflow reads the current version on `main`, decides the next version, runs `scripts/bump-version.sh`, and pushes a `RELEASE X.Y.Z` commit to the head of `development`. If the version files already match the target (for example, a release-fix PR already bumped them), it still adds an empty `RELEASE X.Y.Z` marker commit so the PR keeps an obvious release marker for reviewers.
 - Default bump is **patch** (`0.4.11 → 0.4.12`). To change the bump kind, add a label to the PR:
   - `release:minor` → `0.4.11 → 0.5.0`
   - `release:major` → `0.4.11 → 1.0.0`
@@ -124,34 +124,24 @@ What happens automatically when the PR opens:
 
 ```bash
 # 2. Review the PR (including the auto-added RELEASE commit). Merge it.
-#    Merge MUST preserve the `RELEASE X.Y.Z` commit subject on main.
-gh pr merge <pr-number> --rebase --delete-branch=false
+gh pr merge <pr-number> --delete-branch=false
 ```
 
-> ⚠️ **Use "Rebase and merge" only.** "Squash and merge" rewrites the
-> commit subject to the PR title (default: `Release X.Y.Z (#N)` — note
-> the case + parens), and "Create a merge commit" produces a `Merge
-> pull request #N ...` subject. Both silently break the `release.yml`
-> trigger — the workflow skips, no error surfaces, no release ships.
-> The safest fix is to disable squash + merge-commit in the repo
-> settings (Settings → General → Pull Requests) so only rebase is
-> available.
+Any merge strategy is fine (`rebase`, `squash`, or merge commit). The push to `main` triggers `release.yml` when the version files landed together with a valid semver bump. The workflow:
 
-The push to `main` triggers `release.yml` because the head commit is `RELEASE X.Y.Z`. The workflow:
-
-1. Extracts the version from the commit message
-2. Verifies source files (package.json / Cargo.toml / tauri.conf.json) all agree on that version
+1. Extracts the release version from `package.json`
+2. Verifies `package.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json` all agree on that version
 3. Creates a draft GitHub release pinned to that commit via `target_commitish`
 4. Builds + signs + notarizes macOS arm/x86_64 (Developer ID: Jingtao Yun / V8RQ99X6H4)
 5. Builds + bundles Windows MSI + NSIS (WiX installed via choco)
 6. Generates `latest.json` (updater manifest) and uploads it to the release
-7. Publishes the release — **this is when the `vX.Y.Z` tag is actually created**, pointing at the RELEASE commit
+7. Publishes the draft release so it becomes the public latest release
 8. Updates the Homebrew tap (`tyun08/homebrew-tap` → `Casks/audio-input.rb`) with new URLs + SHA256s
 
 ```bash
 # 3. CRITICAL: sync development back to main so the next round of dev
 #    work doesn't diverge. (The PR merge already updated main; this just
-#    pulls main's RELEASE commit back into development.)
+#    pulls main's release bump back into development.)
 git checkout development
 git pull --ff-only origin main
 git push origin development
@@ -168,40 +158,47 @@ git checkout main && git pull
 git merge --ff-only development
 npm run release:bump 0.4.X
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-git commit -m "RELEASE 0.4.X"
-git push origin main           # triggers release.yml the same way
+git commit -m "chore: bump version to 0.4.X"
+git push origin main           # triggers release.yml because the version files changed
 ```
 
 Same flow, just done locally instead of via the PR workflow.
 
 ## What triggers a release
 
-`release.yml` runs on every push to `main`, but the job is gated by:
+`release.yml` runs on pushes to `main` that touch the version files:
 
 ```yaml
-if: startsWith(github.event.head_commit.message, 'RELEASE ')
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/tauri.conf.json
 ```
 
-So only commits whose subject is `RELEASE X.Y.Z` cut a release. Anything else (docs, CI, content) merges to `main` silently. The version is parsed out of the commit message; if it doesn't match strict semver (`MAJOR.MINOR.PATCH`) the workflow fails fast. This replaces the old "push a `vX.Y.Z` tag" trigger.
+Within that workflow, a release only proceeds when `package.json` changed from the previous `main` commit to a new strict semver (`MAJOR.MINOR.PATCH`) and the other three version files match it. Non-version pushes to `main` still merge silently. This replaces the old "push a `vX.Y.Z` tag" trigger.
 
 ## If the pipeline fails mid-release
 
 What's already happened by the time a failure surfaces:
-- `create-release` succeeded → there's a draft release object for `vX.Y.Z` (no git tag yet — the tag is only created on publish)
+- `create-release` succeeded → there's a draft release object for `vX.Y.Z`, and GitHub has already created the git tag at the pinned commit
 - `build-macos` / `build-windows` may have uploaded some artifacts to the draft
-- `update-cask` not yet → release not published, Homebrew tap NOT updated, **no `vX.Y.Z` tag exists in git**
+- `update-cask` not yet → release not published, Homebrew tap NOT updated
 
-Clean up — **prefer the forward path** (bump to the next patch + new RELEASE commit). Force-pushing `main` rewrites shared history; reserve it for the rare case where the failure is genuinely transient (e.g. notarytool flake) AND no one else has pulled the broken commit yet.
+Clean up — **prefer the forward path** (bump to the next patch + new version-bump commit). Force-pushing `main` rewrites shared history; reserve it for the rare case where the failure is genuinely transient (e.g. notarytool flake) AND no one else has pulled the broken commit yet.
 
 ```bash
-# 1. Delete the draft release. No tag exists yet (the publish step creates
-#    the tag), so --cleanup-tag is a no-op here but harmless to include.
+# 1. Delete the draft or published release AND its tag. The tag is created
+#    as soon as the draft release object is created.
 gh release delete v0.4.X --yes --cleanup-tag
 
-# 2. Forward path (default): land a NEW RELEASE commit for the next patch.
+# 2. Forward path (default): land a NEW version-bump commit for the next patch.
 #    No history rewriting; safe for shared branches.
 npm run release:bump 0.4.Y         # Y = X + 1
-git commit -am "RELEASE 0.4.Y"
+git commit -am "chore: bump version to 0.4.Y"
 git push origin main               # release.yml fires fresh
 
 # Escape hatch (only for genuinely transient infra failures): re-trigger
@@ -211,7 +208,13 @@ git push origin main               # release.yml fires fresh
 #   git push --force-with-lease origin main
 ```
 
-If the failure was AFTER publish (update-cask failed), the `vX.Y.Z` tag DOES exist. Use `gh release delete v0.4.X --yes --cleanup-tag` to drop both the release and the tag, then take the forward path above.
+If the release object is already gone but the `vX.Y.Z` tag still exists, clean up the orphan tag before retrying that version:
+
+```bash
+git push origin :refs/tags/v0.4.X
+```
+
+If the failure was AFTER publish (update-cask failed), the same `gh release delete v0.4.X --yes --cleanup-tag` command drops both the release and the tag, then you can take the forward path above.
 
 If `update-cask` runs but with a bad sha (e.g., a sed bug in the workflow), patch the cask manually in `tyun08/homebrew-tap` to unblock brew users while you fix the workflow.
 
