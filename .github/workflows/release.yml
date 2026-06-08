@@ -4,19 +4,21 @@ on:
   push:
     branches:
       - main
+    paths:
+      - package.json
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+      - src-tauri/tauri.conf.json
   workflow_dispatch:
 
 jobs:
   create-release:
-    # Only RELEASE commits ship a release. Everything else on main (docs, ci,
-    # follow-up fixes) merges silently. See RELEASING.md for the flow that
-    # generates these commits via the auto-bump-version workflow on PR open.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'RELEASE ')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       release-id: ${{ steps.create.outputs.result }}
+      should-release: ${{ steps.meta.outputs.should-release }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
@@ -24,73 +26,103 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version
+      - name: Determine release version
         id: meta
         run: |
-          # For push events: parse from the RELEASE commit subject.
-          # Accepts an optional " (#N)" squash-merge suffix that GitHub appends
-          # automatically (e.g. "RELEASE 0.4.12 (#89)"). Still rejects
-          # "RELEASE 0.4.10-beta", double spaces, and other malformed variants.
-          # For workflow_dispatch (manual re-trigger after a fix commit landed on
-          # main): fall back to package.json, which the RELEASE commit already
-          # bumped to the right version.
-          MSG=$(git log -1 --pretty=%s)
-          if [[ "$MSG" =~ ^RELEASE\ ([0-9]+\.[0-9]+\.[0-9]+)([[:space:]]+\(#[0-9]+\))?$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
-            echo "workflow_dispatch: using version from package.json ($VERSION)"
-          else
-            echo "::error::Commit message '$MSG' is not a strict 'RELEASE X.Y.Z' release commit."
+          VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not parse release version from package.json: '$VERSION'"
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing version: $VERSION"
 
-      - name: Refuse if a release already exists for this version
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.ref_name }}" != "main" ]]; then
+              echo "::error::workflow_dispatch release runs must target main."
+              exit 1
+            fi
+            echo "workflow_dispatch: using version from package.json ($VERSION)"
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [[ "$BEFORE" =~ ^0+$ ]]; then
+            echo "::error::Push event does not have a valid previous commit SHA."
+            exit 1
+          fi
+
+          PREV=$(git show "${BEFORE}:package.json" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+          if [[ ! "$PREV" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not parse previous version from ${BEFORE}:package.json: '$PREV'"
+            exit 1
+          fi
+
+          if [[ "$VERSION" == "$PREV" ]]; then
+            echo "package.json version did not change ($VERSION) — skipping release."
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS='.' read -r CUR_MAJ CUR_MIN CUR_PAT <<< "$VERSION"
+          IFS='.' read -r PREV_MAJ PREV_MIN PREV_PAT <<< "$PREV"
+          if (( CUR_MAJ < PREV_MAJ )) || \
+             (( CUR_MAJ == PREV_MAJ && CUR_MIN < PREV_MIN )) || \
+             (( CUR_MAJ == PREV_MAJ && CUR_MIN == PREV_MIN && CUR_PAT < PREV_PAT )); then
+            echo "::error::package.json version moved backwards (${PREV} -> ${VERSION})."
+            exit 1
+          fi
+
+          echo "push: version changed ${PREV} -> ${VERSION}"
+          echo "should-release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse if the release/tag state is unsafe for this version
+        if: steps.meta.outputs.should-release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Catches the case where v0.4.X was already released (perhaps a
-          # previous failed run that got recovered manually) but main got
-          # another "RELEASE 0.4.X" commit. Without this, we'd create a
-          # SECOND GitHub release for the same tag — artifacts split, the
-          # homebrew tap update looks at the wrong one. This is exactly how
-          # v0.4.11 broke historically.
           TAG="v${{ steps.meta.outputs.version }}"
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "::error::A release for $TAG already exists. Bump to a new version (see RELEASING.md) or delete the existing release if it was a failed run."
             exit 1
           fi
-          echo "No pre-existing release for $TAG — safe to proceed."
 
-      - name: Verify source files match commit-message version
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Git tag $TAG already exists but no GitHub release exists. Delete the tag as well before retrying this version (or bump to a new version). See RELEASING.md for recovery steps."
+            exit 1
+          fi
+
+          echo "No pre-existing release or orphan tag for $TAG — safe to proceed."
+
+      - name: Verify source files match release version
+        if: steps.meta.outputs.should-release == 'true'
         run: |
-          # Defense in depth: scripts/bump-version.sh and the auto-bump
-          # workflow should have already synced these. If somehow they're
-          # out of sync (manual commit that hand-edited the message?), the
-          # binary would be misbranded — internal version string says
-          # 0.4.x but tauri-action labels artifacts as 0.5.0.
           REL_V="${{ steps.meta.outputs.version }}"
           PKG_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
           CARGO_V=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -1)
           TAURI_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/tauri.conf.json | head -1)
-          echo "commit-msg:         ${REL_V}"
+          LOCK_V=$(awk '/name = "audio-input"/ { getline; print; exit }' src-tauri/Cargo.lock | sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+          echo "release:            ${REL_V}"
           echo "package.json:       ${PKG_V}"
           echo "Cargo.toml:         ${CARGO_V}"
+          echo "Cargo.lock:         ${LOCK_V}"
           echo "tauri.conf.json:    ${TAURI_V}"
           fail=0
-          [ "${REL_V}" = "${PKG_V}" ]   || { echo "::error::package.json version (${PKG_V}) does not match commit-msg (${REL_V})"; fail=1; }
-          [ "${REL_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match commit-msg (${REL_V})"; fail=1; }
-          [ "${REL_V}" = "${TAURI_V}" ] || { echo "::error::tauri.conf.json version (${TAURI_V}) does not match commit-msg (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${PKG_V}" ]   || { echo "::error::package.json version (${PKG_V}) does not match release version (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match release version (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${LOCK_V}" ]  || { echo "::error::Cargo.lock version (${LOCK_V}) does not match release version (${REL_V})"; fail=1; }
+          [ "${REL_V}" = "${TAURI_V}" ] || { echo "::error::tauri.conf.json version (${TAURI_V}) does not match release version (${REL_V})"; fail=1; }
           if [ "${fail}" -eq 1 ]; then
             echo ""
-            echo "::error::Run 'npm run release:bump ${REL_V}' and amend the commit — see RELEASING.md."
+            echo "::error::Run 'npm run release:bump ${REL_V}' and commit the result — see RELEASING.md."
             exit 1
           fi
-          echo "All version fields match the commit-msg — proceeding."
+          echo "All version fields match the release version — proceeding."
 
       - name: Generate release notes
+        if: steps.meta.outputs.should-release == 'true'
         id: notes
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -104,6 +136,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create draft release
+        if: steps.meta.outputs.should-release == 'true'
         id: create
         uses: actions/github-script@v7
         env:
@@ -116,11 +149,6 @@ jobs:
               repo: context.repo.repo,
               tag_name: tag,
               name: `Audio Input ${tag}`,
-              // Pin the eventual tag to THIS commit, not whatever main's HEAD
-              // happens to be when the release is published. Without this,
-              // a follow-up commit landing on main mid-build would cause
-              // the tag to point at the wrong commit when update-cask
-              // flips draft → public.
               target_commitish: context.sha,
               body: `${{ steps.notes.outputs.body }}`,
               draft: true,
@@ -130,6 +158,7 @@ jobs:
 
   build-macos:
     needs: create-release
+    if: needs.create-release.outputs.should-release == 'true'
     permissions:
       contents: write
     strategy:
@@ -241,6 +270,7 @@ jobs:
 
   build-windows:
     needs: create-release
+    if: needs.create-release.outputs.should-release == 'true'
     permissions:
       contents: write
     runs-on: windows-latest
