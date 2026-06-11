@@ -213,7 +213,7 @@
       // Window stays on-screen at alphaValue=0 (set by setNativeOpaque above).
       // This keeps the CVDisplayLink alive so the WKWebView compositor never
       // suspends — the root cause of the all-black settings window bug.
-      if (ui.view === "hud") hudVisible = false;
+      hudVisible = false;
       log("[syncWindow] window hidden via alphaValue=0 (compositor stays alive)");
       return;
     }
@@ -232,6 +232,7 @@
         log(`[syncWindow] HUD already visible — resize only to ${ui.window.w}x${ui.window.h}`);
       }
     } else {
+      hudVisible = false;
       log(
         `[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`
       );
