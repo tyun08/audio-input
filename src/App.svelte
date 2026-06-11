@@ -223,9 +223,7 @@
       // This preserves any manual drag the user did within the same session.
       await appWindow.setSize(new LogicalSize(ui.window.w, ui.window.h));
       if (!hudVisible) {
-        log(
-          `[syncWindow] HUD new show — positioning near cursor at ${ui.window.w}x${ui.window.h}`
-        );
+        log(`[syncWindow] HUD new show — positioning near cursor at ${ui.window.w}x${ui.window.h}`);
         await positionHudNearCursor(ui.window.w, ui.window.h);
         hudVisible = true;
       } else {
