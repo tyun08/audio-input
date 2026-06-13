@@ -85,7 +85,8 @@ async fn start_recording<R: Runtime>(
         let app = app.clone();
         let shared_state = shared_state.clone();
         Box::new(move |e: anyhow::Error| {
-            error!("Recording start failed: {}", e);
+            // The failure is already logged at its source (the background
+            // setup thread); here we just surface it in the UI/state.
             set_error(&app, &shared_state, &e.to_string());
         })
     };
@@ -139,13 +140,12 @@ async fn start_recording<R: Runtime>(
             // Spawn a task that periodically samples the audio buffer and
             // emits an audio-level event so the frontend can animate a live
             // waveform while recording.
-            let buffer_ref = {
+            let (buffer_ref, sample_rate_handle) = {
                 let recorder = recorder_state.lock().unwrap();
-                recorder.get_buffer_ref()
+                (recorder.get_buffer_ref(), recorder.sample_rate_handle())
             };
             let app_monitor = app.clone();
             let state_monitor = shared_state.clone();
-            let recorder_monitor = recorder_state.clone();
             tokio::spawn(async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
@@ -158,8 +158,10 @@ async fn start_recording<R: Runtime>(
                     // Recompute the window each tick: the device is configured
                     // asynchronously, so the sample rate may only become known a
                     // few ms after recording starts. ~100 ms window (rate / 10),
-                    // defaulting to 16 kHz until the real rate is available.
-                    let sample_rate = recorder_monitor.lock().unwrap().sample_rate();
+                    // defaulting to 16 kHz until the real rate is available. Read
+                    // lock-free so we never contend with start()/stop().
+                    let sample_rate =
+                        sample_rate_handle.load(std::sync::atomic::Ordering::SeqCst);
                     let effective_rate = if sample_rate == 0 { 16_000 } else { sample_rate };
                     let window_size = ((effective_rate as usize) / 10).max(1);
                     let level: f32 = {

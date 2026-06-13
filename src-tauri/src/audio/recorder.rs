@@ -165,6 +165,15 @@ impl Recorder {
         self.capture.sample_rate.load(Ordering::SeqCst)
     }
 
+    /// Lock-free handle to the live sample rate. The background setup thread
+    /// stores the real rate here once the device is configured, so latency-
+    /// sensitive pollers (e.g. the audio-level monitor) can read it without
+    /// contending on the recorder mutex that `start()`/`stop()` rely on being
+    /// snappy.
+    pub fn sample_rate_handle(&self) -> Arc<AtomicU32> {
+        Arc::clone(&self.capture.sample_rate)
+    }
+
     /// Instant at which the most recent start was requested, if any. Used by the
     /// latency benchmarks to measure hotkey-to-first-sample time.
     pub fn start_requested_at(&self) -> Option<Instant> {
