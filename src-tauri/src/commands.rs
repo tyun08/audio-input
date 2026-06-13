@@ -78,9 +78,21 @@ async fn start_recording<R: Runtime>(
         }
     }
 
+    // Build the async-error handler up front. The blocking device probe and
+    // stream build now run on a background thread (zero-wait start), so a
+    // setup failure is reported here rather than via the synchronous result.
+    let on_error: Box<dyn FnOnce(anyhow::Error) + Send> = {
+        let app = app.clone();
+        let shared_state = shared_state.clone();
+        Box::new(move |e: anyhow::Error| {
+            error!("Recording start failed: {}", e);
+            set_error(&app, &shared_state, &e.to_string());
+        })
+    };
+
     let result = {
         match recorder_state.lock() {
-            Ok(mut recorder) => recorder.start(app),
+            Ok(mut recorder) => recorder.start(app, on_error),
             Err(e) => {
                 error!("Recorder lock poisoned: {}", e);
                 return;
@@ -90,6 +102,10 @@ async fn start_recording<R: Runtime>(
 
     match result {
         Ok(()) => {
+            // Optimistically enter the Recording state immediately. Capture has
+            // already begun (or is about to, the instant the OS delivers the
+            // stream) without waiting for any synchronous setup. If the
+            // background setup fails, `on_error` resets us to an error state.
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Recording;
             drop(state);
@@ -123,15 +139,14 @@ async fn start_recording<R: Runtime>(
             // Spawn a task that periodically samples the audio buffer and
             // emits an audio-level event so the frontend can animate a live
             // waveform while recording.
-            let (buffer_ref, sample_rate) = {
+            let buffer_ref = {
                 let recorder = recorder_state.lock().unwrap();
-                (recorder.get_buffer_ref(), recorder.sample_rate())
+                recorder.get_buffer_ref()
             };
             let app_monitor = app.clone();
             let state_monitor = shared_state.clone();
+            let recorder_monitor = recorder_state.clone();
             tokio::spawn(async move {
-                // Window of samples to compute RMS over — sample_rate / 10 = ~100 ms
-                let window_size = ((sample_rate as usize) / 10).max(1);
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
                     {
@@ -140,6 +155,13 @@ async fn start_recording<R: Runtime>(
                             break;
                         }
                     }
+                    // Recompute the window each tick: the device is configured
+                    // asynchronously, so the sample rate may only become known a
+                    // few ms after recording starts. ~100 ms window (rate / 10),
+                    // defaulting to 16 kHz until the real rate is available.
+                    let sample_rate = recorder_monitor.lock().unwrap().sample_rate();
+                    let effective_rate = if sample_rate == 0 { 16_000 } else { sample_rate };
+                    let window_size = ((effective_rate as usize) / 10).max(1);
                     let level: f32 = {
                         let buf = buffer_ref.lock().unwrap();
                         let len = buf.len();
@@ -159,13 +181,10 @@ async fn start_recording<R: Runtime>(
             });
         }
         Err(e) => {
+            // The synchronous result only fails if we couldn't even spawn the
+            // background setup thread; surface it like any other start error.
             error!("Recording start failed: {}", e);
-            let mut state = shared_state.lock().unwrap();
-            *state = AppState::Error(e.to_string());
-            drop(state);
-            set_tray_icon(app, "error");
-            let _ = app.emit("state-change", format!("error:{}", e));
-            schedule_error_recovery(app.clone(), shared_state.clone());
+            set_error(app, &shared_state, &e.to_string());
         }
     }
 }

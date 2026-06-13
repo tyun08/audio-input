@@ -7,6 +7,13 @@ edition = "2021"
 name = "audio_input_lib"
 crate-type = ["cdylib", "rlib"]
 
+# Latency benchmark suite (see benches/latency.rs). Uses a custom harness so it
+# can be run directly with `cargo bench` (or the produced binary) in CI or
+# locally without pulling in an external benchmarking dependency.
+[[bench]]
+name = "latency"
+harness = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
