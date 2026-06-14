@@ -119,6 +119,13 @@ fn fmt_duration_ms(duration: Option<Duration>) -> String {
     }
 }
 
+fn fmt_between(start: Option<Instant>, end: Option<Instant>) -> String {
+    match (start, end) {
+        (Some(start), Some(end)) => fmt_duration_ms(since(start, end)),
+        _ => "     n/a".to_string(),
+    }
+}
+
 fn main() {
     println!("recording latency benchmark ({} iterations)\n", ITERATIONS);
 
@@ -145,10 +152,22 @@ fn main() {
         fmt_duration_ms(capture.start_requested_at.and_then(|at| since(anchor, at))),
     );
     println!(
+        "capture path (synthetic hotkey -> stream built):   {} ms",
+        fmt_duration_ms(capture.stream_built_at.and_then(|at| since(anchor, at))),
+    );
+    println!(
         "capture path (synthetic hotkey -> stream.play):    {} ms",
         fmt_duration_ms(
             capture
                 .stream_play_requested_at
+                .and_then(|at| since(anchor, at))
+        ),
+    );
+    println!(
+        "capture path (synthetic hotkey -> play returned):  {} ms",
+        fmt_duration_ms(
+            capture
+                .stream_play_returned_at
                 .and_then(|at| since(anchor, at))
         ),
     );
@@ -170,6 +189,18 @@ fn main() {
     if let Some(error) = capture_result.setup_error {
         println!("capture path setup error: {}", error);
     }
+    println!(
+        "setup breakdown: start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
+        fmt_between(capture.start_requested_at, capture.setup_thread_started_at),
+        fmt_between(capture.setup_thread_started_at, capture.host_created_at),
+        fmt_between(capture.host_created_at, capture.device_resolved_at),
+        fmt_between(capture.device_resolved_at, capture.device_name_resolved_at),
+        fmt_between(capture.device_name_resolved_at, capture.config_loaded_at),
+        fmt_between(capture.config_loaded_at, capture.stream_built_at),
+        fmt_between(capture.stream_built_at, capture.stream_play_requested_at),
+        fmt_between(capture.stream_play_requested_at, capture.stream_play_returned_at),
+        fmt_between(capture.stream_play_returned_at, capture.first_sample_at),
+    );
 
     let mut failed = false;
     if start_latency > START_LATENCY_BUDGET {

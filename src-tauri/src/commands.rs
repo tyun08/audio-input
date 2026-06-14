@@ -264,11 +264,14 @@ fn spawn_latency_probe(recorder_state: Arc<Mutex<Recorder>>) {
                 let to_stream_play = snapshot
                     .stream_play_requested_at
                     .and_then(|at| since(anchor, at));
+                let to_stream_built = snapshot.stream_built_at.and_then(|at| since(anchor, at));
                 warn!(
-                    "Recording latency: first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_play={} ms",
+                    "Recording latency: first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
                     fmt_duration_ms(to_start),
+                    fmt_duration_ms(to_stream_built),
                     fmt_duration_ms(to_stream_play),
                 );
+                log_latency_setup_breakdown(snapshot);
                 return;
             }
 
@@ -285,16 +288,44 @@ fn log_latency_snapshot(snapshot: crate::audio::recorder::RecordingLatencySnapsh
     let first_sample_at = snapshot.first_sample_at.unwrap();
 
     info!(
-        "Recording latency: hotkey->start={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
+        "Recording latency: hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
         fmt_duration_ms(since(anchor, start_requested_at)),
+        fmt_duration_ms(snapshot.stream_built_at.and_then(|at| since(anchor, at))),
         fmt_duration_ms(snapshot.stream_play_requested_at.and_then(|at| since(anchor, at))),
         fmt_duration_ms(since(anchor, first_sample_at)),
         fmt_duration_ms(since(start_requested_at, first_sample_at)),
+    );
+    log_latency_setup_breakdown(snapshot);
+}
+
+fn log_latency_setup_breakdown(snapshot: crate::audio::recorder::RecordingLatencySnapshot) {
+    if snapshot.start_requested_at.is_none() {
+        return;
+    }
+
+    info!(
+        "Recording latency setup: start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
+        fmt_between(snapshot.start_requested_at, snapshot.setup_thread_started_at),
+        fmt_between(snapshot.setup_thread_started_at, snapshot.host_created_at),
+        fmt_between(snapshot.host_created_at, snapshot.device_resolved_at),
+        fmt_between(snapshot.device_resolved_at, snapshot.device_name_resolved_at),
+        fmt_between(snapshot.device_name_resolved_at, snapshot.config_loaded_at),
+        fmt_between(snapshot.config_loaded_at, snapshot.stream_built_at),
+        fmt_between(snapshot.stream_built_at, snapshot.stream_play_requested_at),
+        fmt_between(snapshot.stream_play_requested_at, snapshot.stream_play_returned_at),
+        fmt_between(snapshot.stream_play_returned_at, snapshot.first_sample_at),
     );
 }
 
 fn since(start: Instant, end: Instant) -> Option<Duration> {
     end.checked_duration_since(start)
+}
+
+fn fmt_between(start: Option<Instant>, end: Option<Instant>) -> String {
+    match (start, end) {
+        (Some(start), Some(end)) => fmt_duration_ms(since(start, end)),
+        _ => "n/a".to_string(),
+    }
 }
 
 fn fmt_duration_ms(duration: Option<Duration>) -> String {

@@ -37,7 +37,14 @@ pub struct RecordingLatencySnapshot {
     pub epoch: u64,
     pub trigger_received_at: Option<Instant>,
     pub start_requested_at: Option<Instant>,
+    pub setup_thread_started_at: Option<Instant>,
+    pub host_created_at: Option<Instant>,
+    pub device_resolved_at: Option<Instant>,
+    pub device_name_resolved_at: Option<Instant>,
+    pub config_loaded_at: Option<Instant>,
+    pub stream_built_at: Option<Instant>,
     pub stream_play_requested_at: Option<Instant>,
+    pub stream_play_returned_at: Option<Instant>,
     pub first_sample_at: Option<Instant>,
 }
 
@@ -51,7 +58,14 @@ struct CaptureState {
     sample_rate: Arc<AtomicU32>,
     channels: Arc<AtomicU32>,
     trigger_received_at: Arc<Mutex<Option<Instant>>>,
+    setup_thread_started_at: Arc<Mutex<Option<Instant>>>,
+    host_created_at: Arc<Mutex<Option<Instant>>>,
+    device_resolved_at: Arc<Mutex<Option<Instant>>>,
+    device_name_resolved_at: Arc<Mutex<Option<Instant>>>,
+    config_loaded_at: Arc<Mutex<Option<Instant>>>,
+    stream_built_at: Arc<Mutex<Option<Instant>>>,
     stream_play_requested_at: Arc<Mutex<Option<Instant>>>,
+    stream_play_returned_at: Arc<Mutex<Option<Instant>>>,
     first_sample_at: Arc<Mutex<Option<Instant>>>,
     first_sample_seen: Arc<AtomicBool>,
     // Monotonically increasing generation counter. Each start()/stop() bumps it.
@@ -94,7 +108,14 @@ impl Recorder {
                 sample_rate: Arc::new(AtomicU32::new(0)),
                 channels: Arc::new(AtomicU32::new(0)),
                 trigger_received_at: Arc::new(Mutex::new(None)),
+                setup_thread_started_at: Arc::new(Mutex::new(None)),
+                host_created_at: Arc::new(Mutex::new(None)),
+                device_resolved_at: Arc::new(Mutex::new(None)),
+                device_name_resolved_at: Arc::new(Mutex::new(None)),
+                config_loaded_at: Arc::new(Mutex::new(None)),
+                stream_built_at: Arc::new(Mutex::new(None)),
                 stream_play_requested_at: Arc::new(Mutex::new(None)),
+                stream_play_returned_at: Arc::new(Mutex::new(None)),
                 first_sample_at: Arc::new(Mutex::new(None)),
                 first_sample_seen: Arc::new(AtomicBool::new(false)),
                 epoch: Arc::new(AtomicU64::new(0)),
@@ -173,10 +194,17 @@ impl Recorder {
             let mut trigger = self.capture.trigger_received_at.lock().unwrap();
             *trigger = trigger_received_at;
         }
+        clear_instant(&self.capture.setup_thread_started_at);
+        clear_instant(&self.capture.host_created_at);
+        clear_instant(&self.capture.device_resolved_at);
+        clear_instant(&self.capture.device_name_resolved_at);
+        clear_instant(&self.capture.config_loaded_at);
+        clear_instant(&self.capture.stream_built_at);
         {
             let mut stream_play = self.capture.stream_play_requested_at.lock().unwrap();
             *stream_play = None;
         }
+        clear_instant(&self.capture.stream_play_returned_at);
         {
             let mut first_sample = self.capture.first_sample_at.lock().unwrap();
             *first_sample = None;
@@ -240,7 +268,14 @@ impl Recorder {
             epoch: self.capture.epoch.load(Ordering::SeqCst),
             trigger_received_at: *self.capture.trigger_received_at.lock().unwrap(),
             start_requested_at: self.start_requested_at,
+            setup_thread_started_at: *self.capture.setup_thread_started_at.lock().unwrap(),
+            host_created_at: *self.capture.host_created_at.lock().unwrap(),
+            device_resolved_at: *self.capture.device_resolved_at.lock().unwrap(),
+            device_name_resolved_at: *self.capture.device_name_resolved_at.lock().unwrap(),
+            config_loaded_at: *self.capture.config_loaded_at.lock().unwrap(),
+            stream_built_at: *self.capture.stream_built_at.lock().unwrap(),
             stream_play_requested_at: *self.capture.stream_play_requested_at.lock().unwrap(),
+            stream_play_returned_at: *self.capture.stream_play_returned_at.lock().unwrap(),
             first_sample_at: *self.capture.first_sample_at.lock().unwrap(),
         }
     }
@@ -294,7 +329,10 @@ fn build_and_play(
     preferred_device_name: Option<&str>,
     epoch: u64,
 ) -> Result<()> {
+    set_instant(&capture.setup_thread_started_at);
+
     let host = cpal::default_host();
+    set_instant(&capture.host_created_at);
 
     let device = if let Some(name) = preferred_device_name {
         let found = host
@@ -317,15 +355,18 @@ fn build_and_play(
         host.default_input_device()
             .context("No default microphone found")?
     };
+    set_instant(&capture.device_resolved_at);
 
     info!(
         "Using recording device: {}",
         device.name().unwrap_or_default()
     );
+    set_instant(&capture.device_name_resolved_at);
 
     let config = device
         .default_input_config()
         .context("Cannot get default recording config")?;
+    set_instant(&capture.config_loaded_at);
 
     capture
         .sample_rate
@@ -365,6 +406,7 @@ fn build_and_play(
         )?,
         fmt => anyhow::bail!("Unsupported audio format: {:?}", fmt),
     };
+    set_instant(&capture.stream_built_at);
 
     // Install the stream atomically with the epoch check so a stop()/start()
     // that happened while we were probing wins the race. Holding the slot lock
@@ -377,14 +419,20 @@ fn build_and_play(
         // played, so nothing to halt).
         return Ok(());
     }
-    {
-        let mut stream_play = capture.stream_play_requested_at.lock().unwrap();
-        *stream_play = Some(Instant::now());
-    }
+    set_instant(&capture.stream_play_requested_at);
     stream.play().context("Failed to start recording stream")?;
+    set_instant(&capture.stream_play_returned_at);
     *slot = Some(SendStream(stream));
     info!("Recording started");
     Ok(())
+}
+
+fn clear_instant(slot: &Arc<Mutex<Option<Instant>>>) {
+    *slot.lock().unwrap() = None;
+}
+
+fn set_instant(slot: &Arc<Mutex<Option<Instant>>>) {
+    *slot.lock().unwrap() = Some(Instant::now());
 }
 
 fn mark_first_sample(
