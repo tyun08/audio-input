@@ -12,15 +12,18 @@
 //!   this should be sub-millisecond.
 //! * **Stop latency** — wall-clock time `Recorder::stop` blocks the caller, so
 //!   the tail of the recording isn't clipped by a slow stop path.
-//! * **First-sample latency** — time from start request to the first audio
-//!   sample landing in the shared buffer. Requires a real input device; when
-//!   none is available (e.g. headless CI) it is reported as "n/a" rather than
-//!   failing the run.
+//! * **Capture-path latency** — a synthetic shortcut timestamp is passed into
+//!   the recorder and compared with stream.play() plus the first audio callback
+//!   that delivers samples. Requires a real input device for the first-sample
+//!   number; when none is available (e.g. headless CI) it is reported as "n/a"
+//!   rather than failing the run.
 //!
 //! The process exits non-zero if the synchronous start/stop latencies regress
 //! past their thresholds, so it doubles as a guard in automated runs.
 
+use audio_input_lib::audio::recorder::RecordingLatencySnapshot;
 use audio_input_lib::audio::Recorder;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Number of start/stop cycles to average the synchronous latencies over.
@@ -36,6 +39,11 @@ const STOP_LATENCY_BUDGET: Duration = Duration::from_millis(50);
 
 /// How long to wait for the first sample when a device is present.
 const FIRST_SAMPLE_TIMEOUT: Duration = Duration::from_secs(2);
+
+struct CapturePathResult {
+    snapshot: RecordingLatencySnapshot,
+    setup_error: Option<String>,
+}
 
 fn measure_sync_latencies() -> (Duration, Duration) {
     let mut recorder = Recorder::new();
@@ -59,32 +67,56 @@ fn measure_sync_latencies() -> (Duration, Duration) {
     (worst_start, worst_stop)
 }
 
-/// Returns the hotkey-to-first-sample latency if an input device produces audio
-/// within the timeout, otherwise `None` (e.g. headless CI with no microphone).
-fn measure_first_sample_latency() -> Option<Duration> {
+/// Returns a capture-path snapshot. `first_sample_at` is `None` if no input
+/// device produces audio within the timeout (e.g. headless CI with no mic).
+fn measure_capture_path_latency() -> CapturePathResult {
     let mut recorder = Recorder::new();
-    let buffer = recorder.get_buffer_ref();
+    let synthetic_shortcut_at = Instant::now();
+    let setup_error = Arc::new(Mutex::new(None));
+    let setup_error_cb = Arc::clone(&setup_error);
 
     recorder
-        .start_capture(None, None)
+        .start_capture_with_trigger_at(
+            None,
+            Some(Box::new(move |e| {
+                *setup_error_cb.lock().unwrap() = Some(e.to_string());
+            })),
+            Some(synthetic_shortcut_at),
+        )
         .expect("start_capture should return immediately");
-    let requested_at = recorder
-        .start_requested_at()
-        .expect("start_requested_at should be set after start");
 
     let deadline = Instant::now() + FIRST_SAMPLE_TIMEOUT;
-    let latency = loop {
-        if !buffer.lock().unwrap().is_empty() {
-            break Some(requested_at.elapsed());
+    let snapshot = loop {
+        let snapshot = recorder.latency_snapshot();
+        if snapshot.first_sample_at.is_some() {
+            break snapshot;
+        }
+        if setup_error.lock().unwrap().is_some() {
+            break snapshot;
         }
         if Instant::now() >= deadline {
-            break None;
+            break snapshot;
         }
         std::thread::sleep(Duration::from_millis(1));
     };
 
     let _ = recorder.stop();
-    latency
+    let setup_error = setup_error.lock().unwrap().clone();
+    CapturePathResult {
+        snapshot,
+        setup_error,
+    }
+}
+
+fn since(start: Instant, end: Instant) -> Option<Duration> {
+    end.checked_duration_since(start)
+}
+
+fn fmt_duration_ms(duration: Option<Duration>) -> String {
+    match duration {
+        Some(duration) => format!("{:>8.3}", duration.as_secs_f64() * 1e3),
+        None => "     n/a".to_string(),
+    }
 }
 
 fn main() {
@@ -102,14 +134,41 @@ fn main() {
         STOP_LATENCY_BUDGET.as_secs_f64() * 1e3,
     );
 
-    match measure_first_sample_latency() {
-        Some(d) => println!(
-            "first-sample latency (hotkey -> sample): {:>8.3} ms",
-            d.as_secs_f64() * 1e3,
+    let capture_result = measure_capture_path_latency();
+    let capture = capture_result.snapshot;
+    let anchor = capture
+        .trigger_received_at
+        .or(capture.start_requested_at)
+        .expect("capture benchmark should record a start anchor");
+    println!(
+        "capture path (synthetic hotkey -> start request): {} ms",
+        fmt_duration_ms(capture.start_requested_at.and_then(|at| since(anchor, at))),
+    );
+    println!(
+        "capture path (synthetic hotkey -> stream.play):    {} ms",
+        fmt_duration_ms(
+            capture
+                .stream_play_requested_at
+                .and_then(|at| since(anchor, at))
         ),
-        None => {
-            println!("first-sample latency (hotkey -> sample):      n/a  (no input device available)")
-        }
+    );
+    println!(
+        "capture path (synthetic hotkey -> first sample):   {} ms{}",
+        fmt_duration_ms(capture.first_sample_at.and_then(|at| since(anchor, at))),
+        if capture.first_sample_at.is_some() {
+            ""
+        } else {
+            "  (no input device/sample observed)"
+        },
+    );
+    if let (Some(start), Some(sample)) = (capture.start_requested_at, capture.first_sample_at) {
+        println!(
+            "capture path (start request -> first sample):     {} ms",
+            fmt_duration_ms(since(start, sample)),
+        );
+    }
+    if let Some(error) = capture_result.setup_error {
+        println!("capture path setup error: {}", error);
     }
 
     let mut failed = false;

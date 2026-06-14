@@ -16,6 +16,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tracing::{error, info, warn};
 
@@ -30,6 +31,30 @@ pub async fn toggle_recording<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
+    toggle_recording_with_trigger(app, shared_state, recorder_state, None).await;
+}
+
+pub async fn toggle_recording_from_shortcut<R: Runtime>(
+    app: AppHandle<R>,
+    shared_state: SharedState,
+    recorder_state: Arc<Mutex<Recorder>>,
+    shortcut_received_at: Instant,
+) {
+    toggle_recording_with_trigger(
+        app,
+        shared_state,
+        recorder_state,
+        Some(shortcut_received_at),
+    )
+    .await;
+}
+
+async fn toggle_recording_with_trigger<R: Runtime>(
+    app: AppHandle<R>,
+    shared_state: SharedState,
+    recorder_state: Arc<Mutex<Recorder>>,
+    trigger_received_at: Option<Instant>,
+) {
     let current = {
         let state = shared_state.lock().unwrap();
         state.clone()
@@ -37,7 +62,7 @@ pub async fn toggle_recording<R: Runtime>(
 
     match current {
         AppState::Idle => {
-            start_recording(&app, shared_state, recorder_state).await;
+            start_recording(&app, shared_state, recorder_state, trigger_received_at).await;
         }
         AppState::Recording => {
             stop_and_transcribe(app, shared_state, recorder_state).await;
@@ -58,6 +83,7 @@ async fn start_recording<R: Runtime>(
     app: &AppHandle<R>,
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
+    trigger_received_at: Option<Instant>,
 ) {
     info!("Recording started...");
 
@@ -71,7 +97,10 @@ async fn start_recording<R: Runtime>(
             msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
         };
         if mic_status == 2 || mic_status == 1 {
-            warn!("Microphone permission denied (status={}), cannot record", mic_status);
+            warn!(
+                "Microphone permission denied (status={}), cannot record",
+                mic_status
+            );
             set_tray_icon(app, "idle");
             let _ = app.emit("microphone-denied", ());
             return;
@@ -93,7 +122,9 @@ async fn start_recording<R: Runtime>(
 
     let result = {
         match recorder_state.lock() {
-            Ok(mut recorder) => recorder.start(app, on_error),
+            Ok(mut recorder) => {
+                recorder.start_with_trigger_at(app, on_error, trigger_received_at)
+            }
             Err(e) => {
                 error!("Recorder lock poisoned: {}", e);
                 return;
@@ -113,6 +144,7 @@ async fn start_recording<R: Runtime>(
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
             info!("State → Recording");
+            spawn_latency_probe(Arc::clone(&recorder_state));
 
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
@@ -162,7 +194,11 @@ async fn start_recording<R: Runtime>(
                     // lock-free so we never contend with start()/stop().
                     let sample_rate =
                         sample_rate_handle.load(std::sync::atomic::Ordering::SeqCst);
-                    let effective_rate = if sample_rate == 0 { 16_000 } else { sample_rate };
+                    let effective_rate = if sample_rate == 0 {
+                        16_000
+                    } else {
+                        sample_rate
+                    };
                     let window_size = ((effective_rate as usize) / 10).max(1);
                     let level: f32 = {
                         let buf = buffer_ref.lock().unwrap();
@@ -188,6 +224,83 @@ async fn start_recording<R: Runtime>(
             error!("Recording start failed: {}", e);
             set_error(app, &shared_state, &e.to_string());
         }
+    }
+}
+
+fn spawn_latency_probe(recorder_state: Arc<Mutex<Recorder>>) {
+    let initial = match recorder_state.lock() {
+        Ok(recorder) => recorder.latency_snapshot(),
+        Err(e) => {
+            error!("Recorder lock poisoned while starting latency probe: {}", e);
+            return;
+        }
+    };
+    let epoch = initial.epoch;
+    let started_at = initial.start_requested_at.unwrap_or_else(Instant::now);
+    let deadline = Instant::now() + Duration::from_secs(2);
+
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let snapshot = match recorder_state.lock() {
+                Ok(recorder) => recorder.latency_snapshot(),
+                Err(e) => {
+                    error!("Recorder lock poisoned while reading latency probe: {}", e);
+                    return;
+                }
+            };
+
+            if snapshot.epoch != epoch {
+                return;
+            }
+
+            if snapshot.first_sample_at.is_some() {
+                log_latency_snapshot(snapshot);
+                return;
+            }
+
+            if Instant::now() >= deadline {
+                let anchor = snapshot.trigger_received_at.unwrap_or(started_at);
+                let to_start = snapshot.start_requested_at.and_then(|at| since(anchor, at));
+                let to_stream_play = snapshot
+                    .stream_play_requested_at
+                    .and_then(|at| since(anchor, at));
+                warn!(
+                    "Recording latency: first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_play={} ms",
+                    fmt_duration_ms(to_start),
+                    fmt_duration_ms(to_stream_play),
+                );
+                return;
+            }
+
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    });
+}
+
+fn log_latency_snapshot(snapshot: crate::audio::recorder::RecordingLatencySnapshot) {
+    let Some(start_requested_at) = snapshot.start_requested_at else {
+        return;
+    };
+    let anchor = snapshot.trigger_received_at.unwrap_or(start_requested_at);
+    let first_sample_at = snapshot.first_sample_at.unwrap();
+
+    info!(
+        "Recording latency: hotkey->start={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
+        fmt_duration_ms(since(anchor, start_requested_at)),
+        fmt_duration_ms(snapshot.stream_play_requested_at.and_then(|at| since(anchor, at))),
+        fmt_duration_ms(since(anchor, first_sample_at)),
+        fmt_duration_ms(since(start_requested_at, first_sample_at)),
+    );
+}
+
+fn since(start: Instant, end: Instant) -> Option<Duration> {
+    end.checked_duration_since(start)
+}
+
+fn fmt_duration_ms(duration: Option<Duration>) -> String {
+    match duration {
+        Some(duration) => format!("{:.3}", duration.as_secs_f64() * 1e3),
+        None => "n/a".to_string(),
     }
 }
 
@@ -699,7 +812,6 @@ pub async fn request_microphone_permission(app: AppHandle) {
         });
     }
 }
-
 
 #[tauri::command]
 pub fn open_microphone_prefs() {

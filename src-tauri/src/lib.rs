@@ -199,12 +199,18 @@ pub fn run() {
                         let h = handle.clone();
                         let ss = shared_state.clone();
                         let rec = Arc::clone(&recorder);
-                        match macos_shortcut::install(&shortcut_str, move || {
+                        match macos_shortcut::install(&shortcut_str, move |shortcut_received_at| {
                             let app = h.clone();
                             let state = ss.clone();
                             let r = Arc::clone(&rec);
                             tauri::async_runtime::spawn(async move {
-                                commands::toggle_recording(app, state, r).await;
+                                commands::toggle_recording_from_shortcut(
+                                    app,
+                                    state,
+                                    r,
+                                    shortcut_received_at,
+                                )
+                                .await;
                             });
                         }) {
                             Ok(sh) => {
@@ -246,11 +252,18 @@ pub fn run() {
                         sc,
                         move |_app, _shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
+                                let shortcut_received_at = std::time::Instant::now();
                                 let app = handle2.clone();
                                 let state = shared_state2.clone();
                                 let rec = Arc::clone(&recorder2);
                                 tauri::async_runtime::spawn(async move {
-                                    commands::toggle_recording(app, state, rec).await;
+                                    commands::toggle_recording_from_shortcut(
+                                        app,
+                                        state,
+                                        rec,
+                                        shortcut_received_at,
+                                    )
+                                    .await;
                                 });
                             }
                         },

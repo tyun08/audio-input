@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, Stream};
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{Manager, Runtime};
@@ -32,6 +32,15 @@ pub struct AudioData {
     pub channels: u16,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct RecordingLatencySnapshot {
+    pub epoch: u64,
+    pub trigger_received_at: Option<Instant>,
+    pub start_requested_at: Option<Instant>,
+    pub stream_play_requested_at: Option<Instant>,
+    pub first_sample_at: Option<Instant>,
+}
+
 // Shared, cheaply-clonable handle to the live capture state. Cloning hands a
 // background thread everything it needs to probe the device, build the cpal
 // stream and start capture *without* blocking the caller (the hotkey handler).
@@ -41,6 +50,10 @@ struct CaptureState {
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: Arc<AtomicU32>,
     channels: Arc<AtomicU32>,
+    trigger_received_at: Arc<Mutex<Option<Instant>>>,
+    stream_play_requested_at: Arc<Mutex<Option<Instant>>>,
+    first_sample_at: Arc<Mutex<Option<Instant>>>,
+    first_sample_seen: Arc<AtomicBool>,
     // Monotonically increasing generation counter. Each start()/stop() bumps it.
     // The background setup thread captures the epoch at spawn time and only
     // installs the stream if the epoch is still current — otherwise a slow
@@ -80,6 +93,10 @@ impl Recorder {
                 buffer: Arc::new(Mutex::new(Vec::new())),
                 sample_rate: Arc::new(AtomicU32::new(0)),
                 channels: Arc::new(AtomicU32::new(0)),
+                trigger_received_at: Arc::new(Mutex::new(None)),
+                stream_play_requested_at: Arc::new(Mutex::new(None)),
+                first_sample_at: Arc::new(Mutex::new(None)),
+                first_sample_seen: Arc::new(AtomicBool::new(false)),
                 epoch: Arc::new(AtomicU64::new(0)),
             },
             start_requested_at: None,
@@ -99,6 +116,15 @@ impl Recorder {
         app: &tauri::AppHandle<R>,
         on_error: Box<dyn FnOnce(anyhow::Error) + Send>,
     ) -> Result<()> {
+        self.start_with_trigger_at(app, on_error, None)
+    }
+
+    pub fn start_with_trigger_at<R: Runtime>(
+        &mut self,
+        app: &tauri::AppHandle<R>,
+        on_error: Box<dyn FnOnce(anyhow::Error) + Send>,
+        trigger_received_at: Option<Instant>,
+    ) -> Result<()> {
         // Read preferred device from config. This is a quick in-memory lock,
         // not a blocking device probe, so it stays on the calling thread.
         let preferred_device_name = {
@@ -106,7 +132,11 @@ impl Recorder {
             let name = config_state.lock().unwrap().preferred_device.clone();
             name
         };
-        self.start_capture(preferred_device_name, Some(on_error))
+        self.start_capture_with_trigger_at(
+            preferred_device_name,
+            Some(on_error),
+            trigger_received_at,
+        )
     }
 
     /// Zero-wait start: prepares the shared capture state synchronously (clear
@@ -123,12 +153,37 @@ impl Recorder {
         preferred_device_name: Option<String>,
         on_error: Option<Box<dyn FnOnce(anyhow::Error) + Send>>,
     ) -> Result<()> {
+        self.start_capture_with_trigger_at(preferred_device_name, on_error, None)
+    }
+
+    pub fn start_capture_with_trigger_at(
+        &mut self,
+        preferred_device_name: Option<String>,
+        on_error: Option<Box<dyn FnOnce(anyhow::Error) + Send>>,
+        trigger_received_at: Option<Instant>,
+    ) -> Result<()> {
         let requested_at = Instant::now();
         self.start_requested_at = Some(requested_at);
 
         // Bump the generation. This both invalidates any in-flight background
         // setup from a previous start and tags the one we are about to spawn.
         let epoch = self.capture.epoch.fetch_add(1, Ordering::SeqCst) + 1;
+
+        {
+            let mut trigger = self.capture.trigger_received_at.lock().unwrap();
+            *trigger = trigger_received_at;
+        }
+        {
+            let mut stream_play = self.capture.stream_play_requested_at.lock().unwrap();
+            *stream_play = None;
+        }
+        {
+            let mut first_sample = self.capture.first_sample_at.lock().unwrap();
+            *first_sample = None;
+        }
+        self.capture
+            .first_sample_seen
+            .store(false, Ordering::SeqCst);
 
         // Reset the shared buffer and tear down any existing stream up front so
         // capture begins from a clean slate. Both are cheap.
@@ -178,6 +233,16 @@ impl Recorder {
     /// latency benchmarks to measure hotkey-to-first-sample time.
     pub fn start_requested_at(&self) -> Option<Instant> {
         self.start_requested_at
+    }
+
+    pub fn latency_snapshot(&self) -> RecordingLatencySnapshot {
+        RecordingLatencySnapshot {
+            epoch: self.capture.epoch.load(Ordering::SeqCst),
+            trigger_received_at: *self.capture.trigger_received_at.lock().unwrap(),
+            start_requested_at: self.start_requested_at,
+            stream_play_requested_at: *self.capture.stream_play_requested_at.lock().unwrap(),
+            first_sample_at: *self.capture.first_sample_at.lock().unwrap(),
+        }
     }
 
     pub fn stop(&mut self) -> Result<AudioData> {
@@ -276,11 +341,28 @@ fn build_and_play(
         config.sample_format()
     );
 
-    let buffer = Arc::clone(&capture.buffer);
     let stream = match config.sample_format() {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config.into(), buffer)?,
-        SampleFormat::I16 => build_stream_i16(&device, &config.into(), buffer)?,
-        SampleFormat::U16 => build_stream_u16(&device, &config.into(), buffer)?,
+        SampleFormat::F32 => build_stream::<f32>(
+            &device,
+            &config.into(),
+            Arc::clone(&capture.buffer),
+            Arc::clone(&capture.first_sample_at),
+            Arc::clone(&capture.first_sample_seen),
+        )?,
+        SampleFormat::I16 => build_stream_i16(
+            &device,
+            &config.into(),
+            Arc::clone(&capture.buffer),
+            Arc::clone(&capture.first_sample_at),
+            Arc::clone(&capture.first_sample_seen),
+        )?,
+        SampleFormat::U16 => build_stream_u16(
+            &device,
+            &config.into(),
+            Arc::clone(&capture.buffer),
+            Arc::clone(&capture.first_sample_at),
+            Arc::clone(&capture.first_sample_seen),
+        )?,
         fmt => anyhow::bail!("Unsupported audio format: {:?}", fmt),
     };
 
@@ -295,16 +377,33 @@ fn build_and_play(
         // played, so nothing to halt).
         return Ok(());
     }
+    {
+        let mut stream_play = capture.stream_play_requested_at.lock().unwrap();
+        *stream_play = Some(Instant::now());
+    }
     stream.play().context("Failed to start recording stream")?;
     *slot = Some(SendStream(stream));
     info!("Recording started");
     Ok(())
 }
 
+fn mark_first_sample(
+    first_sample_at: &Arc<Mutex<Option<Instant>>>,
+    first_sample_seen: &Arc<AtomicBool>,
+    sample_count: usize,
+) {
+    if sample_count > 0 && !first_sample_seen.swap(true, Ordering::SeqCst) {
+        let mut first_sample = first_sample_at.lock().unwrap();
+        *first_sample = Some(Instant::now());
+    }
+}
+
 fn build_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     buffer: Arc<Mutex<Vec<f32>>>,
+    first_sample_at: Arc<Mutex<Option<Instant>>>,
+    first_sample_seen: Arc<AtomicBool>,
 ) -> Result<Stream>
 where
     T: cpal::Sample + cpal::SizedSample,
@@ -313,6 +412,7 @@ where
     let stream = device.build_input_stream(
         config,
         move |data: &[T], _: &cpal::InputCallbackInfo| {
+            mark_first_sample(&first_sample_at, &first_sample_seen, data.len());
             let mut buf = buffer.lock().unwrap();
             for &sample in data {
                 buf.push(<f32 as FromSample<T>>::from_sample_(sample));
@@ -328,10 +428,13 @@ fn build_stream_i16(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     buffer: Arc<Mutex<Vec<f32>>>,
+    first_sample_at: Arc<Mutex<Option<Instant>>>,
+    first_sample_seen: Arc<AtomicBool>,
 ) -> Result<Stream> {
     let stream = device.build_input_stream(
         config,
         move |data: &[i16], _: &cpal::InputCallbackInfo| {
+            mark_first_sample(&first_sample_at, &first_sample_seen, data.len());
             let mut buf = buffer.lock().unwrap();
             for &sample in data {
                 buf.push(sample as f32 / i16::MAX as f32);
@@ -347,10 +450,13 @@ fn build_stream_u16(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     buffer: Arc<Mutex<Vec<f32>>>,
+    first_sample_at: Arc<Mutex<Option<Instant>>>,
+    first_sample_seen: Arc<AtomicBool>,
 ) -> Result<Stream> {
     let stream = device.build_input_stream(
         config,
         move |data: &[u16], _: &cpal::InputCallbackInfo| {
+            mark_first_sample(&first_sample_at, &first_sample_seen, data.len());
             let mut buf = buffer.lock().unwrap();
             for &sample in data {
                 // u16: 0..=65535, center at 32768
