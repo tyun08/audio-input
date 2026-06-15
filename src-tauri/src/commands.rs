@@ -1164,13 +1164,10 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                 let _: () = msg_send![win, invalidateShadow];
             }
 
-            // Switch activation policy based on mode:
-            // - opaque (settings/onboarding): Regular so the window becomes key,
-            //   the app appears in the menu bar, and WebKit renders properly.
-            // - transparent (HUD): Accessory so the overlay floats without
-            //   stealing focus from the user's current app.
-            // NSApplicationActivationPolicyRegular  = 0
-            // NSApplicationActivationPolicyAccessory = 1
+            // Keep the app Regular in every mode so it remains a real Dock /
+            // Cmd-Tab app. Settings/onboarding explicitly activate the app;
+            // HUD/hidden mode only changes window level and never activates.
+            // NSApplicationActivationPolicyRegular = 0
             if opaque {
                 // Settings / onboarding: normal window level so other windows can cover it.
                 // NSNormalWindowLevel = 0
@@ -1187,7 +1184,7 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 3i64];
                 }
-                let _: () = msg_send![app, setActivationPolicy: 1i64];
+                let _: () = msg_send![app, setActivationPolicy: 0i64];
             }
         }
     }

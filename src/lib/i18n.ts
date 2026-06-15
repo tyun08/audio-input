@@ -134,7 +134,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.shortcut_label": "Your shortcut",
     "onboarding.shortcut_hint":
       "Press once to start recording · Press again to stop, transcribe, and paste at your cursor",
-    "onboarding.settings_hint_mac": "Click the menu bar icon for settings.",
+    "onboarding.settings_hint_mac": "Open Audio Input or click the menu bar icon for settings.",
     "onboarding.settings_hint_win": "Click the system tray icon for settings.",
     "onboarding.finish": "Start Using",
 
@@ -251,7 +251,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.ready": "准备就绪！",
     "onboarding.shortcut_label": "你的快捷键",
     "onboarding.shortcut_hint": "按一下开始录音 · 再按一下停止、转文字并粘贴到光标位置",
-    "onboarding.settings_hint_mac": "点击菜单栏图标可打开设置",
+    "onboarding.settings_hint_mac": "打开 Audio Input 或点击菜单栏图标可打开设置",
     "onboarding.settings_hint_win": "点击系统托盘图标可打开设置",
     "onboarding.finish": "开始使用",
 

@@ -97,15 +97,17 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // macOS: Set activation policy to Accessory (tray-only app, windows don't steal focus)
+            // macOS: keep a real Dock/Cmd-Tab app. The window itself still
+            // starts transparent and input-passthrough so the warmed WebKit
+            // compositor does not interfere with the active foreground app.
             #[cfg(target_os = "macos")]
             {
                 use objc::{class, msg_send, sel, sel_impl};
                 unsafe {
                     let ns_app: *mut objc::runtime::Object =
                         msg_send![class!(NSApplication), sharedApplication];
-                    // NSApplicationActivationPolicyAccessory = 1
-                    let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
+                    // NSApplicationActivationPolicyRegular = 0
+                    let _: () = msg_send![ns_app, setActivationPolicy: 0i64];
 
                     // Start the window fully transparent and input-passthrough.
                     // The TS side calls show() right away, which puts the window
@@ -122,6 +124,7 @@ pub fn run() {
                         let _: () = msg_send![win, setIgnoresMouseEvents: true];
                     }
                 }
+                let _ = handle.set_dock_visibility(true);
             }
 
             // macOS: pre-load AVFoundation so AVCaptureDevice is available when
@@ -359,6 +362,12 @@ pub fn run() {
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
         ])
-        .run(tauri::generate_context!())
-        .expect("Failed to start Tauri application");
+        .build(tauri::generate_context!())
+        .expect("Failed to build Tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show_settings_window(app);
+            }
+        });
 }
