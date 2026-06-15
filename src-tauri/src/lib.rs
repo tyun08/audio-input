@@ -27,6 +27,22 @@ use tauri::{Listener as _, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{info, warn};
 
+#[cfg(target_os = "macos")]
+fn microphone_prewarm_allowed() -> bool {
+    use objc::{class, msg_send, sel, sel_impl};
+    let status: i64 = unsafe {
+        let media_type: *mut objc::runtime::Object =
+            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+        msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
+    };
+    status == 3
+}
+
+#[cfg(not(target_os = "macos"))]
+fn microphone_prewarm_allowed() -> bool {
+    true
+}
+
 pub fn run() {
     // Try current dir, then parent dir, to find .env in dev mode
     if dotenvy::dotenv().is_err() {
@@ -141,6 +157,7 @@ pub fn run() {
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
             let max_history = config.max_history;
+            let preferred_device = config.preferred_device.clone();
             app.manage(Arc::new(Mutex::new(config)));
 
             // Init shared state
@@ -161,6 +178,13 @@ pub fn run() {
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
             app.manage(RecorderState(Arc::clone(&recorder)));
+            if microphone_prewarm_allowed() {
+                if let Ok(rec) = recorder.lock() {
+                    let _ = rec.prewarm_capture(preferred_device.clone());
+                }
+            } else {
+                info!("Skipping recording stream prewarm until microphone permission is granted");
+            }
 
             // Setup system tray
             tray::setup_tray(&handle)?;

@@ -122,9 +122,7 @@ async fn start_recording<R: Runtime>(
 
     let result = {
         match recorder_state.lock() {
-            Ok(mut recorder) => {
-                recorder.start_with_trigger_at(app, on_error, trigger_received_at)
-            }
+            Ok(mut recorder) => recorder.start_with_trigger_at(app, on_error, trigger_received_at),
             Err(e) => {
                 error!("Recorder lock poisoned: {}", e);
                 return;
@@ -192,8 +190,7 @@ async fn start_recording<R: Runtime>(
                     // few ms after recording starts. ~100 ms window (rate / 10),
                     // defaulting to 16 kHz until the real rate is available. Read
                     // lock-free so we never contend with start()/stop().
-                    let sample_rate =
-                        sample_rate_handle.load(std::sync::atomic::Ordering::SeqCst);
+                    let sample_rate = sample_rate_handle.load(std::sync::atomic::Ordering::SeqCst);
                     let effective_rate = if sample_rate == 0 {
                         16_000
                     } else {
@@ -266,7 +263,8 @@ fn spawn_latency_probe(recorder_state: Arc<Mutex<Recorder>>) {
                     .and_then(|at| since(anchor, at));
                 let to_stream_built = snapshot.stream_built_at.and_then(|at| since(anchor, at));
                 warn!(
-                    "Recording latency: first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
+                    "Recording latency: prebuilt={}, first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
+                    snapshot.used_prebuilt_stream,
                     fmt_duration_ms(to_start),
                     fmt_duration_ms(to_stream_built),
                     fmt_duration_ms(to_stream_play),
@@ -288,7 +286,8 @@ fn log_latency_snapshot(snapshot: crate::audio::recorder::RecordingLatencySnapsh
     let first_sample_at = snapshot.first_sample_at.unwrap();
 
     info!(
-        "Recording latency: hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
+        "Recording latency: prebuilt={}, hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
+        snapshot.used_prebuilt_stream,
         fmt_duration_ms(since(anchor, start_requested_at)),
         fmt_duration_ms(snapshot.stream_built_at.and_then(|at| since(anchor, at))),
         fmt_duration_ms(snapshot.stream_play_requested_at.and_then(|at| since(anchor, at))),
@@ -304,7 +303,8 @@ fn log_latency_setup_breakdown(snapshot: crate::audio::recorder::RecordingLatenc
     }
 
     info!(
-        "Recording latency setup: start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
+        "Recording latency setup: prebuilt={}, start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
+        snapshot.used_prebuilt_stream,
         fmt_between(snapshot.start_requested_at, snapshot.setup_thread_started_at),
         fmt_between(snapshot.setup_thread_started_at, snapshot.host_created_at),
         fmt_between(snapshot.host_created_at, snapshot.device_resolved_at),
@@ -829,6 +829,17 @@ pub async fn request_microphone_permission(app: AppHandle) {
                         if !granted {
                             use tauri::Emitter as _;
                             let _ = app2.emit("microphone-denied", ());
+                        } else {
+                            let preferred_device = {
+                                let config = app2.state::<Arc<Mutex<AppConfig>>>();
+                                let preferred = config.lock().unwrap().preferred_device.clone();
+                                preferred
+                            };
+                            if let Some(recorder_state) = app2.try_state::<RecorderState>() {
+                                if let Ok(recorder) = recorder_state.inner().0.lock() {
+                                    let _ = recorder.prewarm_capture(preferred_device);
+                                }
+                            }
                         }
                     });
                     let block = block.copy();
@@ -958,7 +969,13 @@ pub async fn save_preferred_device(
         cfg.preferred_device = device;
         cfg.clone()
     };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    if let Some(recorder_state) = app.try_state::<RecorderState>() {
+        if let Ok(recorder) = recorder_state.inner().0.lock() {
+            let _ = recorder.prewarm_capture(updated.preferred_device.clone());
+        }
+    }
+    Ok(())
 }
 
 // --- Shortcut ----------------------------------------------------------------

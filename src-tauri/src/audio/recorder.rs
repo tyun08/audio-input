@@ -11,6 +11,11 @@ use tracing::{error, info, warn};
 struct SendStream(Stream);
 unsafe impl Send for SendStream {}
 
+struct CachedStream {
+    stream: SendStream,
+    preferred_device_name: Option<String>,
+}
+
 // RAII guard: dropping a SendStream always pauses the underlying cpal stream
 // first. cpal's own Drop does NOT reliably halt the input callback on
 // macOS/coreaudio — without this explicit pause the stream becomes a "zombie"
@@ -46,6 +51,7 @@ pub struct RecordingLatencySnapshot {
     pub stream_play_requested_at: Option<Instant>,
     pub stream_play_returned_at: Option<Instant>,
     pub first_sample_at: Option<Instant>,
+    pub used_prebuilt_stream: bool,
 }
 
 // Shared, cheaply-clonable handle to the live capture state. Cloning hands a
@@ -53,7 +59,7 @@ pub struct RecordingLatencySnapshot {
 // stream and start capture *without* blocking the caller (the hotkey handler).
 #[derive(Clone)]
 struct CaptureState {
-    stream: Arc<Mutex<Option<SendStream>>>,
+    stream: Arc<Mutex<Option<CachedStream>>>,
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: Arc<AtomicU32>,
     channels: Arc<AtomicU32>,
@@ -68,6 +74,8 @@ struct CaptureState {
     stream_play_returned_at: Arc<Mutex<Option<Instant>>>,
     first_sample_at: Arc<Mutex<Option<Instant>>>,
     first_sample_seen: Arc<AtomicBool>,
+    used_prebuilt_stream: Arc<AtomicBool>,
+    is_recording: Arc<AtomicBool>,
     // Monotonically increasing generation counter. Each start()/stop() bumps it.
     // The background setup thread captures the epoch at spawn time and only
     // installs the stream if the epoch is still current — otherwise a slow
@@ -118,6 +126,8 @@ impl Recorder {
                 stream_play_returned_at: Arc::new(Mutex::new(None)),
                 first_sample_at: Arc::new(Mutex::new(None)),
                 first_sample_seen: Arc::new(AtomicBool::new(false)),
+                used_prebuilt_stream: Arc::new(AtomicBool::new(false)),
+                is_recording: Arc::new(AtomicBool::new(false)),
                 epoch: Arc::new(AtomicU64::new(0)),
             },
             start_requested_at: None,
@@ -212,17 +222,40 @@ impl Recorder {
         self.capture
             .first_sample_seen
             .store(false, Ordering::SeqCst);
+        self.capture
+            .used_prebuilt_stream
+            .store(false, Ordering::SeqCst);
 
-        // Reset the shared buffer and tear down any existing stream up front so
-        // capture begins from a clean slate. Both are cheap.
+        // Reset the shared buffer up front so capture begins from a clean slate.
         {
             let mut buf = self.capture.buffer.lock().unwrap();
             buf.clear();
         }
-        {
-            let mut slot = self.capture.stream.lock().unwrap();
-            *slot = None;
+
+        let mut slot = self.capture.stream.lock().unwrap();
+        if let Some(cached) = slot.as_mut() {
+            if cached.preferred_device_name.as_deref() == preferred_device_name.as_deref() {
+                self.capture
+                    .used_prebuilt_stream
+                    .store(true, Ordering::SeqCst);
+                set_instant(&self.capture.stream_play_requested_at);
+                match cached.stream.0.play() {
+                    Ok(()) => {
+                        set_instant(&self.capture.stream_play_returned_at);
+                        self.capture.is_recording.store(true, Ordering::SeqCst);
+                        info!("Recording started (prebuilt stream)");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        warn!("Prebuilt recording stream failed to play: {}", e);
+                        *slot = None;
+                    }
+                }
+            } else {
+                *slot = None;
+            }
         }
+        drop(slot);
 
         let capture = self.capture.clone();
         std::thread::Builder::new()
@@ -277,6 +310,7 @@ impl Recorder {
             stream_play_requested_at: *self.capture.stream_play_requested_at.lock().unwrap(),
             stream_play_returned_at: *self.capture.stream_play_returned_at.lock().unwrap(),
             first_sample_at: *self.capture.first_sample_at.lock().unwrap(),
+            used_prebuilt_stream: self.capture.used_prebuilt_stream.load(Ordering::SeqCst),
         }
     }
 
@@ -290,8 +324,14 @@ impl Recorder {
         // enough on macOS/coreaudio — see SendStream's Drop impl.)
         {
             let mut slot = self.capture.stream.lock().unwrap();
-            *slot = None;
+            if let Some(cached) = slot.as_mut() {
+                if let Err(e) = cached.stream.0.pause() {
+                    warn!("Failed to pause recording stream: {}", e);
+                    *slot = None;
+                }
+            }
         }
+        self.capture.is_recording.store(false, Ordering::SeqCst);
         info!("Recording stopped");
 
         let samples = {
@@ -318,6 +358,35 @@ impl Recorder {
             channels,
         })
     }
+
+    /// Build and cache a paused input stream in the background. A later start
+    /// can reuse it and call `play()` immediately instead of paying the
+    /// CoreAudio/cpal stream-construction cost on the hotkey path.
+    pub fn prewarm_capture(&self, preferred_device_name: Option<String>) -> Result<()> {
+        let capture = self.capture.clone();
+        let epoch = capture.epoch.load(Ordering::SeqCst);
+        std::thread::Builder::new()
+            .name("recorder-prewarm".into())
+            .spawn(move || {
+                match build_cached_stream(&capture, preferred_device_name.as_deref(), false) {
+                    Ok(cached) => {
+                        let mut slot = capture.stream.lock().unwrap();
+                        if capture.epoch.load(Ordering::SeqCst) == epoch
+                            && !capture.is_recording.load(Ordering::SeqCst)
+                        {
+                            *slot = Some(cached);
+                            info!("Recording stream prewarmed");
+                        } else {
+                            info!("Recording stream prewarm superseded; discarding stream");
+                        }
+                    }
+                    Err(e) => warn!("Recording stream prewarm failed: {}", e),
+                }
+            })
+            .context("Failed to spawn recorder prewarm thread")?;
+
+        Ok(())
+    }
 }
 
 /// Blocking device probe + stream build + play. Runs on a background thread so
@@ -331,8 +400,39 @@ fn build_and_play(
 ) -> Result<()> {
     set_instant(&capture.setup_thread_started_at);
 
+    let stream = build_cached_stream(capture, preferred_device_name, true)?;
+
+    // Install the stream atomically with the epoch check so a stop()/start()
+    // that happened while we were probing wins the race. Holding the slot lock
+    // across play() means stop() either runs fully before us (epoch bumped →
+    // we bail) or fully after us (it tears our stream down).
+    let mut slot = capture.stream.lock().unwrap();
+    if capture.epoch.load(Ordering::SeqCst) != epoch {
+        info!("Recording start superseded before stream install; discarding stream");
+        // Dropping `stream` here pauses it via cpal's own Drop (it was never
+        // played, so nothing to halt).
+        return Ok(());
+    }
+    set_instant(&capture.stream_play_requested_at);
+    stream
+        .stream
+        .0
+        .play()
+        .context("Failed to start recording stream")?;
+    set_instant(&capture.stream_play_returned_at);
+    capture.is_recording.store(true, Ordering::SeqCst);
+    *slot = Some(stream);
+    info!("Recording started");
+    Ok(())
+}
+
+fn build_cached_stream(
+    capture: &CaptureState,
+    preferred_device_name: Option<&str>,
+    record_timings: bool,
+) -> Result<CachedStream> {
     let host = cpal::default_host();
-    set_instant(&capture.host_created_at);
+    set_instant_if(record_timings, &capture.host_created_at);
 
     let device = if let Some(name) = preferred_device_name {
         let found = host
@@ -355,18 +455,18 @@ fn build_and_play(
         host.default_input_device()
             .context("No default microphone found")?
     };
-    set_instant(&capture.device_resolved_at);
+    set_instant_if(record_timings, &capture.device_resolved_at);
 
     info!(
         "Using recording device: {}",
         device.name().unwrap_or_default()
     );
-    set_instant(&capture.device_name_resolved_at);
+    set_instant_if(record_timings, &capture.device_name_resolved_at);
 
     let config = device
         .default_input_config()
         .context("Cannot get default recording config")?;
-    set_instant(&capture.config_loaded_at);
+    set_instant_if(record_timings, &capture.config_loaded_at);
 
     capture
         .sample_rate
@@ -406,25 +506,12 @@ fn build_and_play(
         )?,
         fmt => anyhow::bail!("Unsupported audio format: {:?}", fmt),
     };
-    set_instant(&capture.stream_built_at);
+    set_instant_if(record_timings, &capture.stream_built_at);
 
-    // Install the stream atomically with the epoch check so a stop()/start()
-    // that happened while we were probing wins the race. Holding the slot lock
-    // across play() means stop() either runs fully before us (epoch bumped →
-    // we bail) or fully after us (it tears our stream down).
-    let mut slot = capture.stream.lock().unwrap();
-    if capture.epoch.load(Ordering::SeqCst) != epoch {
-        info!("Recording start superseded before stream install; discarding stream");
-        // Dropping `stream` here pauses it via cpal's own Drop (it was never
-        // played, so nothing to halt).
-        return Ok(());
-    }
-    set_instant(&capture.stream_play_requested_at);
-    stream.play().context("Failed to start recording stream")?;
-    set_instant(&capture.stream_play_returned_at);
-    *slot = Some(SendStream(stream));
-    info!("Recording started");
-    Ok(())
+    Ok(CachedStream {
+        stream: SendStream(stream),
+        preferred_device_name: preferred_device_name.map(str::to_string),
+    })
 }
 
 fn clear_instant(slot: &Arc<Mutex<Option<Instant>>>) {
@@ -433,6 +520,12 @@ fn clear_instant(slot: &Arc<Mutex<Option<Instant>>>) {
 
 fn set_instant(slot: &Arc<Mutex<Option<Instant>>>) {
     *slot.lock().unwrap() = Some(Instant::now());
+}
+
+fn set_instant_if(enabled: bool, slot: &Arc<Mutex<Option<Instant>>>) {
+    if enabled {
+        set_instant(slot);
+    }
 }
 
 fn mark_first_sample(
