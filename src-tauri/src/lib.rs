@@ -27,6 +27,22 @@ use tauri::{Listener as _, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{info, warn};
 
+#[cfg(target_os = "macos")]
+fn microphone_prewarm_allowed() -> bool {
+    use objc::{class, msg_send, sel, sel_impl};
+    let status: i64 = unsafe {
+        let media_type: *mut objc::runtime::Object =
+            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+        msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
+    };
+    status == 3
+}
+
+#[cfg(not(target_os = "macos"))]
+fn microphone_prewarm_allowed() -> bool {
+    true
+}
+
 pub fn run() {
     // Try current dir, then parent dir, to find .env in dev mode
     if dotenvy::dotenv().is_err() {
@@ -81,15 +97,17 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // macOS: Set activation policy to Accessory (tray-only app, windows don't steal focus)
+            // macOS: keep a real Dock/Cmd-Tab app. The window itself still
+            // starts transparent and input-passthrough so the warmed WebKit
+            // compositor does not interfere with the active foreground app.
             #[cfg(target_os = "macos")]
             {
                 use objc::{class, msg_send, sel, sel_impl};
                 unsafe {
                     let ns_app: *mut objc::runtime::Object =
                         msg_send![class!(NSApplication), sharedApplication];
-                    // NSApplicationActivationPolicyAccessory = 1
-                    let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
+                    // NSApplicationActivationPolicyRegular = 0
+                    let _: () = msg_send![ns_app, setActivationPolicy: 0i64];
 
                     // Start the window fully transparent and input-passthrough.
                     // The TS side calls show() right away, which puts the window
@@ -106,6 +124,7 @@ pub fn run() {
                         let _: () = msg_send![win, setIgnoresMouseEvents: true];
                     }
                 }
+                let _ = handle.set_dock_visibility(true);
             }
 
             // macOS: pre-load AVFoundation so AVCaptureDevice is available when
@@ -141,6 +160,7 @@ pub fn run() {
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
             let max_history = config.max_history;
+            let preferred_device = config.preferred_device.clone();
             app.manage(Arc::new(Mutex::new(config)));
 
             // Init shared state
@@ -161,6 +181,13 @@ pub fn run() {
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
             app.manage(RecorderState(Arc::clone(&recorder)));
+            if microphone_prewarm_allowed() {
+                if let Ok(rec) = recorder.lock() {
+                    let _ = rec.prewarm_capture(preferred_device.clone());
+                }
+            } else {
+                info!("Skipping recording stream prewarm until microphone permission is granted");
+            }
 
             // Setup system tray
             tray::setup_tray(&handle)?;
@@ -199,12 +226,18 @@ pub fn run() {
                         let h = handle.clone();
                         let ss = shared_state.clone();
                         let rec = Arc::clone(&recorder);
-                        match macos_shortcut::install(&shortcut_str, move || {
+                        match macos_shortcut::install(&shortcut_str, move |shortcut_received_at| {
                             let app = h.clone();
                             let state = ss.clone();
                             let r = Arc::clone(&rec);
                             tauri::async_runtime::spawn(async move {
-                                commands::toggle_recording(app, state, r).await;
+                                commands::toggle_recording_from_shortcut(
+                                    app,
+                                    state,
+                                    r,
+                                    shortcut_received_at,
+                                )
+                                .await;
                             });
                         }) {
                             Ok(sh) => {
@@ -246,11 +279,18 @@ pub fn run() {
                         sc,
                         move |_app, _shortcut, event| {
                             if event.state() == ShortcutState::Pressed {
+                                let shortcut_received_at = std::time::Instant::now();
                                 let app = handle2.clone();
                                 let state = shared_state2.clone();
                                 let rec = Arc::clone(&recorder2);
                                 tauri::async_runtime::spawn(async move {
-                                    commands::toggle_recording(app, state, rec).await;
+                                    commands::toggle_recording_from_shortcut(
+                                        app,
+                                        state,
+                                        rec,
+                                        shortcut_received_at,
+                                    )
+                                    .await;
                                 });
                             }
                         },
@@ -322,6 +362,12 @@ pub fn run() {
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
         ])
-        .run(tauri::generate_context!())
-        .expect("Failed to start Tauri application");
+        .build(tauri::generate_context!())
+        .expect("Failed to build Tauri application")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::show_settings_window(app);
+            }
+        });
 }

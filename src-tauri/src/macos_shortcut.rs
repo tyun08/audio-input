@@ -14,6 +14,7 @@
 use anyhow::{bail, Result};
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tracing::info;
 
 // ── CoreGraphics FFI ────────────────────────────────────────────────────────
@@ -79,7 +80,7 @@ struct ShortcutTarget {
 
 struct TapContext {
     target: Arc<Mutex<ShortcutTarget>>,
-    sender: std::sync::mpsc::Sender<()>,
+    sender: std::sync::mpsc::Sender<Instant>,
     tap_ref: *mut c_void,
 }
 
@@ -143,7 +144,7 @@ unsafe extern "C" fn tap_callback(
     if keycode == target.keycode && flags == target.modifiers {
         drop(target);
         if event_type == KCG_EVENT_KEY_DOWN {
-            let _ = ctx.sender.send(());
+            let _ = ctx.sender.send(Instant::now());
         }
         // Return null to consume both keyDown and keyUp — other apps never see them.
         return std::ptr::null_mut();
@@ -232,12 +233,12 @@ fn parse_to_cg(shortcut_str: &str) -> Result<(i64, u64)> {
 /// thread. Returns a [`ShortcutHandle`] for runtime updates.
 pub fn install<F>(shortcut_str: &str, on_trigger: F) -> Result<ShortcutHandle>
 where
-    F: Fn() + Send + 'static,
+    F: Fn(Instant) + Send + 'static,
 {
     let (keycode, modifiers) = parse_to_cg(shortcut_str)?;
 
     let target = Arc::new(Mutex::new(ShortcutTarget { keycode, modifiers }));
-    let (sender, receiver) = std::sync::mpsc::channel::<()>();
+    let (sender, receiver) = std::sync::mpsc::channel::<Instant>();
 
     let handle = ShortcutHandle {
         target: Arc::clone(&target),
@@ -293,8 +294,8 @@ where
     }
 
     std::thread::spawn(move || {
-        while receiver.recv().is_ok() {
-            on_trigger();
+        while let Ok(triggered_at) = receiver.recv() {
+            on_trigger(triggered_at);
         }
     });
 

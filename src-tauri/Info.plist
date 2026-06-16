@@ -4,8 +4,6 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Audio Input needs microphone access to record your voice for transcription.</string>
-  <key>LSUIElement</key>
-  <true/>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
   <key>CFBundleDevelopmentRegion</key>

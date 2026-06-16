@@ -59,6 +59,28 @@ fn start_records_request_instant() {
     let _ = recorder.stop();
 }
 
+/// Shortcut latency tooling anchors the measurement at the real shortcut
+/// callback time, before the async toggle task reaches `Recorder`.
+#[test]
+fn start_records_shortcut_anchor() {
+    let mut recorder = Recorder::new();
+    let shortcut_received_at = Instant::now();
+    std::thread::sleep(Duration::from_millis(1));
+
+    recorder
+        .start_capture_with_trigger_at(None, None, Some(shortcut_received_at))
+        .expect("start_capture");
+
+    let snapshot = recorder.latency_snapshot();
+    assert_eq!(snapshot.trigger_received_at, Some(shortcut_received_at));
+    assert!(
+        snapshot.start_requested_at.unwrap() >= shortcut_received_at,
+        "start request should be measured after the shortcut callback anchor"
+    );
+
+    let _ = recorder.stop();
+}
+
 /// Rapid start/stop cycling must remain safe (the epoch guard prevents a slow
 /// background probe from resurrecting a stopped stream) and never panic.
 #[test]

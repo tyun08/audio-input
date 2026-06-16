@@ -66,7 +66,6 @@ fn strings_for_locale(locale: &str) -> &'static TrayStrings {
     if locale == "zh" { &STRINGS_ZH } else { &STRINGS_EN }
 }
 
-
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let (polish_enabled, locale) = {
         let config_state = app.state::<Arc<Mutex<crate::config::AppConfig>>>();
@@ -380,14 +379,14 @@ pub fn refresh_tray_menu<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        let (icon, as_template) = match state {
-            "recording" => (recording_icon(), false),
-            "processing" => (processing_icon(), false),
-            "error" => (error_icon(), false),
-            _ => (idle_icon(), true),
+        let icon = match state {
+            "recording" => recording_icon(),
+            "processing" => processing_icon(),
+            "error" => error_icon(),
+            _ => idle_icon(),
         };
         let _ = tray.set_icon(Some(icon));
-        let _ = tray.set_icon_as_template(as_template);
+        let _ = tray.set_icon_as_template(true);
     }
 }
 
@@ -408,7 +407,7 @@ pub fn set_tray_last_result<R: Runtime>(app: &AppHandle<R>, text: &str) {
     }
 }
 
-fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
+pub fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     // Do all native setup synchronously before the window is shown.
     // WebKit may have JS throttled while the window is hidden, so we cannot
     // rely on the TS syncWindow() path to call set_native_opaque first.
@@ -451,19 +450,100 @@ fn show_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-// --- Embedded icons ---
+// --- Tray icons ---
 
 fn idle_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-idle.png")).expect("tray-idle.png corrupted")
+    waveform_icon(false)
 }
+
 fn recording_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-recording.png"))
-        .expect("tray-recording.png corrupted")
+    waveform_icon(true)
 }
+
 fn processing_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-processing.png"))
-        .expect("tray-processing.png corrupted")
+    let mut rgba = blank_tray_rgba();
+    for x in [16, 22, 28] {
+        draw_circle(&mut rgba, x, 22, 3, TRAY_INK);
+    }
+    Image::new_owned(rgba, TRAY_ICON_SIZE, TRAY_ICON_SIZE)
 }
+
 fn error_icon() -> Image<'static> {
-    Image::from_bytes(include_bytes!("../icons/tray-error.png")).expect("tray-error.png corrupted")
+    let mut rgba = blank_tray_rgba();
+    draw_rounded_rect(&mut rgba, 20, 11, 4, 18, 2, TRAY_INK);
+    draw_circle(&mut rgba, 22, 34, 3, TRAY_INK);
+    Image::new_owned(rgba, TRAY_ICON_SIZE, TRAY_ICON_SIZE)
+}
+
+const TRAY_ICON_SIZE: u32 = 44;
+const TRAY_INK: [u8; 4] = [0, 0, 0, 255];
+
+fn blank_tray_rgba() -> Vec<u8> {
+    vec![0; (TRAY_ICON_SIZE * TRAY_ICON_SIZE * 4) as usize]
+}
+
+fn waveform_icon(with_status_dot: bool) -> Image<'static> {
+    let mut rgba = blank_tray_rgba();
+    for (x, height) in [(11, 14), (17, 24), (23, 18), (29, 28), (35, 12)] {
+        draw_rounded_rect(&mut rgba, x, 22 - height / 2, 4, height, 2, TRAY_INK);
+    }
+    if with_status_dot {
+        draw_circle(&mut rgba, 34, 10, 4, TRAY_INK);
+    }
+    Image::new_owned(rgba, TRAY_ICON_SIZE, TRAY_ICON_SIZE)
+}
+
+fn draw_rounded_rect(
+    rgba: &mut [u8],
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    radius: i32,
+    color: [u8; 4],
+) {
+    for py in y..(y + height) {
+        for px in x..(x + width) {
+            let corner_x = if px < x + radius {
+                x + radius
+            } else if px >= x + width - radius {
+                x + width - radius - 1
+            } else {
+                px
+            };
+            let corner_y = if py < y + radius {
+                y + radius
+            } else if py >= y + height - radius {
+                y + height - radius - 1
+            } else {
+                py
+            };
+            let dx = px - corner_x;
+            let dy = py - corner_y;
+            if dx == 0 || dy == 0 || dx * dx + dy * dy <= radius * radius {
+                set_pixel(rgba, px, py, color);
+            }
+        }
+    }
+}
+
+fn draw_circle(rgba: &mut [u8], cx: i32, cy: i32, radius: i32, color: [u8; 4]) {
+    let radius_sq = radius * radius;
+    for py in (cy - radius)..=(cy + radius) {
+        for px in (cx - radius)..=(cx + radius) {
+            let dx = px - cx;
+            let dy = py - cy;
+            if dx * dx + dy * dy <= radius_sq {
+                set_pixel(rgba, px, py, color);
+            }
+        }
+    }
+}
+
+fn set_pixel(rgba: &mut [u8], x: i32, y: i32, color: [u8; 4]) {
+    if x < 0 || y < 0 || x >= TRAY_ICON_SIZE as i32 || y >= TRAY_ICON_SIZE as i32 {
+        return;
+    }
+    let idx = ((y as u32 * TRAY_ICON_SIZE + x as u32) * 4) as usize;
+    rgba[idx..idx + 4].copy_from_slice(&color);
 }
