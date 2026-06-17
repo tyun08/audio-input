@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { LogicalSize, LogicalPosition } from "@tauri-apps/api/dpi";
+  import { LogicalSize, LogicalPosition, PhysicalPosition } from "@tauri-apps/api/dpi";
+  import { cursorPosition, monitorFromPoint } from "@tauri-apps/api/window";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { createAppApi } from "./lib/app-api";
   import { log } from "./lib/logger";
@@ -43,6 +44,51 @@
       } catch {}
     }
     await appWindow.center();
+  }
+
+  // Whether the HUD is currently visible. Used to decide when to reposition it
+  // near the cursor (only on a fresh show, not on every syncWindow call so that
+  // manual drags are preserved within a session).
+  let hudVisible = false;
+
+  // Logical-pixel offset from the cursor where the HUD top-left is placed.
+  const HUD_CURSOR_OFFSET_PX = 16;
+
+  /**
+   * Position the HUD window near the current cursor location, clamped to the
+   * work area of the monitor that contains the cursor. Falls back to centering
+   * on any error (e.g., non-Tauri context).
+   */
+  async function positionHudNearCursor(hudW: number, hudH: number) {
+    try {
+      const physCursor = await cursorPosition();
+      const monitor = await monitorFromPoint(physCursor.x, physCursor.y);
+      const scale = monitor?.scaleFactor ?? 1;
+      const offsetPhys = Math.round(HUD_CURSOR_OFFSET_PX * scale);
+
+      let targetX = physCursor.x + offsetPhys;
+      let targetY = physCursor.y + offsetPhys;
+
+      if (monitor) {
+        const wa = monitor.workArea;
+        const hudPhysW = Math.round(hudW * scale);
+        const hudPhysH = Math.round(hudH * scale);
+
+        // Clamp so the HUD stays fully within the monitor's work area
+        targetX = Math.max(
+          wa.position.x,
+          Math.min(targetX, wa.position.x + wa.size.width - hudPhysW)
+        );
+        targetY = Math.max(
+          wa.position.y,
+          Math.min(targetY, wa.position.y + wa.size.height - hudPhysH)
+        );
+      }
+
+      await appWindow.setPosition(new PhysicalPosition(targetX, targetY));
+    } catch {
+      await appWindow.center();
+    }
   }
 
   import RecordingIndicator from "./lib/RecordingIndicator.svelte";
@@ -167,14 +213,29 @@
       // Window stays on-screen at alphaValue=0 (set by setNativeOpaque above).
       // This keeps the CVDisplayLink alive so the WKWebView compositor never
       // suspends — the root cause of the all-black settings window bug.
+      hudVisible = false;
       log("[syncWindow] window hidden via alphaValue=0 (compositor stays alive)");
       return;
     }
 
-    log(
-      `[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`
-    );
-    await resizeTo(ui.window.w, ui.window.h, ui.window.posKey);
+    if (ui.view === "hud") {
+      // Always resize, but only reposition when the HUD is newly shown.
+      // This preserves any manual drag the user did within the same session.
+      await appWindow.setSize(new LogicalSize(ui.window.w, ui.window.h));
+      if (!hudVisible) {
+        log(`[syncWindow] HUD new show — positioning near cursor at ${ui.window.w}x${ui.window.h}`);
+        await positionHudNearCursor(ui.window.w, ui.window.h);
+        hudVisible = true;
+      } else {
+        log(`[syncWindow] HUD already visible — resize only to ${ui.window.w}x${ui.window.h}`);
+      }
+    } else {
+      hudVisible = false;
+      log(
+        `[syncWindow] showing window at ${ui.window.w}x${ui.window.h} posKey=${ui.window.posKey ?? "center"}`
+      );
+      await resizeTo(ui.window.w, ui.window.h, ui.window.posKey);
+    }
   }
 
   onMount(async () => {
@@ -453,6 +514,12 @@
     appState = transition.state.appState;
     showSettings = transition.state.showSettings;
     errorMsg = transition.errorMsg;
+    if (appState === "recording") {
+      // Each new recording session should place the HUD near the current
+      // cursor, even if the HUD was already visible (e.g. idle-HUD mode or a
+      // previous session left it showing).
+      hudVisible = false;
+    }
     if (appState !== "recording") {
       audioLevels = Array(WAVEFORM_BAR_COUNT).fill(0);
     }
