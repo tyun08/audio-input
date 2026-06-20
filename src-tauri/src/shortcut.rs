@@ -110,11 +110,18 @@ pub fn reregister_shortcut<R: Runtime>(
     app.global_shortcut()
         .on_shortcut(shortcut, move |_app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
+                let shortcut_received_at = std::time::Instant::now();
                 let app = handle2.clone();
                 let state = shared_state2.clone();
                 let rec = Arc::clone(&recorder2);
                 tauri::async_runtime::spawn(async move {
-                    crate::commands::toggle_recording(app, state, rec).await;
+                    crate::commands::toggle_recording_from_shortcut(
+                        app,
+                        state,
+                        rec,
+                        shortcut_received_at,
+                    )
+                    .await;
                 });
             }
         })

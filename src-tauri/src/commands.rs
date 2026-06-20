@@ -16,6 +16,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter as _, Manager, Runtime};
 use tracing::{error, info, warn};
 
@@ -30,6 +31,30 @@ pub async fn toggle_recording<R: Runtime>(
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
 ) {
+    toggle_recording_with_trigger(app, shared_state, recorder_state, None).await;
+}
+
+pub async fn toggle_recording_from_shortcut<R: Runtime>(
+    app: AppHandle<R>,
+    shared_state: SharedState,
+    recorder_state: Arc<Mutex<Recorder>>,
+    shortcut_received_at: Instant,
+) {
+    toggle_recording_with_trigger(
+        app,
+        shared_state,
+        recorder_state,
+        Some(shortcut_received_at),
+    )
+    .await;
+}
+
+async fn toggle_recording_with_trigger<R: Runtime>(
+    app: AppHandle<R>,
+    shared_state: SharedState,
+    recorder_state: Arc<Mutex<Recorder>>,
+    trigger_received_at: Option<Instant>,
+) {
     let current = {
         let state = shared_state.lock().unwrap();
         state.clone()
@@ -37,7 +62,7 @@ pub async fn toggle_recording<R: Runtime>(
 
     match current {
         AppState::Idle => {
-            start_recording(&app, shared_state, recorder_state).await;
+            start_recording(&app, shared_state, recorder_state, trigger_received_at).await;
         }
         AppState::Recording => {
             stop_and_transcribe(app, shared_state, recorder_state).await;
@@ -58,6 +83,7 @@ async fn start_recording<R: Runtime>(
     app: &AppHandle<R>,
     shared_state: SharedState,
     recorder_state: Arc<Mutex<Recorder>>,
+    trigger_received_at: Option<Instant>,
 ) {
     info!("Recording started...");
 
@@ -71,16 +97,32 @@ async fn start_recording<R: Runtime>(
             msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
         };
         if mic_status == 2 || mic_status == 1 {
-            warn!("Microphone permission denied (status={}), cannot record", mic_status);
+            warn!(
+                "Microphone permission denied (status={}), cannot record",
+                mic_status
+            );
             set_tray_icon(app, "idle");
             let _ = app.emit("microphone-denied", ());
             return;
         }
     }
 
+    // Build the async-error handler up front. The blocking device probe and
+    // stream build now run on a background thread (zero-wait start), so a
+    // setup failure is reported here rather than via the synchronous result.
+    let on_error: Box<dyn FnOnce(anyhow::Error) + Send> = {
+        let app = app.clone();
+        let shared_state = shared_state.clone();
+        Box::new(move |e: anyhow::Error| {
+            // The failure is already logged at its source (the background
+            // setup thread); here we just surface it in the UI/state.
+            set_error(&app, &shared_state, &e.to_string());
+        })
+    };
+
     let result = {
         match recorder_state.lock() {
-            Ok(mut recorder) => recorder.start(app),
+            Ok(mut recorder) => recorder.start_with_trigger_at(app, on_error, trigger_received_at),
             Err(e) => {
                 error!("Recorder lock poisoned: {}", e);
                 return;
@@ -90,12 +132,17 @@ async fn start_recording<R: Runtime>(
 
     match result {
         Ok(()) => {
+            // Optimistically enter the Recording state immediately. Capture has
+            // already begun (or is about to, the instant the OS delivers the
+            // stream) without waiting for any synchronous setup. If the
+            // background setup fails, `on_error` resets us to an error state.
             let mut state = shared_state.lock().unwrap();
             *state = AppState::Recording;
             drop(state);
             set_tray_icon(app, "recording");
             let _ = app.emit("state-change", "recording");
             info!("State → Recording");
+            spawn_latency_probe(Arc::clone(&recorder_state));
 
             let screenshot_context_enabled = {
                 let config = app.state::<Arc<Mutex<AppConfig>>>();
@@ -123,15 +170,13 @@ async fn start_recording<R: Runtime>(
             // Spawn a task that periodically samples the audio buffer and
             // emits an audio-level event so the frontend can animate a live
             // waveform while recording.
-            let (buffer_ref, sample_rate) = {
+            let (buffer_ref, sample_rate_handle) = {
                 let recorder = recorder_state.lock().unwrap();
-                (recorder.get_buffer_ref(), recorder.sample_rate())
+                (recorder.get_buffer_ref(), recorder.sample_rate_handle())
             };
             let app_monitor = app.clone();
             let state_monitor = shared_state.clone();
             tokio::spawn(async move {
-                // Window of samples to compute RMS over — sample_rate / 10 = ~100 ms
-                let window_size = ((sample_rate as usize) / 10).max(1);
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
                     {
@@ -140,6 +185,18 @@ async fn start_recording<R: Runtime>(
                             break;
                         }
                     }
+                    // Recompute the window each tick: the device is configured
+                    // asynchronously, so the sample rate may only become known a
+                    // few ms after recording starts. ~100 ms window (rate / 10),
+                    // defaulting to 16 kHz until the real rate is available. Read
+                    // lock-free so we never contend with start()/stop().
+                    let sample_rate = sample_rate_handle.load(std::sync::atomic::Ordering::SeqCst);
+                    let effective_rate = if sample_rate == 0 {
+                        16_000
+                    } else {
+                        sample_rate
+                    };
+                    let window_size = ((effective_rate as usize) / 10).max(1);
                     let level: f32 = {
                         let buf = buffer_ref.lock().unwrap();
                         let len = buf.len();
@@ -159,14 +216,122 @@ async fn start_recording<R: Runtime>(
             });
         }
         Err(e) => {
+            // The synchronous result only fails if we couldn't even spawn the
+            // background setup thread; surface it like any other start error.
             error!("Recording start failed: {}", e);
-            let mut state = shared_state.lock().unwrap();
-            *state = AppState::Error(e.to_string());
-            drop(state);
-            set_tray_icon(app, "error");
-            let _ = app.emit("state-change", format!("error:{}", e));
-            schedule_error_recovery(app.clone(), shared_state.clone());
+            set_error(app, &shared_state, &e.to_string());
         }
+    }
+}
+
+fn spawn_latency_probe(recorder_state: Arc<Mutex<Recorder>>) {
+    let initial = match recorder_state.lock() {
+        Ok(recorder) => recorder.latency_snapshot(),
+        Err(e) => {
+            error!("Recorder lock poisoned while starting latency probe: {}", e);
+            return;
+        }
+    };
+    let epoch = initial.epoch;
+    let started_at = initial.start_requested_at.unwrap_or_else(Instant::now);
+    let deadline = Instant::now() + Duration::from_secs(2);
+
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let snapshot = match recorder_state.lock() {
+                Ok(recorder) => recorder.latency_snapshot(),
+                Err(e) => {
+                    error!("Recorder lock poisoned while reading latency probe: {}", e);
+                    return;
+                }
+            };
+
+            if snapshot.epoch != epoch {
+                return;
+            }
+
+            if snapshot.first_sample_at.is_some() {
+                log_latency_snapshot(snapshot);
+                return;
+            }
+
+            if Instant::now() >= deadline {
+                let anchor = snapshot.trigger_received_at.unwrap_or(started_at);
+                let to_start = snapshot.start_requested_at.and_then(|at| since(anchor, at));
+                let to_stream_play = snapshot
+                    .stream_play_requested_at
+                    .and_then(|at| since(anchor, at));
+                let to_stream_built = snapshot.stream_built_at.and_then(|at| since(anchor, at));
+                warn!(
+                    "Recording latency: prebuilt={}, first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
+                    snapshot.used_prebuilt_stream,
+                    fmt_duration_ms(to_start),
+                    fmt_duration_ms(to_stream_built),
+                    fmt_duration_ms(to_stream_play),
+                );
+                log_latency_setup_breakdown(snapshot);
+                return;
+            }
+
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    });
+}
+
+fn log_latency_snapshot(snapshot: crate::audio::recorder::RecordingLatencySnapshot) {
+    let Some(start_requested_at) = snapshot.start_requested_at else {
+        return;
+    };
+    let anchor = snapshot.trigger_received_at.unwrap_or(start_requested_at);
+    let first_sample_at = snapshot.first_sample_at.unwrap();
+
+    info!(
+        "Recording latency: prebuilt={}, hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
+        snapshot.used_prebuilt_stream,
+        fmt_duration_ms(since(anchor, start_requested_at)),
+        fmt_duration_ms(snapshot.stream_built_at.and_then(|at| since(anchor, at))),
+        fmt_duration_ms(snapshot.stream_play_requested_at.and_then(|at| since(anchor, at))),
+        fmt_duration_ms(since(anchor, first_sample_at)),
+        fmt_duration_ms(since(start_requested_at, first_sample_at)),
+    );
+    log_latency_setup_breakdown(snapshot);
+}
+
+fn log_latency_setup_breakdown(snapshot: crate::audio::recorder::RecordingLatencySnapshot) {
+    if snapshot.start_requested_at.is_none() {
+        return;
+    }
+
+    info!(
+        "Recording latency setup: prebuilt={}, start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
+        snapshot.used_prebuilt_stream,
+        fmt_between(snapshot.start_requested_at, snapshot.setup_thread_started_at),
+        fmt_between(snapshot.setup_thread_started_at, snapshot.host_created_at),
+        fmt_between(snapshot.host_created_at, snapshot.device_resolved_at),
+        fmt_between(snapshot.device_resolved_at, snapshot.device_name_resolved_at),
+        fmt_between(snapshot.device_name_resolved_at, snapshot.config_loaded_at),
+        fmt_between(snapshot.config_loaded_at, snapshot.stream_built_at),
+        fmt_between(snapshot.stream_built_at, snapshot.stream_play_requested_at),
+        fmt_between(snapshot.stream_play_requested_at, snapshot.stream_play_returned_at),
+        fmt_between(snapshot.stream_play_returned_at, snapshot.first_sample_at),
+    );
+}
+
+fn since(start: Instant, end: Instant) -> Option<Duration> {
+    end.checked_duration_since(start)
+}
+
+fn fmt_between(start: Option<Instant>, end: Option<Instant>) -> String {
+    match (start, end) {
+        (Some(start), Some(end)) => fmt_duration_ms(since(start, end)),
+        _ => "n/a".to_string(),
+    }
+}
+
+fn fmt_duration_ms(duration: Option<Duration>) -> String {
+    match duration {
+        Some(duration) => format!("{:.3}", duration.as_secs_f64() * 1e3),
+        None => "n/a".to_string(),
     }
 }
 
@@ -664,6 +829,17 @@ pub async fn request_microphone_permission(app: AppHandle) {
                         if !granted {
                             use tauri::Emitter as _;
                             let _ = app2.emit("microphone-denied", ());
+                        } else {
+                            let preferred_device = {
+                                let config = app2.state::<Arc<Mutex<AppConfig>>>();
+                                let preferred = config.lock().unwrap().preferred_device.clone();
+                                preferred
+                            };
+                            if let Some(recorder_state) = app2.try_state::<RecorderState>() {
+                                if let Ok(recorder) = recorder_state.inner().0.lock() {
+                                    let _ = recorder.prewarm_capture(preferred_device);
+                                }
+                            }
                         }
                     });
                     let block = block.copy();
@@ -678,7 +854,6 @@ pub async fn request_microphone_permission(app: AppHandle) {
         });
     }
 }
-
 
 #[tauri::command]
 pub fn open_microphone_prefs() {
@@ -794,7 +969,13 @@ pub async fn save_preferred_device(
         cfg.preferred_device = device;
         cfg.clone()
     };
-    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
+    if let Some(recorder_state) = app.try_state::<RecorderState>() {
+        if let Ok(recorder) = recorder_state.inner().0.lock() {
+            let _ = recorder.prewarm_capture(updated.preferred_device.clone());
+        }
+    }
+    Ok(())
 }
 
 // --- Shortcut ----------------------------------------------------------------
@@ -983,13 +1164,10 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                 let _: () = msg_send![win, invalidateShadow];
             }
 
-            // Switch activation policy based on mode:
-            // - opaque (settings/onboarding): Regular so the window becomes key,
-            //   the app appears in the menu bar, and WebKit renders properly.
-            // - transparent (HUD): Accessory so the overlay floats without
-            //   stealing focus from the user's current app.
-            // NSApplicationActivationPolicyRegular  = 0
-            // NSApplicationActivationPolicyAccessory = 1
+            // Keep the app Regular in every mode so it remains a real Dock /
+            // Cmd-Tab app. Settings/onboarding explicitly activate the app;
+            // HUD/hidden mode only changes window level and never activates.
+            // NSApplicationActivationPolicyRegular = 0
             if opaque {
                 // Settings / onboarding: normal window level so other windows can cover it.
                 // NSNormalWindowLevel = 0
@@ -1006,7 +1184,7 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 3i64];
                 }
-                let _: () = msg_send![app, setActivationPolicy: 1i64];
+                let _: () = msg_send![app, setActivationPolicy: 0i64];
             }
         }
     }

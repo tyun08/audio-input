@@ -1,6 +1,6 @@
 {
   "productName": "Audio Input",
-  "version": "0.4.13",
+  "version": "0.4.16",
   "identifier": "com.audioinput.app",
   "build": {
     "frontendDist": "../dist",
@@ -20,7 +20,7 @@
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "skipTaskbar": true,
+        "skipTaskbar": false,
         "resizable": false,
         "center": true
       }
