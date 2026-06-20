@@ -10,7 +10,12 @@
   const isWindows = navigator.userAgent.includes("Windows");
   const totalSteps = isWindows ? 3 : 4;
 
-  let step = 1;
+  // When launched from Settings → "Re-setup Permissions", we jump straight to
+  // the macOS permissions step and skip the welcome/provider/done steps. The
+  // saved API key and provider config are left untouched.
+  export let permissionsOnly = false;
+
+  let step = permissionsOnly ? 2 : 1;
   let provider = providers[0]?.id ?? "groq";
   let configValues: Record<string, string> = getDefaultConfig(providers[0]?.fields ?? []);
   let authStatus: boolean | null = null;
@@ -48,6 +53,38 @@
   async function refreshPermissions() {
     micStatus = await invoke<string>("get_microphone_status").catch(() => "not_determined");
     axGranted = await invoke<boolean>("get_accessibility_status").catch(() => false);
+  }
+
+  // Clear the app's stale TCC entry. This is the fix for "the toggle is on but
+  // the mic still fails after an update" — only surfaced when re-running setup
+  // from Settings.
+  //
+  // macOS caches the authorization status for the process lifetime, so a
+  // just-cleared permission won't re-prompt until the app restarts. We don't
+  // try to re-request in-process (it would silently return the stale value);
+  // instead we tell the user a restart is needed and offer to do it.
+  let resetting = "";
+  let resetError = "";
+  let resetDone = false;
+  async function resetPermission(kind: "microphone" | "accessibility") {
+    if (resetting) return;
+    resetting = kind;
+    resetError = "";
+    try {
+      await invoke("reset_permission", { kind });
+      await refreshPermissions();
+      resetDone = true;
+    } catch (e) {
+      resetError = String(e);
+    } finally {
+      resetting = "";
+    }
+  }
+
+  async function restartApp() {
+    await invoke("restart_app").catch((e) => {
+      resetError = String(e);
+    });
   }
 
   onDestroy(stopPolling);
@@ -102,7 +139,9 @@
   async function finishOnboarding() {
     if (onboardingFinished) return;
     onboardingFinished = true;
-    await invoke("save_onboarding_completed");
+    // In permissions-only mode onboarding was already completed previously;
+    // don't re-write the flag, just close back to Settings.
+    if (!permissionsOnly) await invoke("save_onboarding_completed");
     dispatch("done");
   }
 
@@ -154,11 +193,13 @@
     </button>
   </div>
 
-  <div class="dots">
-    {#each Array(totalSteps) as _, i}
-      <div class="dot" class:active={i + 1 === step} class:done={i + 1 < step}></div>
-    {/each}
-  </div>
+  {#if !permissionsOnly}
+    <div class="dots">
+      {#each Array(totalSteps) as _, i}
+        <div class="dot" class:active={i + 1 === step} class:done={i + 1 < step}></div>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Step 1: Welcome -->
   {#if step === 1}
@@ -311,7 +352,21 @@
   {:else if step === 2 && !isWindows}
     <div class="step perm-step">
       <h2>{$t("onboarding.perms_title")}</h2>
-      <p class="desc" style="text-align:center">{$t("onboarding.perms_subtitle")}</p>
+      <p class="desc" style="text-align:center">
+        {permissionsOnly ? $t("onboarding.perms_reset_subtitle") : $t("onboarding.perms_subtitle")}
+      </p>
+
+      {#if resetDone}
+        <div class="reset-banner">
+          <span>{$t("onboarding.perms_reset_done")}</span>
+          <button class="reset-restart-btn" on:click={restartApp}
+            >{$t("onboarding.perms_restart")}</button
+          >
+        </div>
+      {/if}
+      {#if resetError}
+        <div class="reset-error">{resetError}</div>
+      {/if}
 
       <!-- Accessibility -->
       <div class="perm-section">
@@ -324,6 +379,16 @@
         {:else}
           <button class="perm-btn" on:click={() => invoke("open_accessibility_prefs")}
             >{$t("onboarding.ax_open")}</button
+          >
+        {/if}
+        {#if permissionsOnly}
+          <button
+            class="perm-reset"
+            on:click={() => resetPermission("accessibility")}
+            disabled={resetting === "accessibility"}
+            >{resetting === "accessibility"
+              ? $t("onboarding.perms_resetting")
+              : $t("onboarding.perms_reset")}</button
           >
         {/if}
       </div>
@@ -347,10 +412,23 @@
             >{$t("onboarding.perms_request")}</button
           >
         {/if}
+        {#if permissionsOnly}
+          <button
+            class="perm-reset"
+            on:click={() => resetPermission("microphone")}
+            disabled={resetting === "microphone"}
+            >{resetting === "microphone"
+              ? $t("onboarding.perms_resetting")
+              : $t("onboarding.perms_reset")}</button
+          >
+        {/if}
       </div>
 
-      <button class="primary-btn" style="width:100%;margin-top:4px" on:click={next}
-        >{$t("onboarding.perms_continue")}</button
+      <button
+        class="primary-btn"
+        style="width:100%;margin-top:4px"
+        on:click={permissionsOnly ? finishOnboarding : next}
+        >{permissionsOnly ? $t("onboarding.perms_done") : $t("onboarding.perms_continue")}</button
       >
     </div>
 
@@ -744,8 +822,67 @@
     border-color: rgba(74, 222, 128, 0.18);
     cursor: default;
   }
-  .perm-btn.muted {
-    color: rgba(255, 255, 255, 0.25);
+  .reset-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.25);
+    font-size: 12px;
+    color: rgba(253, 224, 71, 0.95);
+    line-height: 1.45;
+  }
+  .reset-restart-btn {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    background: rgba(251, 191, 36, 0.22);
+    color: rgba(253, 224, 71, 0.98);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition: background 0.15s;
+  }
+  .reset-restart-btn:hover {
+    background: rgba(251, 191, 36, 0.35);
+  }
+  .reset-error {
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    font-size: 11px;
+    color: rgba(248, 113, 113, 0.9);
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .perm-reset {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0;
+    margin-top: -2px;
+    font-size: 11px;
+    color: rgba(248, 113, 113, 0.65);
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 0.15s;
+  }
+  .perm-reset:hover:not(:disabled) {
+    color: rgba(248, 113, 113, 0.95);
+  }
+  .perm-reset:disabled {
+    opacity: 0.5;
     cursor: default;
   }
   .perm-divider {

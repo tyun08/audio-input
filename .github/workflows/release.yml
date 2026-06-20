@@ -404,7 +404,9 @@ jobs:
             --clobber
 
   update-cask:
-    needs: [create-release, build-macos]
+    # Wait for latest.json before publishing so both stable and beta-channel
+    # users can resolve a complete manifest as soon as the release is visible.
+    needs: [create-release, build-macos, publish-updater-manifest]
     runs-on: ubuntu-latest
     if: ${{ needs.build-macos.result == 'success' }}
     permissions:
@@ -418,6 +420,25 @@ jobs:
           gh release edit v${{ needs.create-release.outputs.version }} \
             --draft=false \
             --repo tyun08/audio-input
+
+      - name: Advance beta channel to this stable release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download v${{ needs.create-release.outputs.version }} \
+            --repo tyun08/audio-input \
+            --pattern latest.json \
+            --output latest-beta.json
+          if ! gh release view beta --repo tyun08/audio-input >/dev/null 2>&1; then
+            gh release create beta \
+              --repo tyun08/audio-input \
+              --target "${GITHUB_SHA}" \
+              --title "Audio Input Beta Channel" \
+              --notes "Machine-readable update metadata for the opt-in beta channel." \
+              --prerelease
+          fi
+          gh release upload beta latest-beta.json \
+            --repo tyun08/audio-input --clobber
 
       - name: Download DMGs and compute SHA256
         id: sha
