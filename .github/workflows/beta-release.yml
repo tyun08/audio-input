@@ -1,18 +1,20 @@
 name: Beta Release
 
-# Fires on tags matching v<semver>-beta.<N> or v<semver>-rc.<N>.
-# Builds, signs, notarizes, and publishes a persistent GitHub Prerelease.
-# Does NOT require the tag to be on main and does NOT update the Homebrew tap.
-#
-# Usage:
-#   git tag v0.4.11-beta.1
-#   git push origin v0.4.11-beta.1
+# Every push to development (including a merged feature branch) builds, signs,
+# notarizes, and publishes the next patch as v<semver>-beta.<N>. The stable
+# version on main is the source of truth, so 0.4.16 produces 0.4.17-beta.1.
+# Beta releases never update the Homebrew tap.
 
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
+    branches:
+      - development
+  workflow_dispatch:
+
+# Do not let simultaneous development pushes allocate the same beta number.
+concurrency:
+  group: beta-release
+  cancel-in-progress: false
 
 jobs:
   create-prerelease:
@@ -28,23 +30,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version
+      - name: Determine next beta version
         id: meta
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Verify base version matches sources
-        # For v0.4.11-beta.1, check that sources say 0.4.11 (ignoring the pre-release suffix).
-        # This catches tagging before bumping version files.
         run: |
-          TAG_V="${GITHUB_REF_NAME#v}"
-          BASE_V="${TAG_V%%-*}"   # strip -beta.N / -rc.N
-          PKG_V=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -1)
-          CARGO_V=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src-tauri/Cargo.toml | head -1)
-          echo "tag base: ${BASE_V}  package.json: ${PKG_V}  Cargo.toml: ${CARGO_V}"
-          fail=0
-          [ "${BASE_V}" = "${PKG_V}" ] || { echo "::error::package.json version (${PKG_V}) does not match tag base (${BASE_V})"; fail=1; }
-          [ "${BASE_V}" = "${CARGO_V}" ] || { echo "::error::Cargo.toml version (${CARGO_V}) does not match tag base (${BASE_V})"; fail=1; }
-          [ "${fail}" -eq 1 ] && exit 1 || echo "Version check passed."
+          git fetch origin main --tags --force --quiet
+          STABLE=$(git show origin/main:package.json | \
+            sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+          if [[ ! "$STABLE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not parse the stable version from main: '$STABLE'"
+            exit 1
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$STABLE"
+          BASE="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          LAST=$(git tag --list "v${BASE}-beta.*" --sort=-version:refname | head -1)
+          if [ -n "$LAST" ]; then
+            LAST_NUMBER="${LAST##*.}"
+            if [[ ! "$LAST_NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "::error::Could not parse beta number from tag '$LAST'"
+              exit 1
+            fi
+            NUMBER=$((LAST_NUMBER + 1))
+          else
+            NUMBER=1
+          fi
+
+          VERSION="${BASE}-beta.${NUMBER}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "stable=$STABLE" >> "$GITHUB_OUTPUT"
+          echo "Stable ${STABLE} -> beta ${VERSION}"
 
       - name: Generate release notes
         id: notes
@@ -64,14 +78,17 @@ jobs:
       - name: Create GitHub Prerelease
         id: create
         uses: actions/github-script@v7
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         with:
           script: |
-            const tag = context.ref.replace('refs/tags/', '');
+            const tag = `v${process.env.VERSION}`;
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: tag,
               name: `Audio Input ${tag}`,
+              target_commitish: context.sha,
               body: `${{ steps.notes.outputs.body }}`,
               draft: true,
               prerelease: true,
@@ -261,7 +278,7 @@ jobs:
           echo "=== latest-beta.json ==="
           cat latest-beta.json
 
-      - name: Upload latest-beta.json and publish prerelease
+      - name: Publish prerelease and advance the beta channel manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -270,3 +287,17 @@ jobs:
           gh release edit "v${{ needs.create-prerelease.outputs.version }}" \
             --draft=false \
             --repo tyun08/audio-input
+
+          # GitHub's /releases/latest URL intentionally excludes prereleases.
+          # Keep a small permanent prerelease tagged "beta" as the fixed
+          # updater endpoint; its manifest points at the newest versioned beta.
+          if ! gh release view beta --repo tyun08/audio-input >/dev/null 2>&1; then
+            gh release create beta \
+              --repo tyun08/audio-input \
+              --target "${GITHUB_SHA}" \
+              --title "Audio Input Beta Channel" \
+              --notes "Machine-readable update metadata for the opt-in beta channel." \
+              --prerelease
+          fi
+          gh release upload beta latest-beta.json \
+            --repo tyun08/audio-input --clobber

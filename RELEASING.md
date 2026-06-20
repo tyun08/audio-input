@@ -21,7 +21,7 @@ git pull
 git push origin development
 ```
 
-Push to `development` triggers the regular `Tests` workflow (unit tests, lint, integration tests). It does **not** create a release.
+Push to `development` triggers both the regular `Tests` workflow and a signed beta release. If `main` is on `0.4.16`, the first development build is `0.4.17-beta.1`; later pushes become `0.4.17-beta.2`, and so on.
 
 ## Long-lived feature branches (`develop-*`)
 
@@ -55,32 +55,20 @@ git push --force-with-lease origin develop-imk
 4. Bump version + tag like any other release (see "Shipping a real release").
 5. The `develop-*` branch stays alive — Phase N+1 picks up from `main`'s new tip.
 
-## Shipping a beta / RC
+## Shipping a beta
 
-Use this when you want testers to download a real signed build before it lands on `main`.
+No manual version bump or tag is needed. Merge a feature into `development` and push it. The `beta-release.yml` workflow:
 
-```bash
-# 1. Bump version in all three files to the TARGET version (e.g. 0.4.11)
-#    package.json  ·  src-tauri/Cargo.toml  ·  src-tauri/tauri.conf.json
-( cd src-tauri && cargo build --quiet )   # refresh Cargo.lock
-git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-git commit -m "chore: bump version to 0.4.11 for beta"
-git push
-
-# 2. Tag with the pre-release suffix and push
-git tag v0.4.11-beta.1
-git push origin v0.4.11-beta.1
-```
-
-The `beta-release.yml` workflow fires and:
+- Reads the current stable version from `main` and selects the next patch
+- Allocates the next `-beta.N` tag without changing source version files
 - Builds + signs + notarizes macOS arm/x86_64 + Windows
-- Creates a **persistent** GitHub Prerelease at `v0.4.11-beta.1`
-- Uploads `latest-beta.json` to the release (for a future beta-channel updater)
+- Creates a persistent versioned GitHub Prerelease such as `v0.4.17-beta.1`
+- Advances the fixed `beta/latest-beta.json` updater manifest
 - Does **not** update the Homebrew tap
 
-For a follow-up beta, bump just the suffix: `v0.4.11-beta.2`. For a release candidate, use `v0.4.11-rc.1`.
+Users choose **Stable** or **Beta** under Settings → General → Updates. Both channels check automatically on launch. The beta channel receives new beta builds and is also advanced to each formal stable release, so testers do not remain pinned to an older prerelease.
 
-When the beta is good, ship normally from `main` (see "Shipping a real release"). The `v0.4.11-beta.*` prerelease stays visible on the Releases page so testers can see the changelog history.
+When the beta is good, ship normally from `main` (see "Shipping a real release"). Versioned beta prereleases stay visible for changelog and rollback history.
 
 ## Verifying a build before release
 
