@@ -204,10 +204,6 @@ jobs:
           VERSION=${{ needs.create-prerelease.outputs.version }}
           sed -i.bak "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" src-tauri/tauri.conf.json
 
-      - name: Install WiX Toolset
-        shell: pwsh
-        run: choco install --no-progress -y wixtoolset
-
       - name: Build and upload to prerelease
         uses: tauri-apps/tauri-action@v0
         env:
@@ -216,6 +212,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-prerelease.outputs.release-id }}
+          # MSI ProductVersion only accepts numeric major.minor.patch.build;
+          # beta SemVer suffixes are invalid. NSIS is the Windows updater
+          # artifact, so beta releases intentionally skip MSI.
+          args: '--bundles nsis'
 
   publish:
     needs: [create-prerelease, build-macos, build-windows]
