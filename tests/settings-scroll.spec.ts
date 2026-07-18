@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { loadApp, openSettings } from "./helpers.js";
 
+const MIN_ROW_HEIGHT = 48;
+const SCROLL_WIDTH_TOLERANCE = 1;
+
 test.describe("Settings Panel scrolling", () => {
   test("keeps rows readable and uses vertical scrolling without horizontal overflow", async ({
     page,
@@ -45,8 +48,10 @@ test.describe("Settings Panel scrolling", () => {
       };
     });
 
-    expect(defaultMetrics.minRowHeight).toBeGreaterThanOrEqual(48);
-    expect(defaultMetrics.scrollWidth).toBeLessThanOrEqual(defaultMetrics.clientWidth + 1);
+    expect(defaultMetrics.minRowHeight).toBeGreaterThanOrEqual(MIN_ROW_HEIGHT);
+    expect(defaultMetrics.scrollWidth).toBeLessThanOrEqual(
+      defaultMetrics.clientWidth + SCROLL_WIDTH_TOLERANCE
+    );
     expect(defaultMetrics.scrollHeight).toBeGreaterThan(defaultMetrics.clientHeight);
 
     await page.setViewportSize({ width: 620, height: 360 });
