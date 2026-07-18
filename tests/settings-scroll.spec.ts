@@ -5,16 +5,34 @@ test.describe("Settings Panel scrolling", () => {
   test("keeps rows readable and uses vertical scrolling without horizontal overflow", async ({
     page,
   }) => {
+    const now = Date.now();
     await page.setViewportSize({ width: 620, height: 480 });
     await loadApp(page);
+    await page.evaluate((seedNow) => {
+      const entries = Array.from({ length: 7 }, (_, index) => ({
+        id: `session-${index + 1}`,
+        createdAtMs: seedNow - index * 60_000,
+        durationS: 12.5 + index,
+        provider: "groq",
+        rawText: "",
+        polishedText: "",
+        status: "failed",
+        error:
+          "这是一个用于验证设置滚动区域的较长失败消息，用来确保内容会换行显示，而不是横向裁切或压缩控件高度。",
+        polishFailed: false,
+      }));
+      (window as any).__tauriSetResponse("list_history", entries);
+      (window as any).__tauriSetResponse("get_max_history", 100);
+    }, now);
     await openSettings(page);
 
     await page.getByRole("button", { name: /General|通用/i }).click();
     await page.getByRole("button", { name: "中文" }).click();
-    await page.getByRole("button", { name: /Advanced|高级/i }).click();
+    await page.getByRole("button", { name: /History|历史/i }).click();
 
     const content = page.locator(".content");
     await expect(content).toBeVisible();
+    await expect(page.locator(".history-item")).toHaveCount(7);
 
     const defaultMetrics = await content.evaluate((node) => {
       const rows = Array.from(node.querySelectorAll<HTMLElement>(".row"));
@@ -22,11 +40,14 @@ test.describe("Settings Panel scrolling", () => {
         minRowHeight: Math.min(...rows.map((row) => row.getBoundingClientRect().height)),
         scrollWidth: node.scrollWidth,
         clientWidth: node.clientWidth,
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
       };
     });
 
     expect(defaultMetrics.minRowHeight).toBeGreaterThanOrEqual(48);
     expect(defaultMetrics.scrollWidth).toBeLessThanOrEqual(defaultMetrics.clientWidth + 1);
+    expect(defaultMetrics.scrollHeight).toBeGreaterThan(defaultMetrics.clientHeight);
 
     await page.setViewportSize({ width: 620, height: 360 });
 
