@@ -170,12 +170,55 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = app.emit("toggle-recording", ());
+                // When the service isn't usable (missing/invalid mic or
+                // Accessibility permission, no mic device, or the
+                // transcription API isn't configured), surface the status
+                // popover instead of starting a doomed recording. Otherwise
+                // preserve the existing click-to-record behaviour.
+                let health = crate::health::compute(app);
+                if health.is_healthy() {
+                    let _ = app.emit("toggle-recording", ());
+                } else {
+                    let _ = app.emit("show-health-popover", health);
+                }
             }
         })
         .build(app)?;
 
+    // Reflect current health on the icon right away, then keep it fresh so a
+    // permission fixed outside the app (System Settings) clears the red
+    // treatment without requiring a restart.
+    refresh_health_icon(app);
+    {
+        let app_health = app.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                refresh_health_icon(&app_health);
+            }
+        });
+    }
+
     Ok(())
+}
+
+/// Recomputes health and updates the tray icon/tooltip + emits
+/// `health-changed` so an open popover stays current. Only overrides the
+/// icon while idle so it doesn't fight the recording/processing/error icons.
+pub fn refresh_health_icon<R: Runtime>(app: &AppHandle<R>) {
+    use crate::state::{AppState, SharedState};
+
+    let is_idle = app
+        .try_state::<SharedState>()
+        .map(|s| matches!(*s.lock().unwrap(), AppState::Idle))
+        .unwrap_or(true);
+
+    let health = crate::health::compute(app);
+    let _ = app.emit("health-changed", health);
+
+    if is_idle {
+        set_tray_icon(app, if health.is_healthy() { "idle" } else { "unavailable" });
+    }
 }
 
 pub fn build_tray_menu<R: Runtime>(
@@ -383,10 +426,13 @@ pub fn set_tray_icon<R: Runtime>(app: &AppHandle<R>, state: &str) {
             "recording" => recording_icon(),
             "processing" => processing_icon(),
             "error" => error_icon(),
+            "unavailable" => unavailable_icon(),
             _ => idle_icon(),
         };
         let _ = tray.set_icon(Some(icon));
-        let _ = tray.set_icon_as_template(true);
+        // Template icons are tinted monochrome by macOS, which would hide the
+        // red "unavailable" treatment — render that one as a real color icon.
+        let _ = tray.set_icon_as_template(state != "unavailable");
     }
 }
 
@@ -475,6 +521,19 @@ fn error_icon() -> Image<'static> {
     Image::new_owned(rgba, TRAY_ICON_SIZE, TRAY_ICON_SIZE)
 }
 
+/// Red "prohibited" (circle-slash) icon shown whenever the service can't
+/// actually record/transcribe: missing or invalid microphone/Accessibility
+/// permission, no microphone found, or the transcription API not configured.
+/// Drawn in color (not template) so it stays visibly red regardless of the
+/// menu bar's light/dark appearance.
+fn unavailable_icon() -> Image<'static> {
+    let mut rgba = blank_tray_rgba();
+    const TRAY_RED: [u8; 4] = [220, 38, 38, 255];
+    draw_ring(&mut rgba, 22, 22, 15, 12, TRAY_RED);
+    draw_diagonal_slash(&mut rgba, 22, 22, 13, 3, TRAY_RED);
+    Image::new_owned(rgba, TRAY_ICON_SIZE, TRAY_ICON_SIZE)
+}
+
 const TRAY_ICON_SIZE: u32 = 44;
 const TRAY_INK: [u8; 4] = [0, 0, 0, 255];
 
@@ -536,6 +595,37 @@ fn draw_circle(rgba: &mut [u8], cx: i32, cy: i32, radius: i32, color: [u8; 4]) {
             if dx * dx + dy * dy <= radius_sq {
                 set_pixel(rgba, px, py, color);
             }
+        }
+    }
+}
+
+/// Draws a filled ring (annulus) between `inner` and `outer` radii, used for
+/// the "prohibited" circle-slash unavailable icon.
+fn draw_ring(rgba: &mut [u8], cx: i32, cy: i32, outer: i32, inner: i32, color: [u8; 4]) {
+    let outer_sq = outer * outer;
+    let inner_sq = inner * inner;
+    for py in (cy - outer)..=(cy + outer) {
+        for px in (cx - outer)..=(cx + outer) {
+            let dx = px - cx;
+            let dy = py - cy;
+            let dist_sq = dx * dx + dy * dy;
+            if dist_sq <= outer_sq && dist_sq >= inner_sq {
+                set_pixel(rgba, px, py, color);
+            }
+        }
+    }
+}
+
+/// Draws a thick diagonal line (bottom-left to top-right) through the given
+/// radius, used for the "prohibited" circle-slash unavailable icon.
+fn draw_diagonal_slash(rgba: &mut [u8], cx: i32, cy: i32, radius: i32, thickness: i32, color: [u8; 4]) {
+    let half = thickness / 2;
+    for t in -radius..=radius {
+        let px = cx + t;
+        let py = cy - t;
+        for w in -half..=half {
+            set_pixel(rgba, px + w, py, color);
+            set_pixel(rgba, px, py + w, color);
         }
     }
 }

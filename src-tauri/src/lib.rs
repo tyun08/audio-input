@@ -5,6 +5,7 @@ extern "C" {}
 pub mod audio;
 mod commands;
 mod config;
+mod health;
 mod history;
 mod input;
 #[cfg(target_os = "macos")]
@@ -361,6 +362,7 @@ pub fn run() {
             commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
+            commands::get_health_status,
         ])
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
