@@ -109,7 +109,7 @@
   // ── Recording sounds ─────────────────────────────────────────────────────
   // Synthesised via the Web Audio API so no audio files are needed.
   // Start: short, high-pitched "bip" (880 Hz, 80 ms)
-  // Stop:  slightly longer, lower-pitched "boop" (440 Hz, 180 ms with decay)
+  // Stop:  short, lower-pitched "boop" (440 Hz, 110 ms)
 
   let _audioCtx: AudioContext | null = null;
   function getAudioCtx(): AudioContext {
@@ -148,13 +148,12 @@
       gain.connect(ctx.destination);
       osc.type = "sine";
       osc.frequency.setValueAtTime(440, ctx.currentTime);
-      osc.frequency.linearRampToValueAtTime(370, ctx.currentTime + 0.18);
       gain.gain.setValueAtTime(0, ctx.currentTime);
       gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
-      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.05);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.09);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.11);
       osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.2);
+      osc.stop(ctx.currentTime + 0.12);
     } catch {
       // Non-critical — swallow any Web Audio errors silently.
     }
