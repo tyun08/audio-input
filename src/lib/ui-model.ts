@@ -113,8 +113,11 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
   // "Settings…" click (and the dock/Reopen path) and the window never appears —
   // the bug where Settings becomes unreachable after a permission event fires.
   // The Settings panel itself exposes the permission re-setup entry, so the nag
-  // is still reachable; it simply no longer blocks Settings.
-  if (state.showSettings) {
+  // is still reachable; it simply no longer blocks Settings. This does not
+  // apply when the health popover is also pending: that popover is itself the
+  // result of an explicit user action (a failed shortcut/tray click) and
+  // should take priority over a merely-open Settings window.
+  if (state.showSettings && !state.showHealthPopover) {
     return {
       view: "settings",
       window: { w: SETTINGS_W, h: SETTINGS_H, posKey: SETTINGS_POS_KEY },
