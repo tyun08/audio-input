@@ -17,6 +17,12 @@ const RECENT_MAX: usize = 8;
 /// Max chars to display per submenu item (full text remains on the clipboard).
 const RECENT_PREVIEW_CHARS: usize = 48;
 
+/// How often the idle-time health check re-evaluates mic/Accessibility/API
+/// status so a permission fixed in System Settings clears the red tray icon
+/// without requiring an app restart. Cheap checks, so a short interval is
+/// fine — chosen to feel responsive without being a busy-loop.
+const HEALTH_POLL_INTERVAL_SECS: u64 = 4;
+
 struct TrayStrings {
     no_transcription_yet: &'static str,
     recent: &'static str,
@@ -193,7 +199,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         let app_health = app.clone();
         tauri::async_runtime::spawn(async move {
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(HEALTH_POLL_INTERVAL_SECS)).await;
                 refresh_health_icon(&app_health);
             }
         });

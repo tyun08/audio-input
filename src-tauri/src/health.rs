@@ -26,16 +26,25 @@ impl HealthStatus {
     }
 }
 
+/// AVMediaTypeAudio ("soun") — the four-char code AVFoundation uses to
+/// identify the microphone media type in authorization checks.
+#[cfg(target_os = "macos")]
+const AV_MEDIA_TYPE_AUDIO: &std::ffi::CStr = c"soun";
+
+/// AVAuthorizationStatusAuthorized — the user has explicitly granted access.
+#[cfg(target_os = "macos")]
+const AV_AUTHORIZATION_STATUS_AUTHORIZED: i64 = 3;
+
 /// Microphone TCC authorization only (does not enumerate devices).
 #[cfg(target_os = "macos")]
 pub fn mic_permission_ok() -> bool {
     use objc::{class, msg_send, sel, sel_impl};
     unsafe {
         let media_type: *mut objc::runtime::Object =
-            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
+            msg_send![class!(NSString), stringWithUTF8String: AV_MEDIA_TYPE_AUDIO.as_ptr()];
         let status: i64 =
             msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type];
-        status == 3
+        status == AV_AUTHORIZATION_STATUS_AUTHORIZED
     }
 }
 
