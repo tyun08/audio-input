@@ -27,7 +27,8 @@ impl HealthStatus {
 }
 
 /// AVMediaTypeAudio ("soun") — the four-char code AVFoundation uses to
-/// identify the microphone media type in authorization checks.
+/// identify the microphone media type in authorization checks, expressed as
+/// a NUL-terminated C string for the Objective-C `stringWithUTF8String:` call.
 #[cfg(target_os = "macos")]
 const AV_MEDIA_TYPE_AUDIO: &std::ffi::CStr = c"soun";
 
