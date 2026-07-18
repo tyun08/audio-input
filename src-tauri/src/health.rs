@@ -101,3 +101,121 @@ pub fn compute<R: Runtime>(app: &AppHandle<R>) -> HealthStatus {
         api_ok: provider_configured(&config),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // --- HealthStatus::is_healthy ---
+
+    #[test]
+    fn is_healthy_when_all_checks_pass() {
+        let status = HealthStatus {
+            mic_ok: true,
+            mic_found: true,
+            ax_ok: true,
+            api_ok: true,
+        };
+        assert!(status.is_healthy());
+    }
+
+    #[test]
+    fn is_unhealthy_when_mic_permission_missing() {
+        let status = HealthStatus {
+            mic_ok: false,
+            mic_found: true,
+            ax_ok: true,
+            api_ok: true,
+        };
+        assert!(!status.is_healthy());
+    }
+
+    #[test]
+    fn is_unhealthy_when_no_mic_device_found() {
+        let status = HealthStatus {
+            mic_ok: true,
+            mic_found: false,
+            ax_ok: true,
+            api_ok: true,
+        };
+        assert!(!status.is_healthy());
+    }
+
+    #[test]
+    fn is_unhealthy_when_accessibility_permission_missing() {
+        let status = HealthStatus {
+            mic_ok: true,
+            mic_found: true,
+            ax_ok: false,
+            api_ok: true,
+        };
+        assert!(!status.is_healthy());
+    }
+
+    #[test]
+    fn is_unhealthy_when_api_not_configured() {
+        let status = HealthStatus {
+            mic_ok: true,
+            mic_found: true,
+            ax_ok: true,
+            api_ok: false,
+        };
+        assert!(!status.is_healthy());
+    }
+
+    // --- mic_device_found ---
+
+    #[test]
+    fn mic_device_found_short_circuits_without_permission() {
+        // With mic_ok=false this must return false without probing devices
+        // (probing before permission is granted triggers the macOS TCC
+        // prompt, which would defeat passive health polling).
+        assert!(!mic_device_found(false));
+    }
+
+    // --- provider_configured ---
+
+    fn config_with(provider: &str, provider_configs: serde_json::Value) -> AppConfig {
+        let mut config = AppConfig::default();
+        config.provider = provider.to_string();
+        config.provider_configs = serde_json::from_value(provider_configs).unwrap();
+        config
+    }
+
+    #[test]
+    fn provider_not_configured_when_no_entry_present() {
+        let config = config_with("groq", json!({}));
+        assert!(!provider_configured(&config));
+    }
+
+    #[test]
+    fn provider_not_configured_when_entry_has_only_blank_values() {
+        let config = config_with("groq", json!({ "groq": { "apiKey": "   " } }));
+        assert!(!provider_configured(&config));
+    }
+
+    #[test]
+    fn provider_not_configured_when_entry_is_not_an_object() {
+        let config = config_with("groq", json!({ "groq": "not-an-object" }));
+        assert!(!provider_configured(&config));
+    }
+
+    #[test]
+    fn provider_configured_when_entry_has_a_non_blank_value() {
+        let config = config_with("groq", json!({ "groq": { "apiKey": "sk-live-123" } }));
+        assert!(provider_configured(&config));
+    }
+
+    #[test]
+    fn vertex_ai_provider_ignores_provider_configs() {
+        // Vertex AI authenticates via ADC, so an empty provider_configs entry
+        // must not affect the result — it should match check_adc_available()
+        // regardless of what (if anything) is stored for it.
+        let config = config_with("vertex_ai", json!({}));
+        assert_eq!(
+            provider_configured(&config),
+            crate::transcription::vertex::check_adc_available()
+        );
+    }
+}
