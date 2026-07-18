@@ -558,11 +558,7 @@
     if (recordingSoundsEnabled) {
       if (appState === "recording" && prevState !== "recording") {
         playStartSound();
-      } else if (
-        prevState === "recording" &&
-        appState !== "recording" &&
-        appState !== "error"
-      ) {
+      } else if (prevState === "recording" && appState !== "recording" && appState !== "error") {
         playStopSound();
       }
     }
