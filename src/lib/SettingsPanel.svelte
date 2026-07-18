@@ -813,12 +813,35 @@
   .content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     padding: 20px 20px 24px;
     overflow-y: auto;
     background: #1a1a1c;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+
+  .content::-webkit-scrollbar {
+    width: 10px;
+  }
+  .content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .content::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    border: 2px solid #1a1a1c;
+  }
+  .content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.34);
+  }
+
+  .content > * {
+    flex-shrink: 0;
   }
 
   .content h2 {
@@ -854,6 +877,7 @@
     gap: 12px;
     padding: 0 16px;
     min-height: 48px;
+    min-width: 0;
   }
 
   .row-sep {
@@ -865,17 +889,21 @@
   .row-label {
     font-size: 14px;
     color: rgba(255, 255, 255, 0.85);
-    flex-shrink: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .row-label-stack {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
+    min-width: 0;
   }
   .row-sub {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.35);
+    overflow-wrap: anywhere;
   }
 
   /* ── Controls ── */
@@ -934,6 +962,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
+    min-width: 0;
   }
 
   .apply-btn {
