@@ -85,10 +85,20 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ showSettings: true }));
     expect(decision).toEqual({
       view: "settings",
-      window: { w: 620, h: 480, posKey: "settings-window-pos" },
+      window: { w: 620, h: 560, posKey: "settings-window-pos" },
       nativeOpaque: true,
       shouldShowWindow: true,
     });
+  });
+
+  it("explicit Settings request wins over the mic permission nag", () => {
+    const decision = deriveUiDecision(baseState({ showSettings: true, micGranted: false }));
+    expect(decision.view).toBe("settings");
+  });
+
+  it("explicit Settings request wins over the accessibility nag", () => {
+    const decision = deriveUiDecision(baseState({ showSettings: true, axGranted: false }));
+    expect(decision.view).toBe("settings");
   });
 
   it("injection failure uses taller HUD and stays visible", () => {

@@ -109,6 +109,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.sent_hud_timeout_desc":
       "Seconds the 'Sent ✓' HUD stays visible (0 = disabled, max 30)",
     "settings.language": "Language",
+    "settings.update_channel": "Update Channel",
+    "settings.update_channel_desc": "Choose stable releases or early beta builds",
+    "settings.update_channel_stable": "Stable",
+    "settings.update_channel_beta": "Beta",
+    "settings.resetup_permissions": "Re-setup Permissions",
+    "settings.resetup_permissions_desc":
+      "Re-open the microphone & accessibility setup screen (your API key is kept)",
+    "settings.resetup_btn": "Open",
 
     // Settings nav tabs
     "settings.nav.transcription": "Transcription",
@@ -120,6 +128,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.section.startup": "Startup",
     "settings.section.input": "Input",
     "settings.section.language": "Language",
+    "settings.section.updates": "Updates",
+    "settings.section.permissions": "Permissions",
 
     // Onboarding
     "onboarding.start": "Get Started",
@@ -134,6 +144,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.perms_request": "Grant Access",
     "onboarding.perms_waiting": "Requesting…",
     "onboarding.perms_continue": "Continue",
+    "onboarding.perms_done": "Done",
+    "onboarding.perms_reset": "Reset",
+    "onboarding.perms_resetting": "Resetting…",
+    "onboarding.perms_reset_subtitle":
+      "If a permission shows granted but isn't working (common after an update), Reset clears it — then restart the app and grant again.",
+    "onboarding.perms_reset_done":
+      "Permission cleared. Restart the app to apply, then grant again.",
+    "onboarding.perms_restart": "Restart Now",
     "onboarding.configure": "Configure AI Service",
     "onboarding.save_continue": "Save & Continue",
     "onboarding.skip": "Skip",
@@ -250,6 +268,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.sent_hud_timeout": "「已发送」HUD 持续时间",
     "settings.sent_hud_timeout_desc": "「已写入 ✓」HUD 显示秒数（0 = 关闭，最多 30）",
     "settings.language": "语言",
+    "settings.update_channel": "更新通道",
+    "settings.update_channel_desc": "选择稳定正式版或提前体验 Beta 版本",
+    "settings.update_channel_stable": "稳定版",
+    "settings.update_channel_beta": "Beta 测试版",
+    "settings.resetup_permissions": "重新设置权限",
+    "settings.resetup_permissions_desc": "重新打开麦克风与辅助功能授权界面（会保留 API Key）",
+    "settings.resetup_btn": "打开",
 
     // Settings nav tabs
     "settings.nav.transcription": "转录",
@@ -261,6 +286,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.section.startup": "启动",
     "settings.section.input": "输入",
     "settings.section.language": "语言",
+    "settings.section.updates": "更新",
+    "settings.section.permissions": "权限",
 
     "onboarding.start": "开始配置",
     "onboarding.perms_title": "授权设置",
@@ -273,6 +300,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.perms_request": "授权访问",
     "onboarding.perms_waiting": "请求中…",
     "onboarding.perms_continue": "继续",
+    "onboarding.perms_done": "完成",
+    "onboarding.perms_reset": "重置",
+    "onboarding.perms_resetting": "重置中…",
+    "onboarding.perms_reset_subtitle":
+      "如果权限显示已授权却无法使用（更新后常见），点击「重置」清除，然后重启 App 并重新授权。",
+    "onboarding.perms_reset_done": "权限已清除。请重启 App 使其生效，然后重新授权。",
+    "onboarding.perms_restart": "立即重启",
     "onboarding.configure": "配置 AI 服务",
     "onboarding.save_continue": "保存并继续",
     "onboarding.skip": "跳过",

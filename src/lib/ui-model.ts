@@ -5,7 +5,7 @@ export const HUD_ALERT_H = 108;
 export const HUD_RETRY_W = 300;
 export const HUD_RETRY_H = 108;
 export const SETTINGS_W = 620;
-export const SETTINGS_H = 480;
+export const SETTINGS_H = 560;
 export const ONBOARDING_W = 500;
 export const ONBOARDING_H = 560;
 export const AX_W = 320;
@@ -108,6 +108,21 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
     };
   }
 
+  // An explicit request to open Settings wins over the mic/AX permission nag
+  // banners. Otherwise a pending permission warning silently swallows the tray
+  // "Settings…" click (and the dock/Reopen path) and the window never appears —
+  // the bug where Settings becomes unreachable after a permission event fires.
+  // The Settings panel itself exposes the permission re-setup entry, so the nag
+  // is still reachable; it simply no longer blocks Settings.
+  if (state.showSettings) {
+    return {
+      view: "settings",
+      window: { w: SETTINGS_W, h: SETTINGS_H, posKey: SETTINGS_POS_KEY },
+      nativeOpaque: true,
+      shouldShowWindow: true,
+    };
+  }
+
   if (!state.micGranted) {
     return {
       view: "mic",
@@ -130,15 +145,6 @@ export function deriveUiDecision(state: UiModelState): UiDecision {
     return {
       view: "health",
       window: { w: HEALTH_W, h: HEALTH_H },
-      nativeOpaque: true,
-      shouldShowWindow: true,
-    };
-  }
-
-  if (state.showSettings) {
-    return {
-      view: "settings",
-      window: { w: SETTINGS_W, h: SETTINGS_H, posKey: SETTINGS_POS_KEY },
       nativeOpaque: true,
       shouldShowWindow: true,
     };

@@ -5,6 +5,16 @@ Companion doc to [`RELEASING.md`](../RELEASING.md). `RELEASING.md` tells you **w
 ## Final architecture
 
 ```
+feature merged/pushed to development
+  │
+  ▼
+.github/workflows/beta-release.yml
+  │  - reads stable version from main and allocates next patch -beta.N
+  │  - builds/signs/notarizes a versioned prerelease
+  │  - advances the fixed beta-channel updater manifest
+  ▼
+beta users receive the preview through the normal in-app updater
+
 human: open PR development → main                       (step 1 of 2)
   │
   ▼
@@ -29,6 +39,7 @@ push to main touching version files triggers .github/workflows/release.yml
   │  - build + sign + notarize (macOS arm + x64, Windows MSI + NSIS)
   │  - upload latest.json (updater manifest)
   │  - publish the draft release
+  │  - advance the beta-channel manifest to the stable release
   │  - update the homebrew tap
   ▼
 done
@@ -104,6 +115,7 @@ Older versions of `release.yml` checked `Cargo.toml` but **not** `Cargo.lock`. T
 |---|---|
 | `scripts/bump-version.sh` | Edits `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, refreshes `Cargo.lock`. Single source of truth for "bump the version in N places." Exposed as `npm run release:bump X.Y.Z` for manual use. |
 | `.github/workflows/auto-bump-version.yml` | Triggers on PR open / sync / label change targeting `main`. Pushes (or amends) a `RELEASE X.Y.Z` commit to the PR's head branch. |
+| `.github/workflows/beta-release.yml` | Triggers on `development` pushes. Publishes the next patch prerelease and advances the opt-in beta updater manifest. |
 | `.github/workflows/release.yml` | Triggers on pushes to `main` that touch version files. Releases only when the semver actually changed and all four version files agree. Does the full build → publish → tap-update pipeline. |
 | `RELEASING.md` | Operator-facing flow doc — what to do when shipping. |
 | This file | Decision record — why the flow is shaped this way. |
