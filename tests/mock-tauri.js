@@ -74,6 +74,7 @@
     check_provider_status: false,
     // Other
     open_accessibility_prefs: null,
+    get_health_status: { micOk: true, micFound: true, axOk: true, apiOk: true },
   };
 
   // Per-test overrides

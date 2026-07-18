@@ -31,7 +31,7 @@
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
-  let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
+  export let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
   let provider = "openai";
   let configValues: Record<string, string> = {};
   let authStatus: boolean | null = null;
