@@ -15,6 +15,7 @@ mod shortcut;
 mod state;
 mod transcription;
 mod tray;
+mod updates;
 
 use audio::Recorder;
 use commands::RecorderState;
@@ -97,17 +98,23 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // macOS: keep a real Dock/Cmd-Tab app. The window itself still
-            // starts transparent and input-passthrough so the warmed WebKit
-            // compositor does not interfere with the active foreground app.
+            // macOS: run as a menu-bar (Accessory) app with no Dock icon. The
+            // tray "Settings…" item is the reliable way in; Settings/onboarding
+            // temporarily flip the app to Regular (see set_native_opaque) so the
+            // window can become key and the Dock icon appears only while shown.
+            // The window itself still starts transparent and input-passthrough
+            // so the warmed WebKit compositor does not interfere with the active
+            // foreground app.
             #[cfg(target_os = "macos")]
             {
                 use objc::{class, msg_send, sel, sel_impl};
                 unsafe {
                     let ns_app: *mut objc::runtime::Object =
                         msg_send![class!(NSApplication), sharedApplication];
-                    // NSApplicationActivationPolicyRegular = 0
-                    let _: () = msg_send![ns_app, setActivationPolicy: 0i64];
+                    // NSApplicationActivationPolicyAccessory = 1 — no Dock icon,
+                    // hidden from Cmd-Tab, but windows still render and the
+                    // CVDisplayLink keeps firing (compositor stays warm).
+                    let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
 
                     // Start the window fully transparent and input-passthrough.
                     // The TS side calls show() right away, which puts the window
@@ -124,7 +131,7 @@ pub fn run() {
                         let _: () = msg_send![win, setIgnoresMouseEvents: true];
                     }
                 }
-                let _ = handle.set_dock_visibility(true);
+                let _ = handle.set_dock_visibility(false);
             }
 
             // macOS: pre-load AVFoundation so AVCaptureDevice is available when
@@ -361,6 +368,12 @@ pub fn run() {
             commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
+            commands::reset_permission,
+            commands::restart_app,
+            updates::get_update_channel,
+            updates::save_update_channel,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
