@@ -352,6 +352,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_recording_sounds_enabled,
+            commands::save_recording_sounds_enabled,
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,

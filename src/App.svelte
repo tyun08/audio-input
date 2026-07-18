@@ -85,6 +85,7 @@
   let screenshotContextEnabled = false;
   let showIdleHud = false;
   let sentHudTimeoutSecs = 0;
+  let recordingSoundsEnabled = true;
   // Guard so the reactive showIdleHud → syncWindow trigger below doesn't
   // fire during the initial fetch (when showIdleHud transitions from its
   // declared `false` to whatever the backend stored). Only react to user
@@ -113,6 +114,60 @@
       successFlashTimer = null;
     }
   }
+
+  // ── Recording sounds ─────────────────────────────────────────────────────
+  // Synthesised via the Web Audio API so no audio files are needed.
+  // Start: short, high-pitched "bip" (880 Hz, 80 ms)
+  // Stop:  short, lower-pitched "boop" (440 Hz, 110 ms)
+
+  let _audioCtx: AudioContext | null = null;
+  function getAudioCtx(): AudioContext {
+    if (!_audioCtx || _audioCtx.state === "closed") {
+      _audioCtx = new AudioContext();
+    }
+    return _audioCtx;
+  }
+
+  function playStartSound() {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.06);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.08);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.09);
+    } catch {
+      // Non-critical — swallow any Web Audio errors silently.
+    }
+  }
+
+  function playStopSound() {
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.09);
+      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.11);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.12);
+    } catch {
+      // Non-critical — swallow any Web Audio errors silently.
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
@@ -248,6 +303,9 @@
       sentHudTimeoutSecs = normalizeSentHudTimeoutSecs(
         await appApi.invoke<unknown>("get_sent_hud_timeout_secs").catch(() => 5)
       );
+      recordingSoundsEnabled = await appApi
+        .invoke<boolean>("get_recording_sounds_enabled")
+        .catch(() => true);
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -489,12 +547,24 @@
   });
 
   function handleStateChange(raw: string) {
+    const prevState = appState;
     const transition = applyAppStateChange(getUiState(), raw);
     appState = transition.state.appState;
     showSettings = transition.state.showSettings;
     errorMsg = transition.errorMsg;
     if (appState !== "recording") {
       audioLevels = Array(WAVEFORM_BAR_COUNT).fill(0);
+    }
+    if (recordingSoundsEnabled) {
+      if (appState === "recording" && prevState !== "recording") {
+        playStartSound();
+      } else if (
+        prevState === "recording" &&
+        appState !== "recording" &&
+        appState !== "error"
+      ) {
+        playStopSound();
+      }
     }
   }
 
@@ -756,6 +826,7 @@
       bind:screenshotContextEnabled
       bind:showIdleHud
       bind:sentHudTimeoutSecs
+      bind:recordingSoundsEnabled
       {appState}
       bind:shortcutConflict
       activeSection={settingsInitialSection}

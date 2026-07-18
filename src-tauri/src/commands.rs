@@ -1133,6 +1133,27 @@ pub async fn save_screenshot_context_enabled(
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
 }
 
+// --- Recording sounds --------------------------------------------------------
+
+#[tauri::command]
+pub fn get_recording_sounds_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().recording_sounds_enabled
+}
+
+#[tauri::command]
+pub async fn save_recording_sounds_enabled(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.recording_sounds_enabled = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
 // --- Onboarding --------------------------------------------------------------
 
 #[tauri::command]

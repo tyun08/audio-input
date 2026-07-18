@@ -28,6 +28,7 @@
   export let screenshotContextEnabled: boolean = false;
   export let showIdleHud: boolean = false;
   export let sentHudTimeoutSecs: number = 5;
+  export let recordingSoundsEnabled: boolean = true;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
@@ -192,6 +193,11 @@
   async function handleShowIdleHudToggle() {
     showIdleHud = !showIdleHud;
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
+  }
+
+  async function handleRecordingSoundsToggle() {
+    recordingSoundsEnabled = !recordingSoundsEnabled;
+    await invoke("save_recording_sounds_enabled", { enabled: recordingSoundsEnabled });
   }
 
   async function handleSentHudTimeoutChange(e: Event) {
@@ -461,6 +467,21 @@
                 >{$t("settings.shortcut_apply")}</button
               >
             </div>
+          </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.recording_sounds")}</span>
+              <span class="row-sub">{$t("settings.recording_sounds_desc")}</span>
+            </div>
+            <button
+              class="toggle"
+              class:on={recordingSoundsEnabled}
+              on:click={handleRecordingSoundsToggle}
+              aria-label="Toggle recording sounds"
+            >
+              <span class="toggle-knob"></span>
+            </button>
           </div>
         </div>
         {#if shortcutConflict}
