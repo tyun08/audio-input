@@ -855,6 +855,48 @@ pub async fn request_microphone_permission(app: AppHandle) {
     }
 }
 
+/// Clear the app's existing TCC entry for a permission so it can be granted
+/// fresh. Needed when an app update invalidates the prior grant (the toggle
+/// still shows "on" in System Settings but the mic/accessibility silently
+/// fails) — the user often can't fix this by hand because the stale entry
+/// can't be toggled back to a working state. `tccutil reset` removes the
+/// record entirely; the next request then re-prompts cleanly.
+#[tauri::command]
+pub fn reset_permission(app: AppHandle, kind: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let service = match kind.as_str() {
+            "microphone" => "Microphone",
+            "accessibility" => "Accessibility",
+            other => return Err(format!("unknown permission kind: {other}")),
+        };
+        let bundle_id = app.config().identifier.clone();
+        let output = std::process::Command::new("tccutil")
+            .args(["reset", service, &bundle_id])
+            .output()
+            .map_err(|e| format!("failed to run tccutil: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tccutil reset {service} failed: {}", stderr.trim()));
+        }
+        info!("Reset TCC permission: {service} for {bundle_id}");
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, kind);
+        Ok(())
+    }
+}
+
+/// Relaunch the app. Required after `reset_permission`: macOS (AVFoundation)
+/// caches the TCC authorization status for the lifetime of the process, so a
+/// just-cleared microphone permission won't re-prompt until the app restarts.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[tauri::command]
 pub fn open_microphone_prefs() {
     #[cfg(target_os = "macos")]
@@ -1185,10 +1227,11 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                 let _: () = msg_send![win, invalidateShadow];
             }
 
-            // Keep the app Regular in every mode so it remains a real Dock /
-            // Cmd-Tab app. Settings/onboarding explicitly activate the app;
-            // HUD/hidden mode only changes window level and never activates.
-            // NSApplicationActivationPolicyRegular = 0
+            // Settings/onboarding flip the app to Regular (Dock icon visible) so
+            // the window can become key and WebKit renders; HUD/hidden mode runs
+            // as Accessory (no Dock icon, hidden from Cmd-Tab). The Dock icon thus
+            // appears only while a real window is on screen. The compositor stays
+            // warm regardless because the window remains on-screen at alphaValue=0.
             if opaque {
                 // Settings / onboarding: normal window level so other windows can cover it.
                 // NSNormalWindowLevel = 0
@@ -1196,6 +1239,7 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 0i64];
                 }
+                // NSApplicationActivationPolicyRegular = 0
                 let _: () = msg_send![app, setActivationPolicy: 0i64];
                 let _: () = msg_send![app, activateIgnoringOtherApps: true];
             } else {
@@ -1205,7 +1249,9 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 3i64];
                 }
-                let _: () = msg_send![app, setActivationPolicy: 0i64];
+                // NSApplicationActivationPolicyAccessory = 1 — drop the Dock icon
+                // once we're back to the HUD/hidden state.
+                let _: () = msg_send![app, setActivationPolicy: 1i64];
             }
         }
     }

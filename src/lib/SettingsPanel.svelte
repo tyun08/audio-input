@@ -18,6 +18,10 @@
 
   const dispatch = createEventDispatcher();
 
+  // Microphone/Accessibility permissions only exist on macOS, so the
+  // "Re-setup Permissions" entry is hidden on Windows.
+  const isMac = !navigator.userAgent.includes("Windows");
+
   export let polishEnabled: boolean = false;
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
@@ -35,6 +39,7 @@
 
   let preferredDevice: string | null = null;
   let shortcut = "Meta+Shift+Space";
+  let updateChannel: "stable" | "beta" = "stable";
   let saving = false;
   let saved = false;
   let error = "";
@@ -63,6 +68,7 @@
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
     maxHistory = await invoke<number>("get_max_history").catch(() => 100);
+    updateChannel = await invoke<"stable" | "beta">("get_update_channel").catch(() => "stable");
     await refreshHistory();
   });
 
@@ -199,6 +205,12 @@
     const next = Number.isFinite(raw) && raw >= 0 ? Math.min(raw, 30) : 0;
     sentHudTimeoutSecs = next;
     await invoke("save_sent_hud_timeout_secs", { secs: next });
+  }
+
+  async function handleUpdateChannelChange(e: Event) {
+    updateChannel = (e.target as HTMLSelectElement).value as "stable" | "beta";
+    await invoke("save_update_channel", { channel: updateChannel });
+    showSaved();
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -490,6 +502,35 @@
             />
           </div>
         </div>
+
+        <h3>{$t("settings.section.updates")}</h3>
+        <div class="group">
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.update_channel")}</span>
+              <span class="row-sub">{$t("settings.update_channel_desc")}</span>
+            </div>
+            <select class="row-select" value={updateChannel} on:change={handleUpdateChannelChange}>
+              <option value="stable">{$t("settings.update_channel_stable")}</option>
+              <option value="beta">{$t("settings.update_channel_beta")}</option>
+            </select>
+          </div>
+        </div>
+
+        {#if isMac}
+          <h3>{$t("settings.section.permissions")}</h3>
+          <div class="group">
+            <div class="row">
+              <div class="row-label-stack">
+                <span class="row-label">{$t("settings.resetup_permissions")}</span>
+                <span class="row-sub">{$t("settings.resetup_permissions_desc")}</span>
+              </div>
+              <button class="apply-btn" on:click={() => dispatch("permissionSetup")}>
+                {$t("settings.resetup_btn")}
+              </button>
+            </div>
+          </div>
+        {/if}
 
         {#if saved}
           <p class="saved-note">{$t("settings.saved")}</p>

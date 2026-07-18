@@ -61,6 +61,9 @@
   let needsMicPermission = false;
   let micPollInterval: ReturnType<typeof setInterval> | null = null;
   let showOnboarding = false;
+  // Re-runs just the macOS permission step (mic + accessibility) from Settings,
+  // without touching the saved API key / provider config.
+  let showPermissionSetup = false;
   let polishFailed = false;
   let shortcutConflict = "";
   let retryableSessionId: string | null = null;
@@ -196,7 +199,7 @@
 
   function getUiState(): UiModelState {
     return {
-      onboardingDone: !showOnboarding,
+      onboardingDone: !showOnboarding && !showPermissionSetup,
       micGranted: !needsMicPermission,
       axGranted: !needsAccessibilityRestart,
       showSettings,
@@ -546,6 +549,19 @@
     await syncWindow();
   }
 
+  async function handlePermissionSetup() {
+    showSettings = false;
+    showPermissionSetup = true;
+    await syncWindow();
+  }
+
+  async function handlePermissionSetupDone() {
+    showPermissionSetup = false;
+    // Return the user to where they came from — the Settings panel.
+    showSettings = true;
+    await syncWindow();
+  }
+
   async function handleAccessibilityDismiss() {
     needsAccessibilityRestart = false;
     await syncWindow();
@@ -616,6 +632,8 @@
     </div>
   {:else if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
+  {:else if showPermissionSetup}
+    <OnboardingFlow permissionsOnly on:done={handlePermissionSetupDone} />
   {:else if needsMicPermission}
     <div class="ax-banner">
       <div class="ax-icon">
@@ -697,6 +715,7 @@
       bind:shortcutConflict
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
+      on:permissionSetup={handlePermissionSetup}
     />
   {:else}
     <RecordingIndicator

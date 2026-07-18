@@ -32,8 +32,17 @@ fn default_locale() -> String {
     "en".to_string()
 }
 
+<<<<<<< HEAD
 fn default_recording_sounds_enabled() -> bool {
     true
+=======
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    Beta,
+>>>>>>> origin/development
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,8 +70,13 @@ pub struct AppConfig {
     pub sent_hud_timeout_secs: u32,
     #[serde(default = "default_locale")]
     pub locale: String,
+<<<<<<< HEAD
     #[serde(default = "default_recording_sounds_enabled")]
     pub recording_sounds_enabled: bool,
+=======
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
+>>>>>>> origin/development
 
     // Legacy fields — read for migration, never written back.
     #[serde(default, skip_serializing)]
@@ -89,7 +103,11 @@ impl Default for AppConfig {
             max_history: default_max_history(),
             sent_hud_timeout_secs: default_sent_hud_timeout_secs(),
             locale: default_locale(),
+<<<<<<< HEAD
             recording_sounds_enabled: true,
+=======
+            update_channel: UpdateChannel::default(),
+>>>>>>> origin/development
             api_key: String::new(),
             gcp_project_id: String::new(),
             gcp_location: String::new(),
