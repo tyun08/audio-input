@@ -361,7 +361,13 @@
               <div class="row">
                 <span class="row-label">{field.label[$locale]}</span>
                 {#if field.type === "select"}
-                  <FieldSelect options={field.options ?? []} bind:value={configValues[field.key]} />
+                  <FieldSelect
+                    options={field.options ?? []}
+                    orientation={provider === "groq" && field.key === "model"
+                      ? "vertical"
+                      : "horizontal"}
+                    bind:value={configValues[field.key]}
+                  />
                 {:else if field.type === "password"}
                   <input
                     type="password"
