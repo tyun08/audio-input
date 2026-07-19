@@ -108,6 +108,29 @@ test.describe("Settings Panel", () => {
     await expect(page.locator('input[type="password"]')).toBeVisible();
   });
 
+  test("stacks Groq model options vertically in a narrow settings panel", async ({ page }) => {
+    await page.setViewportSize({ width: 630, height: 450 });
+    await loadApp(page);
+    await openSettings(page);
+
+    const modelOptions = page.locator(".seg.vertical button");
+    await expect(modelOptions).toHaveCount(2);
+
+    const [firstBox, secondBox] = await Promise.all([
+      modelOptions.nth(0).boundingBox(),
+      modelOptions.nth(1).boundingBox(),
+    ]);
+    expect(firstBox).not.toBeNull();
+    expect(secondBox).not.toBeNull();
+    expect(secondBox!.y).toBeGreaterThan(firstBox!.y + firstBox!.height - 1);
+    expect(secondBox!.x).toBeCloseTo(firstBox!.x, 0);
+
+    const modelLabel = page.getByText("Model", { exact: true });
+    const labelBox = await modelLabel.boundingBox();
+    expect(labelBox).not.toBeNull();
+    expect(labelBox!.height).toBeLessThan(24);
+  });
+
   test("saves settings and shows saved confirmation", async ({ page }) => {
     await loadApp(page);
     await openSettings(page);
