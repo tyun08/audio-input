@@ -124,6 +124,7 @@ test.describe("Settings Panel", () => {
     expect(secondBox).not.toBeNull();
     expect(secondBox!.y).toBeGreaterThan(firstBox!.y + firstBox!.height - 1);
     expect(secondBox!.x).toBeCloseTo(firstBox!.x, 0);
+    await expect(modelOptions.nth(1)).toHaveCSS("color", "rgba(255, 255, 255, 0.62)");
 
     const modelLabel = page.getByText("Model", { exact: true });
     const labelBox = await modelLabel.boundingBox();

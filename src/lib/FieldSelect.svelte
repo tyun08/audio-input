@@ -41,7 +41,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: #3c3c3e;
+    color: rgba(255, 255, 255, 0.62);
     font-size: 13px;
     font-weight: 400;
     cursor: pointer;
