@@ -5,6 +5,7 @@ extern "C" {}
 pub mod audio;
 mod commands;
 mod config;
+mod health;
 mod history;
 mod input;
 #[cfg(target_os = "macos")]
@@ -351,6 +352,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_recording_sounds_enabled,
+            commands::save_recording_sounds_enabled,
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
@@ -368,6 +371,7 @@ pub fn run() {
             commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
+            commands::get_health_status,
             commands::reset_permission,
             commands::restart_app,
             updates::get_update_channel,

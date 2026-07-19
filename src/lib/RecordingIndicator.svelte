@@ -10,6 +10,12 @@
   export let audioLevels: number[] = [];
   export let retryableSessionId: string | null = null;
   export let retrying = false;
+  /**
+   * True after a shortcut-triggered recording attempt failed a health check
+   * (missing permission, no mic device, or transcription API not
+   * configured). Does not auto-dismiss — the user must react.
+   */
+  export let healthCheckFailed = false;
   /** After inject succeeds: brief green check (idle + flash). */
   export let transcriptionSuccessFlash = false;
   /** Total ms the success flash will be shown — drives the countdown bar. */
@@ -21,6 +27,8 @@
     clipboardCopy: void;
     clipboardDismiss: void;
     successCopy: void;
+    healthFix: void;
+    healthDismiss: void;
   }>();
 
   $: showRetry = state === "error" && !!retryableSessionId;
@@ -33,6 +41,16 @@
   function handleDismiss(e: MouseEvent) {
     e.stopPropagation();
     dispatch("dismiss");
+  }
+
+  function handleHealthFix(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("healthFix");
+  }
+
+  function handleHealthDismiss(e: MouseEvent) {
+    e.stopPropagation();
+    dispatch("healthDismiss");
   }
 
   function handleClipboardCopy(e: MouseEvent) {
@@ -100,11 +118,35 @@
   class:processing={state === "processing"}
   class:error={state === "error" && !injectionFailed}
   class:injection={injectionFailed && !showRetry}
-  class:retry={showRetry}
+  class:retry={showRetry || healthCheckFailed}
   class:success={transcriptionSuccessFlash}
   on:mousedown={handleMousedown}
 >
-  {#if showRetry}
+  {#if healthCheckFailed}
+    <div class="retry-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="rgba(248,113,113,0.9)" stroke-width="1.8" />
+        <line
+          x1="7"
+          y1="17"
+          x2="17"
+          y2="7"
+          stroke="rgba(248,113,113,0.9)"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <div class="retry-text">
+        <p class="retry-title">{$t("health.check_failed_title")}</p>
+        <p class="retry-msg">{$t("health.check_failed_body")}</p>
+      </div>
+    </div>
+    <div class="retry-actions">
+      <button class="btn primary" on:click={handleHealthFix}>{$t("health.check_failed_fix")}</button
+      >
+      <button class="btn" on:click={handleHealthDismiss}>{$t("health.check_failed_ok")}</button>
+    </div>
+  {:else if showRetry}
     <div class="retry-head">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="12" cy="12" r="10" stroke="rgba(248,113,113,0.9)" stroke-width="1.8" />

@@ -101,10 +101,33 @@ async fn start_recording<R: Runtime>(
                 "Microphone permission denied (status={}), cannot record",
                 mic_status
             );
-            set_tray_icon(app, "idle");
+            set_tray_icon(app, "unavailable");
             let _ = app.emit("microphone-denied", ());
             return;
         }
+    }
+
+    // Accessibility permission is required to inject the transcribed text.
+    // Catching it here (rather than only after a failed paste) means the
+    // user sees the recovery screen immediately instead of after recording
+    // and transcribing audio that can never be delivered.
+    if !crate::input::injector::check_accessibility_permission() {
+        warn!("Accessibility permission missing, cannot record");
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("accessibility-missing", ());
+        return;
+    }
+
+    // Catch-all health check for issues without their own dedicated recovery
+    // screen (no microphone device found, transcription API not configured).
+    // Reported as a non-auto-dismissing HUD state — the user must either fix
+    // it or explicitly acknowledge it.
+    let health = crate::health::compute(app);
+    if !health.is_healthy() {
+        warn!("Health check failed before recording: {:?}", health);
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("health-check-failed", health);
+        return;
     }
 
     // Build the async-error handler up front. The blocking device probe and
@@ -912,6 +935,14 @@ pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
     shared_state.lock().unwrap().to_string()
 }
 
+/// Snapshot used by the menu-bar health icon and the status popover: whether
+/// the microphone permission/device, Accessibility permission, and
+/// transcription API are all in a usable state.
+#[tauri::command]
+pub fn get_health_status(app: AppHandle) -> crate::health::HealthStatus {
+    crate::health::compute(&app)
+}
+
 // --- Generic provider commands -----------------------------------------------
 
 #[tauri::command]
@@ -1097,6 +1128,27 @@ pub async fn save_screenshot_context_enabled(
     let updated = {
         let mut cfg = config.lock().unwrap();
         cfg.screenshot_context_enabled = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Recording sounds --------------------------------------------------------
+
+#[tauri::command]
+pub fn get_recording_sounds_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().recording_sounds_enabled
+}
+
+#[tauri::command]
+pub async fn save_recording_sounds_enabled(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.recording_sounds_enabled = enabled;
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
