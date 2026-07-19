@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ask, message } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 type AvailableUpdate = {
   version: string;
@@ -42,9 +43,12 @@ export async function checkForUpdates(silent: boolean): Promise<void> {
     if (!confirmed) return;
 
     // The native updater re-checks the selected channel, verifies that the
-    // offered version has not changed, then verifies its signature before
-    // installing and restarting the app.
+    // offered version has not changed, then verifies its signature and
+    // installs it. Relaunch from the frontend after the IPC command returns;
+    // restarting inside that command can terminate the app before Tauri has
+    // completed the relaunch handoff on macOS.
     await invoke("install_update", { version: update.version });
+    await relaunch();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // Suppress noisy "network unreachable" style errors on silent startup
