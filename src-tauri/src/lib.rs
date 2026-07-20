@@ -171,6 +171,12 @@ pub fn run() {
             let preferred_device = config.preferred_device.clone();
             app.manage(Arc::new(Mutex::new(config)));
 
+            // Health probes (including input-device enumeration) run at
+            // startup and on the idle tray timer. Shortcut handling consumes
+            // this cached snapshot so recording never waits on a device scan.
+            let initial_health = health::compute(&handle);
+            app.manage(health::new_shared_health(initial_health));
+
             // Init shared state
             let shared_state = new_shared_state();
             app.manage(shared_state.clone());

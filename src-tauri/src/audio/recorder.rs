@@ -241,8 +241,12 @@ impl Recorder {
                 let activated_at = Instant::now();
                 set_instant_to(&self.capture.stream_play_requested_at, activated_at);
                 self.capture.is_recording.store(true, Ordering::SeqCst);
+                if let Err(error) = cached.stream.0.play() {
+                    self.capture.is_recording.store(false, Ordering::SeqCst);
+                    return Err(error).context("Failed to activate prewarmed recording stream");
+                }
                 set_instant_to(&self.capture.stream_play_returned_at, Instant::now());
-                info!("Recording started (hot prebuilt stream)");
+                info!("Recording started (resumed prebuilt stream)");
                 return Ok(());
             } else {
                 *slot = None;
@@ -313,6 +317,15 @@ impl Recorder {
         self.capture.epoch.fetch_add(1, Ordering::SeqCst);
 
         self.capture.is_recording.store(false, Ordering::SeqCst);
+        // Keep the already-built stream for the next recording, but stop its
+        // CoreAudio IOProc while idle. This releases the macOS microphone-in-use
+        // indicator without paying device enumeration/config/build costs on the
+        // next hotkey press.
+        if let Some(cached) = self.capture.stream.lock().unwrap().as_mut() {
+            if let Err(error) = cached.stream.0.pause() {
+                warn!("Failed to pause recording stream: {}", error);
+            }
+        }
         info!("Recording stopped");
 
         let samples = {
@@ -340,9 +353,9 @@ impl Recorder {
         })
     }
 
-    /// Build, play, and cache an idle input stream in the background. The
-    /// callback ignores samples until `is_recording` flips true, so a later
-    /// start avoids CoreAudio/cpal stream-construction and pause/resume costs.
+    /// Build and cache a paused input stream in the background. A later start
+    /// only needs to resume the prebuilt stream, while idle time does not keep
+    /// the operating system's microphone-in-use indicator active.
     pub fn prewarm_capture(&self, preferred_device_name: Option<String>) -> Result<()> {
         let capture = self.capture.clone();
         let epoch = capture.epoch.load(Ordering::SeqCst);
@@ -357,13 +370,8 @@ impl Recorder {
                         if capture.epoch.load(Ordering::SeqCst) == epoch
                             && !capture.is_recording.load(Ordering::SeqCst)
                         {
-                            cached
-                                .stream
-                                .0
-                                .play()
-                                .context("Failed to start prewarmed recording stream")?;
                             *slot = Some(cached);
-                            info!("Recording stream prewarmed and running idle");
+                            info!("Recording stream prewarmed and paused while idle");
                         } else {
                             info!("Recording stream prewarm superseded; discarding stream");
                         }
