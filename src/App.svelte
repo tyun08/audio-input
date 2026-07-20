@@ -4,6 +4,7 @@
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { createAppApi } from "./lib/app-api";
   import { log } from "./lib/logger";
+  import { RecordingSoundPlayer } from "./lib/recording-sounds";
   import {
     AX_H,
     AX_W,
@@ -115,59 +116,7 @@
     }
   }
 
-  // ── Recording sounds ─────────────────────────────────────────────────────
-  // Synthesised via the Web Audio API so no audio files are needed.
-  // Start: short, high-pitched "bip" (880 Hz, 80 ms)
-  // Stop:  short, lower-pitched "boop" (440 Hz, 110 ms)
-
-  let _audioCtx: AudioContext | null = null;
-  function getAudioCtx(): AudioContext {
-    if (!_audioCtx || _audioCtx.state === "closed") {
-      _audioCtx = new AudioContext();
-    }
-    return _audioCtx;
-  }
-
-  function playStartSound() {
-    try {
-      const ctx = getAudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
-      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.06);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.08);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.09);
-    } catch {
-      // Non-critical — swallow any Web Audio errors silently.
-    }
-  }
-
-  function playStopSound() {
-    try {
-      const ctx = getAudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(440, ctx.currentTime);
-      gain.gain.setValueAtTime(0, ctx.currentTime);
-      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.005);
-      gain.gain.setValueAtTime(0.18, ctx.currentTime + 0.09);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.11);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.12);
-    } catch {
-      // Non-critical — swallow any Web Audio errors silently.
-    }
-  }
-  // ─────────────────────────────────────────────────────────────────────────
+  const recordingSoundPlayer = new RecordingSoundPlayer();
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
@@ -306,6 +255,11 @@
       recordingSoundsEnabled = await appApi
         .invoke<boolean>("get_recording_sounds_enabled")
         .catch(() => true);
+      if (recordingSoundsEnabled) {
+        // Warm only the speaker/output graph. This does not request or activate
+        // microphone input, but avoids a cold Web Audio start on the hotkey.
+        void recordingSoundPlayer.warm();
+      }
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -540,9 +494,16 @@
     syncWindow();
   }
 
+  // SettingsPanel two-way-binds this value. Warm immediately when cues are
+  // enabled later, without waiting for the next recording transition.
+  $: if (appHydrated && recordingSoundsEnabled) {
+    void recordingSoundPlayer.warm();
+  }
+
   onDestroy(() => {
     clearSuccessFlashTimer();
     stopMicPoll();
+    void recordingSoundPlayer.dispose();
     unlisten.forEach((fn) => fn());
   });
 
@@ -557,9 +518,9 @@
     }
     if (recordingSoundsEnabled) {
       if (appState === "recording" && prevState !== "recording") {
-        playStartSound();
+        void recordingSoundPlayer.playStart();
       } else if (prevState === "recording" && appState !== "recording" && appState !== "error") {
-        playStopSound();
+        void recordingSoundPlayer.playStop();
       }
     }
   }

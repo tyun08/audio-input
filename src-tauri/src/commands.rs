@@ -87,44 +87,24 @@ async fn start_recording<R: Runtime>(
 ) {
     info!("Recording started...");
 
-    // Check microphone permission before starting
-    #[cfg(target_os = "macos")]
-    {
-        use objc::{class, msg_send, sel, sel_impl};
-        let mic_status: i64 = unsafe {
-            let media_type: *mut objc::runtime::Object =
-                msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
-            msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
-        };
-        if mic_status == 2 || mic_status == 1 {
-            warn!(
-                "Microphone permission denied (status={}), cannot record",
-                mic_status
-            );
-            set_tray_icon(app, "unavailable");
-            let _ = app.emit("microphone-denied", ());
-            return;
-        }
+    // Consume the snapshot maintained by the idle health timer. Do not call
+    // health::compute here: it enumerates input devices and previously added
+    // roughly 55-72 ms to every shortcut press.
+    let health = crate::health::cached(app);
+    if !health.mic_ok {
+        warn!("Cached health reports microphone permission missing");
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("microphone-denied", ());
+        return;
     }
-
-    // Accessibility permission is required to inject the transcribed text.
-    // Catching it here (rather than only after a failed paste) means the
-    // user sees the recovery screen immediately instead of after recording
-    // and transcribing audio that can never be delivered.
-    if !crate::input::injector::check_accessibility_permission() {
-        warn!("Accessibility permission missing, cannot record");
+    if !health.ax_ok {
+        warn!("Cached health reports Accessibility permission missing");
         set_tray_icon(app, "unavailable");
         let _ = app.emit("accessibility-missing", ());
         return;
     }
-
-    // Catch-all health check for issues without their own dedicated recovery
-    // screen (no microphone device found, transcription API not configured).
-    // Reported as a non-auto-dismissing HUD state — the user must either fix
-    // it or explicitly acknowledge it.
-    let health = crate::health::compute(app);
     if !health.is_healthy() {
-        warn!("Health check failed before recording: {:?}", health);
+        warn!("Cached idle health prevents recording: {:?}", health);
         set_tray_icon(app, "unavailable");
         let _ = app.emit("health-check-failed", health);
         return;
@@ -940,7 +920,7 @@ pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
 /// transcription API are all in a usable state.
 #[tauri::command]
 pub fn get_health_status(app: AppHandle) -> crate::health::HealthStatus {
-    crate::health::compute(&app)
+    crate::health::compute_and_cache(&app)
 }
 
 // --- Generic provider commands -----------------------------------------------

@@ -2,14 +2,18 @@
 //! popover: microphone permission, microphone device presence, Accessibility
 //! permission, and transcription API readiness.
 //!
-//! All checks here are cheap/synchronous so they can run from the tray
-//! icon-refresh timer and the left-click handler without blocking the UI
-//! thread.
+//! Permission/config checks are cheap, but input-device enumeration can take
+//! tens of milliseconds on macOS. Full probes therefore run on the idle tray
+//! timer; shortcut handlers consume the cached snapshot.
 
 use crate::config::AppConfig;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, Runtime};
+
+/// Last health snapshot, refreshed while the app is idle. Hotkey handling reads
+/// this in-memory value instead of enumerating audio devices synchronously.
+pub type SharedHealth = Arc<Mutex<HealthStatus>>;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +28,20 @@ impl HealthStatus {
     pub fn is_healthy(&self) -> bool {
         self.mic_ok && self.mic_found && self.ax_ok && self.api_ok
     }
+}
+
+pub fn new_shared_health(initial: HealthStatus) -> SharedHealth {
+    Arc::new(Mutex::new(initial))
+}
+
+pub fn cached<R: Runtime>(app: &AppHandle<R>) -> HealthStatus {
+    app.state::<SharedHealth>().lock().unwrap().to_owned()
+}
+
+pub fn compute_and_cache<R: Runtime>(app: &AppHandle<R>) -> HealthStatus {
+    let health = compute(app);
+    *app.state::<SharedHealth>().lock().unwrap() = health;
+    health
 }
 
 /// AVMediaTypeAudio ("soun") — the four-char code AVFoundation uses to
@@ -162,6 +180,25 @@ mod tests {
             api_ok: false,
         };
         assert!(!status.is_healthy());
+    }
+
+    #[test]
+    fn shared_health_updates_without_reprobing_devices() {
+        let initial = HealthStatus {
+            mic_ok: true,
+            mic_found: true,
+            ax_ok: true,
+            api_ok: true,
+        };
+        let shared = new_shared_health(initial);
+        let updated = HealthStatus {
+            mic_found: false,
+            ..initial
+        };
+
+        *shared.lock().unwrap() = updated;
+
+        assert_eq!(*shared.lock().unwrap(), updated);
     }
 
     // --- mic_device_found ---

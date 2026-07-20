@@ -19,8 +19,8 @@ const RECENT_PREVIEW_CHARS: usize = 48;
 
 /// How often the idle-time health check re-evaluates mic/Accessibility/API
 /// status so a permission fixed in System Settings clears the red tray icon
-/// without requiring an app restart. Cheap checks, so a short interval is
-/// fine — chosen to feel responsive without being a busy-loop.
+/// without requiring an app restart. Probes only run while idle; the interval
+/// is short enough to feel responsive without putting them on the hotkey path.
 const HEALTH_POLL_INTERVAL_SECS: u64 = 4;
 
 struct TrayStrings {
@@ -181,7 +181,7 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
                 // transcription API isn't configured), surface the status
                 // popover instead of starting a doomed recording. Otherwise
                 // preserve the existing click-to-record behaviour.
-                let health = crate::health::compute(app);
+                let health = crate::health::cached(app);
                 if health.is_healthy() {
                     let _ = app.emit("toggle-recording", ());
                 } else {
@@ -191,10 +191,19 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    // Reflect current health on the icon right away, then keep it fresh so a
-    // permission fixed outside the app (System Settings) clears the red
-    // treatment without requiring a restart.
-    refresh_health_icon(app);
+    // Startup already populated the cache before the recorder prewarm began.
+    // Reflect that snapshot without immediately launching a duplicate device
+    // enumeration, then keep it fresh from the idle timer.
+    let initial_health = crate::health::cached(app);
+    let _ = app.emit("health-changed", initial_health);
+    set_tray_icon(
+        app,
+        if initial_health.is_healthy() {
+            "idle"
+        } else {
+            "unavailable"
+        },
+    );
     {
         let app_health = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -208,9 +217,9 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Recomputes health and updates the tray icon/tooltip + emits
-/// `health-changed` so an open popover stays current. Only overrides the
-/// icon while idle so it doesn't fight the recording/processing/error icons.
+/// While idle, recomputes health and updates the tray icon/tooltip + emits
+/// `health-changed` so an open popover stays current. Active recording and
+/// processing never contend with device enumeration.
 pub fn refresh_health_icon<R: Runtime>(app: &AppHandle<R>) {
     use crate::state::{AppState, SharedState};
 
@@ -219,12 +228,20 @@ pub fn refresh_health_icon<R: Runtime>(app: &AppHandle<R>) {
         .map(|s| matches!(*s.lock().unwrap(), AppState::Idle))
         .unwrap_or(true);
 
-    let health = crate::health::compute(app);
-    let _ = app.emit("health-changed", health);
-
-    if is_idle {
-        set_tray_icon(app, if health.is_healthy() { "idle" } else { "unavailable" });
+    if !is_idle {
+        return;
     }
+
+    let health = crate::health::compute_and_cache(app);
+    let _ = app.emit("health-changed", health);
+    set_tray_icon(
+        app,
+        if health.is_healthy() {
+            "idle"
+        } else {
+            "unavailable"
+        },
+    );
 }
 
 pub fn build_tray_menu<R: Runtime>(
