@@ -148,10 +148,6 @@ fn main() {
         .or(capture.start_requested_at)
         .expect("capture benchmark should record a start anchor");
     println!(
-        "capture path prebuilt stream: {}",
-        capture.used_prebuilt_stream
-    );
-    println!(
         "capture path (synthetic hotkey -> start request): {} ms",
         fmt_duration_ms(capture.start_requested_at.and_then(|at| since(anchor, at))),
     );

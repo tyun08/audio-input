@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { applyAppStateChange, deriveUiDecision, type UiModelState } from "./ui-model.js";
+import {
+  applyAppStateChange,
+  deriveUiDecision,
+  isHealthy,
+  type HealthStatus,
+  type UiModelState,
+} from "./ui-model.js";
 
 function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
   return {
@@ -12,6 +18,16 @@ function baseState(overrides: Partial<UiModelState> = {}): UiModelState {
     polishFailed: false,
     transcriptionSuccessFlash: false,
     retryableSessionId: null,
+    ...overrides,
+  };
+}
+
+function baseHealth(overrides: Partial<HealthStatus> = {}): HealthStatus {
+  return {
+    micOk: true,
+    micFound: true,
+    axOk: true,
+    apiOk: true,
     ...overrides,
   };
 }
@@ -69,10 +85,20 @@ describe("deriveUiDecision", () => {
     const decision = deriveUiDecision(baseState({ showSettings: true }));
     expect(decision).toEqual({
       view: "settings",
-      window: { w: 620, h: 480, posKey: "settings-window-pos" },
+      window: { w: 620, h: 560, posKey: "settings-window-pos" },
       nativeOpaque: true,
       shouldShowWindow: true,
     });
+  });
+
+  it("explicit Settings request wins over the mic permission nag", () => {
+    const decision = deriveUiDecision(baseState({ showSettings: true, micGranted: false }));
+    expect(decision.view).toBe("settings");
+  });
+
+  it("explicit Settings request wins over the accessibility nag", () => {
+    const decision = deriveUiDecision(baseState({ showSettings: true, axGranted: false }));
+    expect(decision.view).toBe("settings");
   });
 
   it("injection failure uses taller HUD and stays visible", () => {
@@ -133,5 +159,56 @@ describe("deriveUiDecision", () => {
     expect(decision.view).toBe("hud");
     expect(decision.window.w).toBe(200);
     expect(decision.window.h).toBe(44);
+  });
+
+  it("health popover overrides settings and HUD, but not onboarding/mic/ax", () => {
+    const decision = deriveUiDecision(
+      baseState({ showHealthPopover: true, showSettings: true, appState: "recording" })
+    );
+    expect(decision).toEqual({
+      view: "health",
+      window: { w: 320, h: 260 },
+      nativeOpaque: true,
+      shouldShowWindow: true,
+    });
+  });
+
+  it("missing mic permission still takes priority over the health popover", () => {
+    const decision = deriveUiDecision(baseState({ micGranted: false, showHealthPopover: true }));
+    expect(decision.view).toBe("mic");
+  });
+
+  it("missing accessibility permission still takes priority over the health popover", () => {
+    const decision = deriveUiDecision(baseState({ axGranted: false, showHealthPopover: true }));
+    expect(decision.view).toBe("ax");
+  });
+
+  it("health check failure keeps the retry-sized HUD visible without a retryable session", () => {
+    const decision = deriveUiDecision(baseState({ healthCheckFailed: true }));
+    expect(decision.view).toBe("hud");
+    expect(decision.shouldShowWindow).toBe(true);
+    expect(decision.window).toEqual({ w: 300, h: 108, posKey: "hud-window-pos" });
+  });
+});
+
+describe("isHealthy", () => {
+  it("is true when mic, mic device, accessibility, and API are all ok", () => {
+    expect(isHealthy(baseHealth())).toBe(true);
+  });
+
+  it("is false when the microphone permission is missing", () => {
+    expect(isHealthy(baseHealth({ micOk: false }))).toBe(false);
+  });
+
+  it("is false when no microphone device is found", () => {
+    expect(isHealthy(baseHealth({ micFound: false }))).toBe(false);
+  });
+
+  it("is false when accessibility permission is missing", () => {
+    expect(isHealthy(baseHealth({ axOk: false }))).toBe(false);
+  });
+
+  it("is false when the transcription API isn't configured/working", () => {
+    expect(isHealthy(baseHealth({ apiOk: false }))).toBe(false);
   });
 });

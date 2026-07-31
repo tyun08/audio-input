@@ -18,22 +18,28 @@
 
   const dispatch = createEventDispatcher();
 
+  // Microphone/Accessibility permissions only exist on macOS, so the
+  // "Re-setup Permissions" entry is hidden on Windows.
+  const isMac = !navigator.userAgent.includes("Windows");
+
   export let polishEnabled: boolean = false;
   export let audioDevices: string[] = [];
   export let autostartEnabled: boolean = false;
   export let screenshotContextEnabled: boolean = false;
   export let showIdleHud: boolean = false;
   export let sentHudTimeoutSecs: number = 5;
+  export let recordingSoundsEnabled: boolean = true;
   export let appState: string = "idle";
   export let shortcutConflict: string = "";
 
-  let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
+  export let activeSection: "general" | "transcription" | "advanced" | "history" = "transcription";
   let provider = "openai";
   let configValues: Record<string, string> = {};
   let authStatus: boolean | null = null;
 
   let preferredDevice: string | null = null;
   let shortcut = "Meta+Shift+Space";
+  let updateChannel: "stable" | "beta" = "stable";
   let saving = false;
   let saved = false;
   let error = "";
@@ -62,6 +68,7 @@
     shortcut = await invoke<string>("get_shortcut");
     preferredDevice = await invoke<string | null>("get_preferred_device").catch(() => null);
     maxHistory = await invoke<number>("get_max_history").catch(() => 100);
+    updateChannel = await invoke<"stable" | "beta">("get_update_channel").catch(() => "stable");
     await refreshHistory();
   });
 
@@ -188,11 +195,22 @@
     await invoke("save_show_idle_hud", { enabled: showIdleHud });
   }
 
+  async function handleRecordingSoundsToggle() {
+    recordingSoundsEnabled = !recordingSoundsEnabled;
+    await invoke("save_recording_sounds_enabled", { enabled: recordingSoundsEnabled });
+  }
+
   async function handleSentHudTimeoutChange(e: Event) {
     const raw = parseInt((e.target as HTMLInputElement).value, 10);
     const next = Number.isFinite(raw) && raw >= 0 ? Math.min(raw, 30) : 0;
     sentHudTimeoutSecs = next;
     await invoke("save_sent_hud_timeout_secs", { secs: next });
+  }
+
+  async function handleUpdateChannelChange(e: Event) {
+    updateChannel = (e.target as HTMLSelectElement).value as "stable" | "beta";
+    await invoke("save_update_channel", { channel: updateChannel });
+    showSaved();
   }
 
   function handleProviderSelectChange(e: Event) {
@@ -343,7 +361,13 @@
               <div class="row">
                 <span class="row-label">{field.label[$locale]}</span>
                 {#if field.type === "select"}
-                  <FieldSelect options={field.options ?? []} bind:value={configValues[field.key]} />
+                  <FieldSelect
+                    options={field.options ?? []}
+                    orientation={provider === "groq" && field.key === "model"
+                      ? "vertical"
+                      : "horizontal"}
+                    bind:value={configValues[field.key]}
+                  />
                 {:else if field.type === "password"}
                   <input
                     type="password"
@@ -450,6 +474,21 @@
               >
             </div>
           </div>
+          <div class="row-sep"></div>
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.recording_sounds")}</span>
+              <span class="row-sub">{$t("settings.recording_sounds_desc")}</span>
+            </div>
+            <button
+              class="toggle"
+              class:on={recordingSoundsEnabled}
+              on:click={handleRecordingSoundsToggle}
+              aria-label="Toggle recording sounds"
+            >
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
         </div>
         {#if shortcutConflict}
           <p class="warn">{$t("settings.shortcut_conflict", shortcutConflict)}</p>
@@ -469,6 +508,35 @@
             />
           </div>
         </div>
+
+        <h3>{$t("settings.section.updates")}</h3>
+        <div class="group">
+          <div class="row">
+            <div class="row-label-stack">
+              <span class="row-label">{$t("settings.update_channel")}</span>
+              <span class="row-sub">{$t("settings.update_channel_desc")}</span>
+            </div>
+            <select class="row-select" value={updateChannel} on:change={handleUpdateChannelChange}>
+              <option value="stable">{$t("settings.update_channel_stable")}</option>
+              <option value="beta">{$t("settings.update_channel_beta")}</option>
+            </select>
+          </div>
+        </div>
+
+        {#if isMac}
+          <h3>{$t("settings.section.permissions")}</h3>
+          <div class="group">
+            <div class="row">
+              <div class="row-label-stack">
+                <span class="row-label">{$t("settings.resetup_permissions")}</span>
+                <span class="row-sub">{$t("settings.resetup_permissions_desc")}</span>
+              </div>
+              <button class="apply-btn" on:click={() => dispatch("permissionSetup")}>
+                {$t("settings.resetup_btn")}
+              </button>
+            </div>
+          </div>
+        {/if}
 
         {#if saved}
           <p class="saved-note">{$t("settings.saved")}</p>
@@ -772,12 +840,35 @@
   .content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     padding: 20px 20px 24px;
     overflow-y: auto;
     background: #1a1a1c;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+
+  .content::-webkit-scrollbar {
+    width: 10px;
+  }
+  .content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .content::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.22);
+    border-radius: 999px;
+    border: 2px solid #1a1a1c;
+  }
+  .content::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.34);
+  }
+
+  .content > * {
+    flex-shrink: 0;
   }
 
   .content h2 {
@@ -813,6 +904,7 @@
     gap: 12px;
     padding: 0 16px;
     min-height: 48px;
+    min-width: 0;
   }
 
   .row-sep {
@@ -824,17 +916,21 @@
   .row-label {
     font-size: 14px;
     color: rgba(255, 255, 255, 0.85);
-    flex-shrink: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .row-label-stack {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1;
+    min-width: 0;
   }
   .row-sub {
     font-size: 12px;
     color: rgba(255, 255, 255, 0.35);
+    overflow-wrap: anywhere;
   }
 
   /* ── Controls ── */
@@ -893,6 +989,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
+    min-width: 0;
   }
 
   .apply-btn {

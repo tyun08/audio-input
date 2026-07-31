@@ -87,24 +87,27 @@ async fn start_recording<R: Runtime>(
 ) {
     info!("Recording started...");
 
-    // Check microphone permission before starting
-    #[cfg(target_os = "macos")]
-    {
-        use objc::{class, msg_send, sel, sel_impl};
-        let mic_status: i64 = unsafe {
-            let media_type: *mut objc::runtime::Object =
-                msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
-            msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
-        };
-        if mic_status == 2 || mic_status == 1 {
-            warn!(
-                "Microphone permission denied (status={}), cannot record",
-                mic_status
-            );
-            set_tray_icon(app, "idle");
-            let _ = app.emit("microphone-denied", ());
-            return;
-        }
+    // Consume the snapshot maintained by the idle health timer. Do not call
+    // health::compute here: it enumerates input devices and previously added
+    // roughly 55-72 ms to every shortcut press.
+    let health = crate::health::cached(app);
+    if !health.mic_ok {
+        warn!("Cached health reports microphone permission missing");
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("microphone-denied", ());
+        return;
+    }
+    if !health.ax_ok {
+        warn!("Cached health reports Accessibility permission missing");
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("accessibility-missing", ());
+        return;
+    }
+    if !health.is_healthy() {
+        warn!("Cached idle health prevents recording: {:?}", health);
+        set_tray_icon(app, "unavailable");
+        let _ = app.emit("health-check-failed", health);
+        return;
     }
 
     // Build the async-error handler up front. The blocking device probe and
@@ -263,8 +266,7 @@ fn spawn_latency_probe(recorder_state: Arc<Mutex<Recorder>>) {
                     .and_then(|at| since(anchor, at));
                 let to_stream_built = snapshot.stream_built_at.and_then(|at| since(anchor, at));
                 warn!(
-                    "Recording latency: prebuilt={}, first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
-                    snapshot.used_prebuilt_stream,
+                    "Recording latency: first sample not observed within 2000 ms; hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms",
                     fmt_duration_ms(to_start),
                     fmt_duration_ms(to_stream_built),
                     fmt_duration_ms(to_stream_play),
@@ -286,8 +288,7 @@ fn log_latency_snapshot(snapshot: crate::audio::recorder::RecordingLatencySnapsh
     let first_sample_at = snapshot.first_sample_at.unwrap();
 
     info!(
-        "Recording latency: prebuilt={}, hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
-        snapshot.used_prebuilt_stream,
+        "Recording latency: hotkey->start={} ms, hotkey->stream_built={} ms, hotkey->stream_play={} ms, hotkey->first_sample={} ms, start->first_sample={} ms",
         fmt_duration_ms(since(anchor, start_requested_at)),
         fmt_duration_ms(snapshot.stream_built_at.and_then(|at| since(anchor, at))),
         fmt_duration_ms(snapshot.stream_play_requested_at.and_then(|at| since(anchor, at))),
@@ -303,8 +304,7 @@ fn log_latency_setup_breakdown(snapshot: crate::audio::recorder::RecordingLatenc
     }
 
     info!(
-        "Recording latency setup: prebuilt={}, start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
-        snapshot.used_prebuilt_stream,
+        "Recording latency setup: start->thread={} ms, thread->host={} ms, host->device={} ms, device->name={} ms, name->config={} ms, config->build_stream={} ms, build_stream->play_call={} ms, play_call->play_return={} ms, play_return->first_sample={} ms",
         fmt_between(snapshot.start_requested_at, snapshot.setup_thread_started_at),
         fmt_between(snapshot.setup_thread_started_at, snapshot.host_created_at),
         fmt_between(snapshot.host_created_at, snapshot.device_resolved_at),
@@ -829,17 +829,6 @@ pub async fn request_microphone_permission(app: AppHandle) {
                         if !granted {
                             use tauri::Emitter as _;
                             let _ = app2.emit("microphone-denied", ());
-                        } else {
-                            let preferred_device = {
-                                let config = app2.state::<Arc<Mutex<AppConfig>>>();
-                                let preferred = config.lock().unwrap().preferred_device.clone();
-                                preferred
-                            };
-                            if let Some(recorder_state) = app2.try_state::<RecorderState>() {
-                                if let Ok(recorder) = recorder_state.inner().0.lock() {
-                                    let _ = recorder.prewarm_capture(preferred_device);
-                                }
-                            }
                         }
                     });
                     let block = block.copy();
@@ -855,6 +844,48 @@ pub async fn request_microphone_permission(app: AppHandle) {
     }
 }
 
+/// Clear the app's existing TCC entry for a permission so it can be granted
+/// fresh. Needed when an app update invalidates the prior grant (the toggle
+/// still shows "on" in System Settings but the mic/accessibility silently
+/// fails) — the user often can't fix this by hand because the stale entry
+/// can't be toggled back to a working state. `tccutil reset` removes the
+/// record entirely; the next request then re-prompts cleanly.
+#[tauri::command]
+pub fn reset_permission(app: AppHandle, kind: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let service = match kind.as_str() {
+            "microphone" => "Microphone",
+            "accessibility" => "Accessibility",
+            other => return Err(format!("unknown permission kind: {other}")),
+        };
+        let bundle_id = app.config().identifier.clone();
+        let output = std::process::Command::new("tccutil")
+            .args(["reset", service, &bundle_id])
+            .output()
+            .map_err(|e| format!("failed to run tccutil: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tccutil reset {service} failed: {}", stderr.trim()));
+        }
+        info!("Reset TCC permission: {service} for {bundle_id}");
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, kind);
+        Ok(())
+    }
+}
+
+/// Relaunch the app. Required after `reset_permission`: macOS (AVFoundation)
+/// caches the TCC authorization status for the lifetime of the process, so a
+/// just-cleared microphone permission won't re-prompt until the app restarts.
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
 #[tauri::command]
 pub fn open_microphone_prefs() {
     #[cfg(target_os = "macos")]
@@ -868,6 +899,14 @@ pub fn open_microphone_prefs() {
 #[tauri::command]
 pub fn get_app_state(shared_state: tauri::State<'_, SharedState>) -> String {
     shared_state.lock().unwrap().to_string()
+}
+
+/// Snapshot used by the menu-bar health icon and the status popover: whether
+/// the microphone permission/device, Accessibility permission, and
+/// transcription API are all in a usable state.
+#[tauri::command]
+pub fn get_health_status(app: AppHandle) -> crate::health::HealthStatus {
+    crate::health::compute_and_cache(&app)
 }
 
 // --- Generic provider commands -----------------------------------------------
@@ -970,11 +1009,6 @@ pub async fn save_preferred_device(
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())?;
-    if let Some(recorder_state) = app.try_state::<RecorderState>() {
-        if let Ok(recorder) = recorder_state.inner().0.lock() {
-            let _ = recorder.prewarm_capture(updated.preferred_device.clone());
-        }
-    }
     Ok(())
 }
 
@@ -1055,6 +1089,27 @@ pub async fn save_screenshot_context_enabled(
     let updated = {
         let mut cfg = config.lock().unwrap();
         cfg.screenshot_context_enabled = enabled;
+        cfg.clone()
+    };
+    AppConfig::save(&app, &updated).map_err(|e| e.to_string())
+}
+
+// --- Recording sounds --------------------------------------------------------
+
+#[tauri::command]
+pub fn get_recording_sounds_enabled(config: tauri::State<'_, Arc<Mutex<AppConfig>>>) -> bool {
+    config.lock().unwrap().recording_sounds_enabled
+}
+
+#[tauri::command]
+pub async fn save_recording_sounds_enabled(
+    enabled: bool,
+    app: AppHandle,
+    config: tauri::State<'_, Arc<Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let updated = {
+        let mut cfg = config.lock().unwrap();
+        cfg.recording_sounds_enabled = enabled;
         cfg.clone()
     };
     AppConfig::save(&app, &updated).map_err(|e| e.to_string())
@@ -1164,10 +1219,11 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                 let _: () = msg_send![win, invalidateShadow];
             }
 
-            // Keep the app Regular in every mode so it remains a real Dock /
-            // Cmd-Tab app. Settings/onboarding explicitly activate the app;
-            // HUD/hidden mode only changes window level and never activates.
-            // NSApplicationActivationPolicyRegular = 0
+            // Settings/onboarding flip the app to Regular (Dock icon visible) so
+            // the window can become key and WebKit renders; HUD/hidden mode runs
+            // as Accessory (no Dock icon, hidden from Cmd-Tab). The Dock icon thus
+            // appears only while a real window is on screen. The compositor stays
+            // warm regardless because the window remains on-screen at alphaValue=0.
             if opaque {
                 // Settings / onboarding: normal window level so other windows can cover it.
                 // NSNormalWindowLevel = 0
@@ -1175,6 +1231,7 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 0i64];
                 }
+                // NSApplicationActivationPolicyRegular = 0
                 let _: () = msg_send![app, setActivationPolicy: 0i64];
                 let _: () = msg_send![app, activateIgnoringOtherApps: true];
             } else {
@@ -1184,7 +1241,9 @@ pub fn set_native_opaque(opaque: bool, visible: bool) {
                     let win: *mut objc::runtime::Object = msg_send![windows, objectAtIndex: i];
                     let _: () = msg_send![win, setLevel: 3i64];
                 }
-                let _: () = msg_send![app, setActivationPolicy: 0i64];
+                // NSApplicationActivationPolicyAccessory = 1 — drop the Dock icon
+                // once we're back to the HUD/hidden state.
+                let _: () = msg_send![app, setActivationPolicy: 1i64];
             }
         }
     }

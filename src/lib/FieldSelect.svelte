@@ -5,10 +5,11 @@
    */
   export let options: { value: string; label: string }[] = [];
   export let value: string = "";
+  export let orientation: "horizontal" | "vertical" = "horizontal";
 </script>
 
 {#if options.length === 2}
-  <div class="seg">
+  <div class="seg" class:vertical={orientation === "vertical"}>
     {#each options as opt}
       <button class:active={value === opt.value} on:click={() => (value = opt.value)} type="button"
         >{opt.label}</button
@@ -30,19 +31,26 @@
     background: rgba(0, 0, 0, 0.07);
     border-radius: 8px;
     padding: 2px;
+    min-width: 0;
+  }
+  .seg.vertical {
+    flex-direction: column;
   }
   .seg button {
     padding: 4px 14px;
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: #3c3c3e;
+    color: rgba(255, 255, 255, 0.62);
     font-size: 13px;
     font-weight: 400;
     cursor: pointer;
     transition: all 0.15s;
     font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
     white-space: nowrap;
+  }
+  .seg.vertical button {
+    width: 100%;
   }
   .seg button.active {
     background: white;

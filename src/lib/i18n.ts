@@ -59,6 +59,29 @@ const messages: Record<Locale, Record<string, string>> = {
     "ax.open": "Open System Settings",
     "ax.dismiss": "Dismiss",
 
+    // Health popover (App.svelte) — menu-bar status shown when the service
+    // isn't fully usable.
+    "health.title": "Status",
+    "health.mic_ax": "Microphone & Accessibility",
+    "health.mic_ax_ok": "Configured properly",
+    "health.mic_ax_bad": "Needs attention",
+    "health.resetup": "Re-setup permissions",
+    "health.mic_device": "Microphone",
+    "health.mic_device_ok": "Found and working",
+    "health.mic_device_bad": "No microphone found",
+    "health.general_settings": "Settings",
+    "health.api": "Transcription API",
+    "health.api_ok": "Working",
+    "health.api_bad": "Not configured",
+    "health.transcription_settings": "Settings",
+    "health.settings": "Settings…",
+    "health.close": "Close",
+    "health.check_failed_title": "Can't start recording",
+    "health.check_failed_body":
+      "Microphone or Accessibility permission needs attention, or the transcription API isn't configured.",
+    "health.check_failed_ok": "OK",
+    "health.check_failed_fix": "Fix it",
+
     // Settings panel
     "settings.title": "Settings",
     "settings.recording": "Recording",
@@ -82,10 +105,20 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot_desc": "Capture screen while recording for better polish",
     "settings.show_idle_hud": "Show Idle Indicator",
     "settings.show_idle_hud_desc": "Keep mic icon visible when ready to record",
+    "settings.recording_sounds": "Recording Sounds",
+    "settings.recording_sounds_desc": "Play a sound when recording starts and stops",
     "settings.sent_hud_timeout": "Sent HUD Duration",
     "settings.sent_hud_timeout_desc":
       "Seconds the 'Sent ✓' HUD stays visible (0 = disabled, max 30)",
     "settings.language": "Language",
+    "settings.update_channel": "Update Channel",
+    "settings.update_channel_desc": "Choose stable releases or early beta builds",
+    "settings.update_channel_stable": "Stable",
+    "settings.update_channel_beta": "Beta",
+    "settings.resetup_permissions": "Re-setup Permissions",
+    "settings.resetup_permissions_desc":
+      "Re-open the microphone & accessibility setup screen (your API key is kept)",
+    "settings.resetup_btn": "Open",
 
     // Settings nav tabs
     "settings.nav.transcription": "Transcription",
@@ -97,6 +130,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.section.startup": "Startup",
     "settings.section.input": "Input",
     "settings.section.language": "Language",
+    "settings.section.updates": "Updates",
+    "settings.section.permissions": "Permissions",
 
     // Onboarding
     "onboarding.start": "Get Started",
@@ -111,6 +146,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.perms_request": "Grant Access",
     "onboarding.perms_waiting": "Requesting…",
     "onboarding.perms_continue": "Continue",
+    "onboarding.perms_done": "Done",
+    "onboarding.perms_reset": "Reset",
+    "onboarding.perms_resetting": "Resetting…",
+    "onboarding.perms_reset_subtitle":
+      "If a permission shows granted but isn't working (common after an update), Reset clears it — then restart the app and grant again.",
+    "onboarding.perms_reset_done":
+      "Permission cleared. Restart the app to apply, then grant again.",
+    "onboarding.perms_restart": "Restart Now",
     "onboarding.configure": "Configure AI Service",
     "onboarding.save_continue": "Save & Continue",
     "onboarding.skip": "Skip",
@@ -183,6 +226,26 @@ const messages: Record<Locale, Record<string, string>> = {
     "ax.open": "打开系统设置",
     "ax.dismiss": "忽略",
 
+    "health.title": "状态",
+    "health.mic_ax": "麦克风与辅助功能",
+    "health.mic_ax_ok": "已正确配置",
+    "health.mic_ax_bad": "需要处理",
+    "health.resetup": "重新设置权限",
+    "health.mic_device": "麦克风",
+    "health.mic_device_ok": "已找到并正常工作",
+    "health.mic_device_bad": "未找到麦克风",
+    "health.general_settings": "设置",
+    "health.api": "转录 API",
+    "health.api_ok": "正常工作",
+    "health.api_bad": "尚未配置",
+    "health.transcription_settings": "设置",
+    "health.settings": "设置…",
+    "health.close": "关闭",
+    "health.check_failed_title": "无法开始录音",
+    "health.check_failed_body": "麦克风或辅助功能权限需要处理，或转录 API 尚未配置。",
+    "health.check_failed_ok": "好的",
+    "health.check_failed_fix": "去处理",
+
     "settings.title": "设置",
     "settings.recording": "录音中",
     "settings.transcribing": "转录中",
@@ -204,9 +267,18 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.screenshot_desc": "录音时截屏，提升润色准确度",
     "settings.show_idle_hud": "显示待机指示器",
     "settings.show_idle_hud_desc": "录音就绪时保持麦克风图标可见",
+    "settings.recording_sounds": "录音提示音",
+    "settings.recording_sounds_desc": "录音开始和结束时播放提示音",
     "settings.sent_hud_timeout": "「已发送」HUD 持续时间",
     "settings.sent_hud_timeout_desc": "「已写入 ✓」HUD 显示秒数（0 = 关闭，最多 30）",
     "settings.language": "语言",
+    "settings.update_channel": "更新通道",
+    "settings.update_channel_desc": "选择稳定正式版或提前体验 Beta 版本",
+    "settings.update_channel_stable": "稳定版",
+    "settings.update_channel_beta": "Beta 测试版",
+    "settings.resetup_permissions": "重新设置权限",
+    "settings.resetup_permissions_desc": "重新打开麦克风与辅助功能授权界面（会保留 API Key）",
+    "settings.resetup_btn": "打开",
 
     // Settings nav tabs
     "settings.nav.transcription": "转录",
@@ -218,6 +290,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "settings.section.startup": "启动",
     "settings.section.input": "输入",
     "settings.section.language": "语言",
+    "settings.section.updates": "更新",
+    "settings.section.permissions": "权限",
 
     "onboarding.start": "开始配置",
     "onboarding.perms_title": "授权设置",
@@ -230,6 +304,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "onboarding.perms_request": "授权访问",
     "onboarding.perms_waiting": "请求中…",
     "onboarding.perms_continue": "继续",
+    "onboarding.perms_done": "完成",
+    "onboarding.perms_reset": "重置",
+    "onboarding.perms_resetting": "重置中…",
+    "onboarding.perms_reset_subtitle":
+      "如果权限显示已授权却无法使用（更新后常见），点击「重置」清除，然后重启 App 并重新授权。",
+    "onboarding.perms_reset_done": "权限已清除。请重启 App 使其生效，然后重新授权。",
+    "onboarding.perms_restart": "立即重启",
     "onboarding.configure": "配置 AI 服务",
     "onboarding.save_continue": "保存并继续",
     "onboarding.skip": "跳过",

@@ -1,11 +1,16 @@
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
 import { ask, message } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
+
+type AvailableUpdate = {
+  version: string;
+  body?: string;
+};
 
 let inFlight = false;
 
 /**
- * Check for an update from the configured endpoint.
+ * Check for an update from the user's persisted stable/beta channel.
  *
  * @param silent  When true (startup auto-check), only shows UI if an update
  *                is found. When false (user clicked "Check for Updates…"),
@@ -15,7 +20,7 @@ export async function checkForUpdates(silent: boolean): Promise<void> {
   if (inFlight) return;
   inFlight = true;
   try {
-    const update: Update | null = await check();
+    const update = await invoke<AvailableUpdate | null>("check_for_update");
     if (!update) {
       if (!silent) {
         await message("You're on the latest version of Audio Input.", {
@@ -37,12 +42,12 @@ export async function checkForUpdates(silent: boolean): Promise<void> {
     );
     if (!confirmed) return;
 
-    // Download + install. tauri-plugin-updater handles signature verification
-    // against the public key in tauri.conf.json — if the signature mismatches
-    // (e.g., MITM), this throws and we surface the error to the user.
-    await update.downloadAndInstall();
-    // On Windows, downloadAndInstall already exits the process; on macOS we
-    // explicitly relaunch.
+    // The native updater re-checks the selected channel, verifies that the
+    // offered version has not changed, then verifies its signature and
+    // installs it. Relaunch from the frontend after the IPC command returns;
+    // restarting inside that command can terminate the app before Tauri has
+    // completed the relaunch handoff on macOS.
+    await invoke("install_update", { version: update.version });
     await relaunch();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

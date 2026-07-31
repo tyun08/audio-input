@@ -4,15 +4,18 @@
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { createAppApi } from "./lib/app-api";
   import { log } from "./lib/logger";
+  import { RecordingSoundPlayer } from "./lib/recording-sounds";
   import {
     AX_H,
     AX_W,
     HUD_POS_KEY,
     applyAppStateChange,
     deriveUiDecision,
+    isHealthy,
     parseAppState,
     SETTINGS_POS_KEY,
     type AppState,
+    type HealthStatus,
     type UiModelState,
   } from "./lib/ui-model";
 
@@ -61,10 +64,20 @@
   let needsMicPermission = false;
   let micPollInterval: ReturnType<typeof setInterval> | null = null;
   let showOnboarding = false;
+  // Re-runs just the macOS permission step (mic + accessibility) from Settings,
+  // without touching the saved API key / provider config.
+  let showPermissionSetup = false;
   let polishFailed = false;
   let shortcutConflict = "";
   let retryableSessionId: string | null = null;
   let retrying = false;
+
+  // Menu-bar health popover + non-timeout failure HUD (issue #101).
+  let showHealthPopover = false;
+  let health: HealthStatus = { micOk: true, micFound: true, axOk: true, apiOk: true };
+  let healthCheckFailed = false;
+  let settingsInitialSection: "general" | "transcription" | "advanced" | "history" =
+    "transcription";
 
   // Settings data
   let polishEnabled = false;
@@ -73,6 +86,7 @@
   let screenshotContextEnabled = false;
   let showIdleHud = false;
   let sentHudTimeoutSecs = 0;
+  let recordingSoundsEnabled = true;
   // Guard so the reactive showIdleHud → syncWindow trigger below doesn't
   // fire during the initial fetch (when showIdleHud transitions from its
   // declared `false` to whatever the backend stored). Only react to user
@@ -101,6 +115,8 @@
       successFlashTimer = null;
     }
   }
+
+  const recordingSoundPlayer = new RecordingSoundPlayer();
 
   const appApi = createAppApi();
   const appWindow = appApi.window;
@@ -140,7 +156,7 @@
 
   function getUiState(): UiModelState {
     return {
-      onboardingDone: !showOnboarding,
+      onboardingDone: !showOnboarding && !showPermissionSetup,
       micGranted: !needsMicPermission,
       axGranted: !needsAccessibilityRestart,
       showSettings,
@@ -150,6 +166,8 @@
       showIdleHud,
       transcriptionSuccessFlash,
       retryableSessionId,
+      showHealthPopover,
+      healthCheckFailed,
     };
   }
 
@@ -217,6 +235,10 @@
         startMicPoll();
       }
 
+      health = await appApi
+        .invoke<HealthStatus>("get_health_status")
+        .catch(() => ({ micOk: true, micFound: true, axOk: true, apiOk: true }));
+
       polishEnabled = await appApi.invoke<boolean>("get_polish_enabled").catch(() => false);
       // NOTE: do NOT enumerate audio devices on startup — cpal's
       // host.input_devices() triggers macOS to show the microphone TCC dialog,
@@ -230,6 +252,14 @@
       sentHudTimeoutSecs = normalizeSentHudTimeoutSecs(
         await appApi.invoke<unknown>("get_sent_hud_timeout_secs").catch(() => 5)
       );
+      recordingSoundsEnabled = await appApi
+        .invoke<boolean>("get_recording_sounds_enabled")
+        .catch(() => true);
+      if (recordingSoundsEnabled) {
+        // Warm only the speaker/output graph. This does not request or activate
+        // microphone input, but avoids a cold Web Audio start on the hotkey.
+        void recordingSoundPlayer.warm();
+      }
 
       unlisten.push(
         await appApi.listen<string>("state-change", async (e) => {
@@ -359,6 +389,28 @@
       );
 
       unlisten.push(
+        await appApi.listen<HealthStatus>("health-changed", (e) => {
+          health = e.payload;
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen<HealthStatus>("show-health-popover", async (e) => {
+          health = e.payload;
+          showHealthPopover = true;
+          await syncWindow();
+        })
+      );
+
+      unlisten.push(
+        await appApi.listen<HealthStatus>("health-check-failed", async (e) => {
+          health = e.payload;
+          healthCheckFailed = true;
+          await syncWindow();
+        })
+      );
+
+      unlisten.push(
         await appApi.listen<boolean>("polish-changed", (e) => {
           polishEnabled = e.payload;
         })
@@ -442,19 +494,34 @@
     syncWindow();
   }
 
+  // SettingsPanel two-way-binds this value. Warm immediately when cues are
+  // enabled later, without waiting for the next recording transition.
+  $: if (appHydrated && recordingSoundsEnabled) {
+    void recordingSoundPlayer.warm();
+  }
+
   onDestroy(() => {
     clearSuccessFlashTimer();
     stopMicPoll();
+    void recordingSoundPlayer.dispose();
     unlisten.forEach((fn) => fn());
   });
 
   function handleStateChange(raw: string) {
+    const prevState = appState;
     const transition = applyAppStateChange(getUiState(), raw);
     appState = transition.state.appState;
     showSettings = transition.state.showSettings;
     errorMsg = transition.errorMsg;
     if (appState !== "recording") {
       audioLevels = Array(WAVEFORM_BAR_COUNT).fill(0);
+    }
+    if (recordingSoundsEnabled) {
+      if (appState === "recording" && prevState !== "recording") {
+        void recordingSoundPlayer.playStart();
+      } else if (prevState === "recording" && appState !== "recording" && appState !== "error") {
+        void recordingSoundPlayer.playStop();
+      }
     }
   }
 
@@ -475,6 +542,19 @@
     await syncWindow();
   }
 
+  async function handlePermissionSetup() {
+    showSettings = false;
+    showPermissionSetup = true;
+    await syncWindow();
+  }
+
+  async function handlePermissionSetupDone() {
+    showPermissionSetup = false;
+    // Return the user to where they came from — the Settings panel.
+    showSettings = true;
+    await syncWindow();
+  }
+
   async function handleAccessibilityDismiss() {
     needsAccessibilityRestart = false;
     await syncWindow();
@@ -483,6 +563,35 @@
   async function handleMicDismiss() {
     needsMicPermission = false;
     stopMicPoll();
+    await syncWindow();
+  }
+
+  async function closeHealthPopover() {
+    showHealthPopover = false;
+    await syncWindow();
+  }
+
+  async function resetupPermissions() {
+    await appApi.invoke("request_microphone_permission").catch(() => {});
+    await appApi.invoke("open_accessibility_prefs").catch(() => {});
+  }
+
+  async function openSettingsSection(section: "general" | "transcription") {
+    settingsInitialSection = section;
+    showHealthPopover = false;
+    showSettings = true;
+    await syncWindow();
+  }
+
+  async function dismissHealthCheckFailed() {
+    healthCheckFailed = false;
+    await syncWindow();
+  }
+
+  async function fixHealthCheckFailed() {
+    healthCheckFailed = false;
+    health = await appApi.invoke<HealthStatus>("get_health_status").catch(() => health);
+    showHealthPopover = true;
     await syncWindow();
   }
 
@@ -545,6 +654,8 @@
     </div>
   {:else if showOnboarding}
     <OnboardingFlow on:done={handleOnboardingDone} />
+  {:else if showPermissionSetup}
+    <OnboardingFlow permissionsOnly on:done={handlePermissionSetupDone} />
   {:else if needsMicPermission}
     <div class="ax-banner">
       <div class="ax-icon">
@@ -613,6 +724,57 @@
         <button on:click={handleAccessibilityDismiss}>{$t("ax.dismiss")}</button>
       </div>
     </div>
+  {:else if showHealthPopover}
+    <div class="health-popover">
+      <p class="health-title">{$t("health.title")}</p>
+      <div class="health-row">
+        <div class="health-dot" class:ok={health.micOk && health.axOk}></div>
+        <div class="health-row-text">
+          <p class="health-row-label">{$t("health.mic_ax")}</p>
+          <p class="health-row-status">
+            {health.micOk && health.axOk ? $t("health.mic_ax_ok") : $t("health.mic_ax_bad")}
+          </p>
+        </div>
+        {#if !(health.micOk && health.axOk)}
+          <button class="health-action" on:click={resetupPermissions}>{$t("health.resetup")}</button
+          >
+        {/if}
+      </div>
+      <div class="health-row">
+        <div class="health-dot" class:ok={health.micFound}></div>
+        <div class="health-row-text">
+          <p class="health-row-label">{$t("health.mic_device")}</p>
+          <p class="health-row-status">
+            {health.micFound ? $t("health.mic_device_ok") : $t("health.mic_device_bad")}
+          </p>
+        </div>
+        {#if !health.micFound}
+          <button class="health-action" on:click={() => openSettingsSection("general")}
+            >{$t("health.general_settings")}</button
+          >
+        {/if}
+      </div>
+      <div class="health-row">
+        <div class="health-dot" class:ok={health.apiOk}></div>
+        <div class="health-row-text">
+          <p class="health-row-label">{$t("health.api")}</p>
+          <p class="health-row-status">
+            {health.apiOk ? $t("health.api_ok") : $t("health.api_bad")}
+          </p>
+        </div>
+        {#if !health.apiOk}
+          <button class="health-action" on:click={() => openSettingsSection("transcription")}
+            >{$t("health.transcription_settings")}</button
+          >
+        {/if}
+      </div>
+      <div class="health-footer">
+        <button class="health-settings-btn" on:click={() => openSettingsSection("general")}
+          >{$t("health.settings")}</button
+        >
+        <button class="health-close-btn" on:click={closeHealthPopover}>{$t("health.close")}</button>
+      </div>
+    </div>
   {:else if showSettings}
     <SettingsPanel
       bind:polishEnabled
@@ -621,10 +783,13 @@
       bind:screenshotContextEnabled
       bind:showIdleHud
       bind:sentHudTimeoutSecs
+      bind:recordingSoundsEnabled
       {appState}
       bind:shortcutConflict
+      activeSection={settingsInitialSection}
       on:saved={handleSettingsSaved}
       on:close={handleSettingsClosed}
+      on:permissionSetup={handlePermissionSetup}
     />
   {:else}
     <RecordingIndicator
@@ -635,6 +800,7 @@
       {audioLevels}
       {retryableSessionId}
       {retrying}
+      {healthCheckFailed}
       {transcriptionSuccessFlash}
       successFlashDurationMs={TRANSCRIPTION_SUCCESS_FLASH_MS}
       on:retry={handleRetry}
@@ -642,6 +808,8 @@
       on:clipboardCopy={handleClipboardCopy}
       on:clipboardDismiss={handleClipboardDismiss}
       on:successCopy={handleSuccessCopy}
+      on:healthFix={fixHealthCheckFailed}
+      on:healthDismiss={dismissHealthCheckFailed}
     />
   {/if}
 </div>
@@ -767,5 +935,87 @@
 
   .ax-buttons button.primary:hover {
     background: rgba(251, 191, 36, 0.38);
+  }
+
+  .health-popover {
+    background: rgba(30, 30, 32, 0.92);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    height: 100%;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+  }
+
+  .health-title {
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .health-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(248, 113, 113, 0.9);
+    flex-shrink: 0;
+  }
+
+  .health-dot.ok {
+    background: rgba(62, 207, 142, 0.9);
+  }
+
+  .health-row-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .health-row-label {
+    font-weight: 600;
+  }
+
+  .health-row-status {
+    opacity: 0.65;
+    font-size: 11px;
+  }
+
+  .health-action,
+  .health-settings-btn,
+  .health-close-btn {
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: -apple-system, "SF Pro Text", BlinkMacSystemFont, sans-serif;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .health-action:hover,
+  .health-settings-btn:hover,
+  .health-close-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .health-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: auto;
+    gap: 8px;
   }
 </style>

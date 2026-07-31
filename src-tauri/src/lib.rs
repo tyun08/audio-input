@@ -5,6 +5,7 @@ extern "C" {}
 pub mod audio;
 mod commands;
 mod config;
+mod health;
 mod history;
 mod input;
 #[cfg(target_os = "macos")]
@@ -15,6 +16,7 @@ mod shortcut;
 mod state;
 mod transcription;
 mod tray;
+mod updates;
 
 use audio::Recorder;
 use commands::RecorderState;
@@ -26,22 +28,6 @@ use std::sync::{Arc, Mutex};
 use tauri::{Listener as _, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tracing::{info, warn};
-
-#[cfg(target_os = "macos")]
-fn microphone_prewarm_allowed() -> bool {
-    use objc::{class, msg_send, sel, sel_impl};
-    let status: i64 = unsafe {
-        let media_type: *mut objc::runtime::Object =
-            msg_send![class!(NSString), stringWithUTF8String: c"soun".as_ptr()];
-        msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type]
-    };
-    status == 3
-}
-
-#[cfg(not(target_os = "macos"))]
-fn microphone_prewarm_allowed() -> bool {
-    true
-}
 
 pub fn run() {
     // Try current dir, then parent dir, to find .env in dev mode
@@ -97,17 +83,23 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // macOS: keep a real Dock/Cmd-Tab app. The window itself still
-            // starts transparent and input-passthrough so the warmed WebKit
-            // compositor does not interfere with the active foreground app.
+            // macOS: run as a menu-bar (Accessory) app with no Dock icon. The
+            // tray "Settings…" item is the reliable way in; Settings/onboarding
+            // temporarily flip the app to Regular (see set_native_opaque) so the
+            // window can become key and the Dock icon appears only while shown.
+            // The window itself still starts transparent and input-passthrough
+            // so the warmed WebKit compositor does not interfere with the active
+            // foreground app.
             #[cfg(target_os = "macos")]
             {
                 use objc::{class, msg_send, sel, sel_impl};
                 unsafe {
                     let ns_app: *mut objc::runtime::Object =
                         msg_send![class!(NSApplication), sharedApplication];
-                    // NSApplicationActivationPolicyRegular = 0
-                    let _: () = msg_send![ns_app, setActivationPolicy: 0i64];
+                    // NSApplicationActivationPolicyAccessory = 1 — no Dock icon,
+                    // hidden from Cmd-Tab, but windows still render and the
+                    // CVDisplayLink keeps firing (compositor stays warm).
+                    let _: () = msg_send![ns_app, setActivationPolicy: 1i64];
 
                     // Start the window fully transparent and input-passthrough.
                     // The TS side calls show() right away, which puts the window
@@ -124,7 +116,7 @@ pub fn run() {
                         let _: () = msg_send![win, setIgnoresMouseEvents: true];
                     }
                 }
-                let _ = handle.set_dock_visibility(true);
+                let _ = handle.set_dock_visibility(false);
             }
 
             // macOS: pre-load AVFoundation so AVCaptureDevice is available when
@@ -160,8 +152,13 @@ pub fn run() {
             let config = AppConfig::load(&handle);
             let shortcut_str = config.shortcut.clone();
             let max_history = config.max_history;
-            let preferred_device = config.preferred_device.clone();
             app.manage(Arc::new(Mutex::new(config)));
+
+            // Health probes (including input-device enumeration) run at
+            // startup and on the idle tray timer. Shortcut handling consumes
+            // this cached snapshot so recording never waits on a device scan.
+            let initial_health = health::compute(&handle);
+            app.manage(health::new_shared_health(initial_health));
 
             // Init shared state
             let shared_state = new_shared_state();
@@ -181,13 +178,6 @@ pub fn run() {
             // Init recorder
             let recorder = Arc::new(Mutex::new(Recorder::new()));
             app.manage(RecorderState(Arc::clone(&recorder)));
-            if microphone_prewarm_allowed() {
-                if let Ok(rec) = recorder.lock() {
-                    let _ = rec.prewarm_capture(preferred_device.clone());
-                }
-            } else {
-                info!("Skipping recording stream prewarm until microphone permission is granted");
-            }
 
             // Setup system tray
             tray::setup_tray(&handle)?;
@@ -344,6 +334,8 @@ pub fn run() {
             commands::save_onboarding_completed,
             commands::get_screenshot_context_enabled,
             commands::save_screenshot_context_enabled,
+            commands::get_recording_sounds_enabled,
+            commands::save_recording_sounds_enabled,
             commands::get_show_idle_hud,
             commands::save_show_idle_hud,
             commands::set_native_opaque,
@@ -361,6 +353,13 @@ pub fn run() {
             commands::save_locale,
             commands::open_microphone_prefs,
             commands::request_microphone_permission,
+            commands::get_health_status,
+            commands::reset_permission,
+            commands::restart_app,
+            updates::get_update_channel,
+            updates::save_update_channel,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
