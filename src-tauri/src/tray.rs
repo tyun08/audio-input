@@ -191,9 +191,9 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    // Startup already populated the cache before the recorder prewarm began.
-    // Reflect that snapshot without immediately launching a duplicate device
-    // enumeration, then keep it fresh from the idle timer.
+    // Startup already populated the health cache. Reflect that snapshot
+    // without immediately launching a duplicate device enumeration, then keep
+    // it fresh from the idle timer.
     let initial_health = crate::health::cached(app);
     let _ = app.emit("health-changed", initial_health);
     set_tray_icon(
