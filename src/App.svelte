@@ -265,11 +265,14 @@
         await appApi.listen<string>("state-change", async (e) => {
           const closingSettings =
             showSettings && (e.payload === "recording" || e.payload === "processing");
-          if (closingSettings) {
-            await savePos(SETTINGS_POS_KEY);
-          }
+          // Start capturing the settings position before the state transition,
+          // but never make the recording cue wait on native window IPC.
+          const settingsPositionSave = closingSettings ? savePos(SETTINGS_POS_KEY) : null;
 
           handleStateChange(e.payload);
+          if (settingsPositionSave) {
+            await settingsPositionSave;
+          }
 
           if (e.payload !== "error" && !e.payload.startsWith("error:")) {
             // Anytime we leave the error state (idle, recording, processing),
